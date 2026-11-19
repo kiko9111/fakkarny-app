@@ -1,0 +1,130 @@
+import { randomUUID } from "expo-crypto";
+import type { Item, MessageKind, MessageRole, PostMessageResponse } from "@fakkarni/shared";
+import type { OutboxMessage, OutboxStore } from "@/sync/queue";
+import { getDb } from "./database";
+import { parseSaved, summarizeSaved, type SavedSummary } from "./saved";
+
+export type SyncStatus = "pending" | "synced" | "failed";
+
+export interface LocalMessage {
+  client_id: string;
+  role: MessageRole;
+  kind: MessageKind;
+  text: string;
+  created_at: string;
+  sync_status: SyncStatus;
+  saved: SavedSummary | null;
+}
+
+interface Row {
+  client_id: string;
+  role: MessageRole;
+  kind: MessageKind;
+  text: string;
+  created_at: string;
+  sync_status: SyncStatus;
+  attempts: number;
+  saved_json: string | null;
+}
+
+const toLocal = (r: Row): LocalMessage => ({
+  client_id: r.client_id,
+  role: r.role,
+  kind: r.kind,
+  text: r.text,
+  created_at: r.created_at,
+  sync_status: r.sync_status,
+  saved: parseSaved(r.saved_json),
+});
+
+/** Save the user's message locally first; the outbox sends it when online. */
+export async function addUserMessage(text: string): Promise<LocalMessage> {
+  const db = await getDb();
+  const row: Row = {
+    client_id: randomUUID(),
+    role: "user",
+    kind: "chat",
+    text: text.trim(),
+    created_at: new Date().toISOString(),
+    sync_status: "pending",
+    attempts: 0,
+    saved_json: null,
+  };
+  await db.runAsync(
+    "INSERT INTO messages (client_id, role, kind, text, created_at, sync_status) VALUES (?, ?, ?, ?, ?, ?)",
+    row.client_id, row.role, row.kind, row.text, row.created_at, row.sync_status,
+  );
+  return toLocal(row);
+}
+
+/** Latest messages, oldest first. */
+export async function listMessages(limit = 200): Promise<LocalMessage[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Row>(
+    "SELECT * FROM (SELECT * FROM messages ORDER BY created_at DESC, rowid DESC LIMIT ?) ORDER BY created_at ASC, rowid ASC",
+    limit,
+  );
+  return rows.map(toLocal);
+}
+
+export async function upsertItem(i: Item): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO items (id, type, title, due_at, remind_at, important, status, debt_person, debt_amount, debt_direction,
+       follow_up_at, source_message_id, updated_at, created_at, done_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, due_at=excluded.due_at,
+       remind_at=excluded.remind_at, important=excluded.important, status=excluded.status,
+       debt_person=excluded.debt_person, debt_amount=excluded.debt_amount, debt_direction=excluded.debt_direction,
+       follow_up_at=excluded.follow_up_at, updated_at=excluded.updated_at, done_at=excluded.done_at
+     WHERE excluded.updated_at >= items.updated_at`,
+    i.id, i.type, i.title, i.due_at, i.remind_at, i.important ? 1 : 0, i.status, i.debt_person, i.debt_amount,
+    i.debt_direction, i.follow_up_at, i.source_message_id, i.updated_at, i.created_at, i.done_at,
+  );
+}
+
+/** Insert messages that came from the server (friend replies, proactive messages). */
+export async function insertServerMessages(messages: PostMessageResponse["replies"]): Promise<void> {
+  const db = await getDb();
+  for (const m of messages) {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO messages (client_id, server_id, role, kind, text, created_at, sync_status)
+       VALUES (?, ?, ?, ?, ?, ?, 'synced')`,
+      m.client_id, m.id, m.role, m.kind, m.text, m.created_at,
+    );
+  }
+}
+
+export const sqliteOutbox: OutboxStore = {
+  async pending(): Promise<OutboxMessage[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<Row>(
+      "SELECT * FROM messages WHERE sync_status = 'pending' AND role = 'user' ORDER BY created_at ASC, rowid ASC",
+    );
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return rows.map((r) => ({ client_id: r.client_id, text: r.text, created_at: r.created_at, timezone, attempts: r.attempts }));
+  },
+
+  async markSynced(clientId, res) {
+    const db = await getDb();
+    const saved = summarizeSaved(res);
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        "UPDATE messages SET sync_status = 'synced', server_id = ?, saved_json = ? WHERE client_id = ?",
+        res.message.id, saved ? JSON.stringify(saved) : null, clientId,
+      );
+      await insertServerMessages(res.replies);
+      for (const item of res.items) await upsertItem(item);
+    });
+  },
+
+  async markAttempt(clientId) {
+    const db = await getDb();
+    await db.runAsync("UPDATE messages SET attempts = attempts + 1 WHERE client_id = ?", clientId);
+  },
+
+  async markFailed(clientId) {
+    const db = await getDb();
+    await db.runAsync("UPDATE messages SET sync_status = 'failed' WHERE client_id = ?", clientId);
+  },
+};

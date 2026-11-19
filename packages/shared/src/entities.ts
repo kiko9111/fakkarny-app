@@ -68,6 +68,8 @@ export const Item = z.object({
   type: ItemType,
   title: z.string().min(1),
   due_at: Instant.nullable(),
+  remind_at: Instant.nullable(),
+  important: z.boolean(),
   status: ItemStatus,
   debt_person: z.string().nullable(),
   debt_amount: z.number().nullable(),

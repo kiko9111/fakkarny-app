@@ -1,12 +1,16 @@
-import { buildApp } from "./app";
+import { buildApp, LOG_REDACT } from "./app";
+import { db } from "./db";
 import { loadEnv } from "./env";
 
 const env = loadEnv();
-const app = buildApp({ logger: { level: env.LOG_LEVEL, redact: ["req.headers.authorization", "req.headers.cookie"] } });
+const prisma = env.DATABASE_URL ? db() : undefined;
+const app = buildApp({ logger: { level: env.LOG_LEVEL, redact: LOG_REDACT } }, { prisma });
+if (!prisma) app.log.warn("DATABASE_URL not set: only /health is served");
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");
   await app.close();
+  await prisma?.$disconnect();
   process.exit(0);
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));

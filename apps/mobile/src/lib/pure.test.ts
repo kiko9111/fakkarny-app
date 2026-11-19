@@ -32,7 +32,9 @@ describe("pickLanguage", () => {
 
 describe("strings", () => {
   const keys = (o: object, prefix = ""): string[] =>
-    Object.entries(o).flatMap(([k, v]) => (typeof v === "string" ? [prefix + k] : keys(v, `${prefix}${k}.`)));
+    Object.entries(o).flatMap(([k, v]) =>
+      typeof v === "string" || Array.isArray(v) ? [prefix + k] : keys(v, `${prefix}${k}.`),
+    );
 
   it("has the same keys in every language", () => {
     expect(keys(strings.en).sort()).toEqual(keys(strings["ar-EG"]).sort());

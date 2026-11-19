@@ -7,7 +7,12 @@ const arEG = {
   chat: {
     greeting: "أهلاً! أنا فكّرني 👋 أناديك بإيه؟",
     placeholder: "اكتب أي حاجة…",
-    comingSoon: "الدردشة جاية في المرحلة الجاية.",
+    send: "ابعت",
+    offline: "إنت أوفلاين — هبعت رسايلك أول ما النت يرجع.",
+    pending: "مستني النت",
+    failed: "مااتبعتش",
+    saved: "اتحفظ",
+    quickReplies: ["عندي إيه الأسبوع ده؟", "فكّرني بحاجة", "يومي كان عامل إزاي؟"],
   },
   upcoming: { title: "الجاي", empty: "مفيش حاجة جاية لسه." },
   money: { title: "الفلوس", empty: "مفيش ديون متسجلة." },
@@ -18,14 +23,21 @@ const arEG = {
 };
 
 type Strings = typeof arEG;
-type DeepStringShape<T> = { [K in keyof T]: T[K] extends string ? string : DeepStringShape<T[K]> };
+type DeepStringShape<T> = {
+  [K in keyof T]: T[K] extends string ? string : T[K] extends readonly string[] ? string[] : DeepStringShape<T[K]>;
+};
 
 const en: DeepStringShape<Strings> = {
   tabs: { chat: "Chat", upcoming: "Upcoming", money: "Money", settings: "Settings" },
   chat: {
     greeting: "Ahlan! I'm Fakkarni 👋 What should I call you?",
     placeholder: "Write anything…",
-    comingSoon: "Chat arrives in the next milestone.",
+    send: "Send",
+    offline: "You're offline — I'll send your messages when you're back.",
+    pending: "Waiting for internet",
+    failed: "Not sent",
+    saved: "Saved",
+    quickReplies: ["What do I have this week?", "Remind me of something", "How was my day?"],
   },
   upcoming: { title: "Upcoming", empty: "Nothing coming up yet." },
   money: { title: "Money", empty: "No debts tracked." },

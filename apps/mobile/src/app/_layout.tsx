@@ -1,8 +1,14 @@
+import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { t } from "@/i18n";
+import { startSync } from "@/sync";
 
 export default function RootLayout() {
+  useEffect(() => {
+    startSync();
+  }, []);
+
   return (
     <>
       <StatusBar style="dark" />

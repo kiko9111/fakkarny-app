@@ -37,10 +37,23 @@ Rules:
 - packages/shared is consumed as TypeScript source (no build step). The API runs
   under tsx in both dev and start.
 - Mobile unit tests (vitest) cover pure modules only; don't import react-native in them.
+  Keep logic pure and inject storage/transport (see apps/mobile/src/sync/queue.ts).
+- Identity until M5: the phone sends a random install ID in the `x-install-id` header
+  (stored in SQLite `kv`); the API upserts `User.authId = "install:<id>"`
+  (apps/api/src/plugins/auth.ts). M5 swaps this for Supabase JWTs.
+- Messages: phone saves to SQLite (`apps/mobile/src/db/`), the outbox
+  (`src/sync/`) POSTs oldest-first, the API dedupes on (user, client_id). Friend reply
+  rows use client_id `<user client_id>:reply:<n>` so retries return the same replies.
+- API DB tests need Postgres: set `TEST_DATABASE_URL` in apps/api/.env (they skip
+  without it). Locally: `service postgresql start`; dev DB `fakkarni`, test DB
+  `fakkarni_test`, user/password postgres/postgres.
+- Schema change: edit apps/api/prisma/schema.prisma, then
+  `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
+  changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
-- [ ] M2 Capture and local storage
+- [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
 - [ ] M3 Conversation and memory (+ evals/, real `npm run eval`)
 - [ ] M4 Notifications
 - [ ] M5 Auth, sync and screens
