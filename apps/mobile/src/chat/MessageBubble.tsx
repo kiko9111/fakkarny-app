@@ -1,5 +1,6 @@
 import { memo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
 import { colors } from "@/lib/theme";
@@ -17,12 +18,15 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
         </Text>
       ) : null}
       {message.saved ? (
-        // M3 makes this tappable so the user can fix what was remembered.
-        <View style={styles.savedChip}>
+        <Pressable
+          style={styles.savedChip}
+          onPress={() => router.push({ pathname: "/saved/[clientId]", params: { clientId: message.client_id } })}
+          accessibilityRole="button"
+        >
           <Text style={styles.savedText} numberOfLines={1}>
             ✓ {t.chat.saved}: {[...message.saved.items.map((i) => i.title), ...message.saved.memories.map((m) => m.subject)].join(" · ")}
           </Text>
-        </View>
+        </Pressable>
       ) : null}
     </View>
   );

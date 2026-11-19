@@ -58,10 +58,17 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       return reply.code(200).send(res);
     }
 
-    // The phone's timestamp is when the user wrote it (it may have been offline);
-    // never accept times from the future.
+    // The phone's timestamp is when the user wrote it (it may have been offline), but the
+    // conversation is ordered by arrival: never before the last stored message (e.g. the
+    // friend's previous reply) and never in the future.
     const sentAt = new Date(body.data.created_at);
-    const createdAt = sentAt > now() ? now() : sentAt;
+    const last = await prisma.message.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    let createdAt = sentAt > now() ? now() : sentAt;
+    if (last && createdAt <= last.createdAt) createdAt = new Date(last.createdAt.getTime() + 1);
 
     let message;
     try {

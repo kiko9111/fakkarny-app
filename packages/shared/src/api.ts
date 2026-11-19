@@ -46,3 +46,24 @@ export const ListMessagesQuery = z.object({
 });
 export const ListMessagesResponse = z.object({ messages: z.array(Message) });
 export type ListMessagesResponse = z.infer<typeof ListMessagesResponse>;
+
+/** PATCH /items/:id — user fixes what the friend saved (the "Saved" chip). Times are ISO instants. */
+export const PatchItemRequest = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    status: z.enum(["open", "done", "cancelled"]).optional(),
+    due_at: z.iso.datetime({ offset: true }).nullable().optional(),
+    remind_at: z.iso.datetime({ offset: true }).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update");
+export type PatchItemRequest = z.infer<typeof PatchItemRequest>;
+export const ItemResponse = z.object({ item: Item });
+export type ItemResponse = z.infer<typeof ItemResponse>;
+
+/** GET /items?status=open — Upcoming and Money tabs. */
+export const ListItemsResponse = z.object({ items: z.array(Item) });
+export type ListItemsResponse = z.infer<typeof ListItemsResponse>;
+
+/** GET /memories — "what it remembers" in settings (FR-4: view and delete any memory). */
+export const ListMemoriesResponse = z.object({ memories: z.array(Memory) });
+export type ListMemoriesResponse = z.infer<typeof ListMemoriesResponse>;

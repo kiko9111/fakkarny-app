@@ -5,6 +5,7 @@ const Env = z.object({
   HOST: z.string().default("0.0.0.0"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   DATABASE_URL: z.string().url().optional(),
+  ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
 });
 export type Env = z.infer<typeof Env>;
 

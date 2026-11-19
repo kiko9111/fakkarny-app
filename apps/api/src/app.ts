@@ -1,13 +1,16 @@
-import Fastify, { type FastifyServerOptions } from "fastify";
+import Fastify, { type FastifyBaseLogger, type FastifyServerOptions } from "fastify";
 import type { PrismaClient } from "./generated/prisma/client";
 import { noopPipeline, type MessagePipeline } from "./pipeline/types";
 import { healthRoutes } from "./routes/health";
+import { itemRoutes } from "./routes/items";
 import { messageRoutes } from "./routes/messages";
 
 export interface AppDeps {
   /** Omit to run without a database (only /health is served). */
   prisma?: PrismaClient;
   pipeline?: MessagePipeline;
+  /** Alternative to `pipeline` when it needs the app logger. */
+  pipelineFactory?: (log: FastifyBaseLogger) => MessagePipeline;
   now?: () => Date;
 }
 
@@ -23,7 +26,9 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
 
   app.register(healthRoutes);
   if (deps.prisma) {
-    app.register(messageRoutes, { prisma: deps.prisma, pipeline: deps.pipeline ?? noopPipeline, now: deps.now });
+    const pipeline = deps.pipeline ?? deps.pipelineFactory?.(app.log) ?? noopPipeline;
+    app.register(messageRoutes, { prisma: deps.prisma, pipeline, now: deps.now });
+    app.register(itemRoutes, { prisma: deps.prisma });
   }
 
   return app;

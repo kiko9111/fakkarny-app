@@ -128,3 +128,16 @@ export const sqliteOutbox: OutboxStore = {
     await db.runAsync("UPDATE messages SET sync_status = 'failed' WHERE client_id = ?", clientId);
   },
 };
+
+export async function getMessage(clientId: string): Promise<LocalMessage | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Row>("SELECT * FROM messages WHERE client_id = ?", clientId);
+  return row ? toLocal(row) : null;
+}
+
+/** Update what the "Saved" chip shows after the user fixes or removes something. */
+export async function setSaved(clientId: string, saved: SavedSummary | null): Promise<void> {
+  const db = await getDb();
+  const empty = !saved || (saved.items.length === 0 && saved.memories.length === 0);
+  await db.runAsync("UPDATE messages SET saved_json = ? WHERE client_id = ?", empty ? null : JSON.stringify(saved), clientId);
+}

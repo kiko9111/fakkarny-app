@@ -2,7 +2,10 @@ import Constants from "expo-constants";
 import {
   HealthResponse,
   INSTALL_ID_HEADER,
+  ItemResponse,
   PostMessageResponse,
+  type Item,
+  type PatchItemRequest,
   type PostMessageRequest,
 } from "@fakkarni/shared";
 import { getInstallId } from "@/db/kv";
@@ -24,13 +27,14 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
       ...init,
       signal: init.signal ?? ctrl.signal,
       headers: {
-        "content-type": "application/json",
+        // Only with a body: Fastify rejects an empty body sent as JSON.
+        ...(init.body ? { "content-type": "application/json" } : {}),
         [INSTALL_ID_HEADER]: await getInstallId(),
         ...init.headers,
       },
     });
     if (!res.ok) throw new HttpError(res.status);
-    return await res.json();
+    return res.status === 204 ? null : await res.json();
   } finally {
     clearTimeout(timer);
   }
@@ -44,4 +48,12 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
 
 export async function postMessage(body: PostMessageRequest): Promise<PostMessageResponse> {
   return PostMessageResponse.parse(await request("/messages", { method: "POST", body: JSON.stringify(body) }));
+}
+
+export async function patchItem(id: string, body: PatchItemRequest): Promise<Item> {
+  return ItemResponse.parse(await request(`/items/${id}`, { method: "PATCH", body: JSON.stringify(body) })).item;
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await request(`/memories/${id}`, { method: "DELETE" });
 }

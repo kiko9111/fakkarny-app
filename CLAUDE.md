@@ -47,6 +47,22 @@ Rules:
 - API DB tests need Postgres: set `TEST_DATABASE_URL` in apps/api/.env (they skip
   without it). Locally: `service postgresql start`; dev DB `fakkarni`, test DB
   `fakkarni_test`, user/password postgres/postgres.
+- Conversation pipeline (apps/api/src/pipeline/conversation.ts): rules fast path
+  (rules.ts: thanks/emoji, crisis keyword safety net) → context (context.ts: ~20
+  ranked memories, open items with ids, rolling summary, last 15 messages, local NOW)
+  → one Claude call (src/ai/model.ts, `claude-haiku-5-5`, structured output, persona
+  system prompt cached) → strict zod validation → apply.ts in a transaction. Model
+  times are local wall-clock, converted with src/lib/time.ts. Every call logs an
+  `ai_call` Event with tokens + cost (no content). The pipeline is injected into
+  buildApp, so tests use a scripted fake model.
+- The app's Anthropic client ignores the shell's ANTHROPIC_BASE_URL on purpose
+  (override with FAKKARNI_ANTHROPIC_BASE_URL). The server needs ANTHROPIC_API_KEY or
+  the friend won't reply (messages are still stored).
+- Evals: evals/cases/*.jsonl (one case per line; default NOW is Thu 2026-11-19 10:00
+  Cairo). `npm run eval` validates cases and, with ANTHROPIC_API_KEY, scores
+  extraction (target 90%) + style checks, writing evals/out/review.csv for blind
+  native review. Add every message the friend gets wrong as a new line.
+- Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
 - Schema change: edit apps/api/prisma/schema.prisma, then
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
@@ -54,7 +70,7 @@ Rules:
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
-- [ ] M3 Conversation and memory (+ evals/, real `npm run eval`)
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
 - [ ] M4 Notifications
 - [ ] M5 Auth, sync and screens
 - [ ] M6 Paywall
