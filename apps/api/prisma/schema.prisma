@@ -1,0 +1,210 @@
+// Fakkarni data model — PRD §6.
+// All DateTime columns are UTC; convert with User.timezone at the edges.
+// Columns are snake_case in Postgres, camelCase in TypeScript.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Language {
+  ar_EG @map("ar-EG")
+  en
+}
+
+enum Tone {
+  playful
+  balanced
+  calm
+}
+
+enum CheckinInterval {
+  h2  @map("2")
+  h4  @map("4")
+  off
+}
+
+enum Plan {
+  none
+  trial
+  monthly
+  yearly
+  expired
+}
+
+enum Platform {
+  ios
+  android
+}
+
+enum MessageRole {
+  user
+  friend
+}
+
+enum MessageKind {
+  chat
+  morning
+  night
+  reminder
+  checkin
+  followup
+}
+
+enum ItemType {
+  task
+  reminder
+  note
+  list_item
+  debt
+}
+
+enum ItemStatus {
+  open
+  done
+  cancelled
+}
+
+enum DebtDirection {
+  owed_to_me
+  i_owe
+}
+
+enum MemoryKind {
+  person
+  place
+  preference
+  fact
+}
+
+model User {
+  id               String          @id @default(uuid()) @db.Uuid
+  authId           String          @unique @map("auth_id") // Supabase Auth user id
+  name             String?
+  language         Language        @default(ar_EG)
+  timezone         String          @default("Africa/Cairo") // IANA
+  wakeTime         String          @default("07:00") @map("wake_time") // HH:MM local
+  sleepTime        String          @default("23:00") @map("sleep_time") // HH:MM local
+  tone             Tone            @default(balanced)
+  checkinIntervalH CheckinInterval @default(h2) @map("checkin_interval_h")
+  ignoredCheckins  Int             @default(0) @map("ignored_checkins")
+  plan             Plan            @default(none)
+  planExpiresAt    DateTime?       @map("plan_expires_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  lastActiveAt     DateTime?       @map("last_active_at")
+
+  devices   Device[]
+  messages  Message[]
+  items     Item[]
+  memories  Memory[]
+  summaries Summary[]
+  events    Event[]
+
+  @@map("users")
+}
+
+model Device {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  platform   Platform
+  pushToken  String?   @map("push_token")
+  lastSeenAt DateTime? @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("devices")
+}
+
+model Message {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  role      MessageRole
+  text      String
+  clientId  String      @map("client_id") // generated on the phone; makes sync idempotent
+  kind      MessageKind @default(chat)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceItems Item[]
+
+  @@unique([userId, clientId])
+  @@index([userId, createdAt])
+  @@map("messages")
+}
+
+model Item {
+  id              String         @id @default(uuid()) @db.Uuid
+  userId          String         @map("user_id") @db.Uuid
+  type            ItemType
+  title           String
+  dueAt           DateTime?      @map("due_at")
+  // Not in the PRD §6 table, but needed by the response schema (remind_at_local)
+  // and by F5 escalation (important items get the clear version at due time).
+  remindAt        DateTime?      @map("remind_at")
+  important       Boolean        @default(false)
+  status          ItemStatus     @default(open)
+  debtPerson      String?        @map("debt_person")
+  debtAmount      Decimal?       @map("debt_amount") @db.Decimal(12, 2)
+  debtDirection   DebtDirection? @map("debt_direction")
+  followUpAt      DateTime?      @map("follow_up_at")
+  sourceMessageId String?        @map("source_message_id") @db.Uuid
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  doneAt          DateTime?      @map("done_at")
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceMessage Message? @relation(fields: [sourceMessageId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, dueAt])
+  @@map("items")
+}
+
+/// Long-term memory the user can view and delete (FR-4).
+model Memory {
+  id         String     @id @default(uuid()) @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  kind       MemoryKind
+  subject    String
+  content    String
+  lastUsedAt DateTime?  @map("last_used_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, subject])
+  @@map("memories")
+}
+
+/// Rolling chat summary so context stays small (pipeline step 5).
+model Summary {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  text        String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, periodEnd])
+  @@map("summaries")
+}
+
+/// Product analytics. Never put message content in props.
+model Event {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  propsJson Json     @default("{}") @map("props_json")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([name, createdAt])
+  @@map("events")
+}

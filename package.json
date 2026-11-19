@@ -1,0 +1,22 @@
+{
+  "name": "fakkarni",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "eval": "echo \"evals/ arrives in M3 (no eval set yet)\"",
+    "dev:api": "npm run dev -w @fakkarni/api",
+    "dev:mobile": "npm run start -w @fakkarni/mobile"
+  },
+  "overrides": {
+    "react": "19.3.0"
+  }
+}
