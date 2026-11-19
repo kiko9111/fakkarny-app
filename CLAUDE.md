@@ -78,6 +78,12 @@ Rules:
   The phone keeps 402'd messages queued and swaps the input for the paywall CTA.
   Locked users get no proactive messages; trial users get one honest notice 2 days
   before the trial ends. Local dev: REQUIRE_SUBSCRIPTION=0 in apps/api/.env.
+- Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
+  keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
+  still saved, user told once), Sentry on API and app with all content collection off,
+  in-memory error-rate metrics, GET /admin (Basic auth, ADMIN_PASSWORD; counts and
+  costs only, never chat content). Deploy the API with the root Dockerfile; build the
+  app with apps/mobile/eas.json profiles (development / preview / production).
 - Proactive messages (M4): pg-boss cron `proactive-tick` every minute
   (apps/api/src/jobs) → `planProactive` (pure; decides morning/night/check-in/
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
@@ -101,4 +107,4 @@ Rules:
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
-- [ ] M7 Hardening and launch
+- [x] M7 Hardening: Sentry, rate limits + daily cap, retries, admin dashboard with AI cost per user, EAS profiles, Dockerfile. Store submission steps are manual (see README launch checklist).

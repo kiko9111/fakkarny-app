@@ -34,7 +34,8 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
   const now = opts.now ?? (() => new Date());
   app.addHook("preHandler", opts.authenticate);
 
-  app.post("/messages", async (req, reply) => {
+  // Each message is an AI call: a tighter per-caller limit than the global one.
+  app.post("/messages", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {
     const body = PostMessageRequest.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_body", issues: body.error.issues });
     let user = req.user;

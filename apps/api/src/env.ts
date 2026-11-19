@@ -22,6 +22,10 @@ const Env = z.object({
   REVENUECAT_WEBHOOK_AUTH: z.string().optional().transform((v) => v || undefined),
   /** RevenueCat secret API key (server only) to refresh a plan right after purchase. */
   REVENUECAT_SECRET_KEY: z.string().optional().transform((v) => v || undefined),
+  /** Admin dashboard password (GET /admin, user "admin"). Dashboard is off without it. */
+  ADMIN_PASSWORD: z.string().optional().transform((v) => v || undefined),
+  SENTRY_DSN: z.string().optional().transform((v) => v || undefined),
+  NODE_ENV: z.string().default("development"),
   /** Optional Expo access token if push security is enabled for the project. */
   EXPO_ACCESS_TOKEN: z.string().optional().transform((v) => v || undefined),
 });

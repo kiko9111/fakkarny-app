@@ -2,7 +2,10 @@ import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { t } from "@/i18n";
+import { initSentry } from "@/lib/sentry";
 import { startSync } from "@/sync";
+
+initSentry();
 
 export default function RootLayout() {
   useEffect(() => {

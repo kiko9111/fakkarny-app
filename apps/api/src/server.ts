@@ -5,8 +5,10 @@ import { createConversationPipeline } from "./pipeline/conversation";
 import { createExpoPushSender } from "./proactive/push";
 import { db } from "./db";
 import { loadEnv } from "./env";
+import { initSentry } from "./observability/sentry";
 
 const env = loadEnv();
+const sentry = initSentry(env.SENTRY_DSN, env.NODE_ENV);
 const prisma = env.DATABASE_URL ? db() : undefined;
 const model = env.ANTHROPIC_API_KEY ? createAnthropicModel({ apiKey: env.ANTHROPIC_API_KEY }) : undefined;
 const supabaseUrl = env.SUPABASE_URL;
@@ -17,6 +19,8 @@ const app = buildApp(
     prisma,
     pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
     auth: { supabaseUrl, supabaseJwtSecret: env.SUPABASE_JWT_SECRET, allowInstallId: env.ALLOW_INSTALL_ID === "1" },
+    adminPassword: env.ADMIN_PASSWORD,
+    sentry,
     billing: {
       requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
       webhookAuth: env.REVENUECAT_WEBHOOK_AUTH,

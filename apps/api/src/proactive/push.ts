@@ -28,15 +28,22 @@ export function createExpoPushSender(fetchImpl: typeof fetch = fetch, accessToke
     // Expo accepts up to 100 messages per request.
     for (let i = 0; i < messages.length; i += 100) {
       const batch = messages.slice(i, i + 100);
-      const res = await fetchImpl(EXPO_PUSH_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify(batch),
-      });
+      const send = () =>
+        fetchImpl(EXPO_PUSH_URL, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+            ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify(batch),
+        });
+      // One retry on a server error or network blip.
+      let res = await send().catch(() => null);
+      if (!res || res.status >= 500) {
+        await new Promise((r) => setTimeout(r, 1000));
+        res = await send();
+      }
       if (!res.ok) throw new Error(`Expo push failed: ${res.status}`);
       const json = (await res.json()) as { data?: { status: string; details?: { error?: string } }[] };
       (json.data ?? []).forEach((ticket, j) => {

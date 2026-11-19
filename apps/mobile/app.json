@@ -44,7 +44,8 @@
       "expo-notifications",
       "expo-web-browser",
       "expo-sharing",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "@sentry/react-native"
     ],
     "scheme": "fakkarni",
     "experiments": {

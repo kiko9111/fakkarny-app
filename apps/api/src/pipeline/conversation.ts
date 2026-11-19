@@ -3,6 +3,7 @@ import type { FriendResponse } from "@fakkarni/shared";
 import type { Prisma } from "../generated/prisma/client";
 import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
+import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
 import { loadContext, renderContext } from "./context";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis } from "./rules";
@@ -19,12 +20,34 @@ const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "sav
  * PRD §6 conversation pipeline: context → one Claude call (reply + actions) → zod-validated
  * actions applied in a transaction. Never logs message content (CLAUDE.md).
  */
-export function createConversationPipeline(deps: { model: FriendModel; log?: FastifyBaseLogger }): MessagePipeline {
+/** PRD §7 cost lever: a soft daily cap for heavy chatters (messages still saved, AI paused). */
+export const DAILY_MESSAGE_CAP = 150;
+
+const CAP_REPLY: Record<"arabic" | "franco" | "english", string> = {
+  arabic: "وصلنا لحد الكلام بتاع النهارده 😅 هفضل فاكر كل اللي تبعته، ونكمل كلامنا عادي بكرة.",
+  franco: "Wesselna le7ad el kalam bta3 enharda 😅 hafdal faker kol elly teb3ato, w nekamel 3adi bokra.",
+  english: "We've hit today's chat limit 😅 I'll still keep everything you send, and full replies are back tomorrow.",
+};
+
+export function createConversationPipeline(deps: { model: FriendModel; log?: FastifyBaseLogger; dailyCap?: number }): MessagePipeline {
   const { model, log } = deps;
+  const dailyCap = deps.dailyCap ?? DAILY_MESSAGE_CAP;
 
   return async ({ prisma, user, message, now }) => {
     const script = detectScript(message.text);
     const crisisKeyword = looksLikeCrisis(message.text);
+
+    // 0. Fair-use cap (never applied to crisis messages).
+    if (!crisisKeyword) {
+      const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
+      const today = await prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } });
+      if (today > dailyCap) {
+        // Tell them once, honestly; after that just save quietly.
+        const replies = today === dailyCap + 1 ? [CAP_REPLY[script]] : [];
+        if (replies.length) await event(prisma, user.id, "daily_cap_hit", {});
+        return applyActions(prisma, { user, message, replies, response: EMPTY_ACTIONS, now });
+      }
+    }
 
     // 1. Rules fast path: no AI for messages that carry nothing to remember.
     const canned = crisisKeyword ? null : fastReply(message.text, script);
