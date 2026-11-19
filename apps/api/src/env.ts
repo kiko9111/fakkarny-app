@@ -16,6 +16,12 @@ const Env = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().transform((v) => v || undefined),
   /** "0" in production once sign-in is required; "1" (default) accepts the phone's install ID. */
   ALLOW_INSTALL_ID: z.enum(["0", "1"]).default("1"),
+  /** "1" (default): chat needs the RevenueCat "pro" entitlement after the free first exchange. */
+  REQUIRE_SUBSCRIPTION: z.enum(["0", "1"]).default("1"),
+  /** Authorization header value set on the RevenueCat webhook. */
+  REVENUECAT_WEBHOOK_AUTH: z.string().optional().transform((v) => v || undefined),
+  /** RevenueCat secret API key (server only) to refresh a plan right after purchase. */
+  REVENUECAT_SECRET_KEY: z.string().optional().transform((v) => v || undefined),
   /** Optional Expo access token if push security is enabled for the project. */
   EXPO_ACCESS_TOKEN: z.string().optional().transform((v) => v || undefined),
 });

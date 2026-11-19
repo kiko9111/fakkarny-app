@@ -11,6 +11,9 @@ import { createSyncQueue, type OutboxStore } from "./queue";
 export const messagesChanged = createEmitter<void>();
 /** True while the outbox is sending (the friend is "typing"). */
 export const syncBusy = createEmitter<boolean>();
+/** True when the server locked chat for lack of a subscription (FR-9). */
+export const chatLocked = createEmitter<boolean>();
+export let isChatLocked = false;
 
 const store: OutboxStore = {
   ...sqliteOutbox,
@@ -26,6 +29,12 @@ export const syncQueue = createSyncQueue({
   send: postMessage,
   onChange: () => messagesChanged.emit(),
   onBusyChange: (busy) => syncBusy.emit(busy),
+  onLockedChange: (locked) => {
+    if (locked !== isChatLocked) {
+      isChatLocked = locked;
+      chatLocked.emit(locked);
+    }
+  },
 });
 
 let pulling = false;

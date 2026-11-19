@@ -2,6 +2,7 @@ import Fastify, { type FastifyBaseLogger, type FastifyServerOptions } from "fast
 import type { PrismaClient } from "./generated/prisma/client";
 import { noopPipeline, type MessagePipeline } from "./pipeline/types";
 import { requireUser, type AuthConfig } from "./plugins/auth";
+import { billingRoutes } from "./routes/billing";
 import { deviceRoutes } from "./routes/devices";
 import { healthRoutes } from "./routes/health";
 import { itemRoutes } from "./routes/items";
@@ -18,6 +19,7 @@ export interface AppDeps {
   /** Defaults to install-ID identity only (development and tests). */
   auth?: AuthConfig;
   deleteAuthUser?: (sub: string) => Promise<void>;
+  billing?: { requireSubscription: boolean; webhookAuth?: string; revenueCatSecretKey?: string; fetchImpl?: typeof fetch };
 }
 
 // CLAUDE.md: never log message content. Fastify doesn't log bodies by default;
@@ -36,7 +38,9 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     const auth = deps.auth ?? { allowInstallId: true };
     const authenticate = requireUser(prisma, auth);
     const pipeline = deps.pipeline ?? deps.pipelineFactory?.(app.log) ?? noopPipeline;
-    app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate });
+    const billing = deps.billing ?? { requireSubscription: false };
+    app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription });
+    app.register(billingRoutes, { prisma, authenticate, ...billing });
     app.register(itemRoutes, { prisma, authenticate });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });

@@ -111,6 +111,28 @@ describe("sync queue", () => {
     expect(rows.get("good")!.status).toBe("synced");
   });
 
+  it("keeps messages queued when chat is locked (402) and reports it", async () => {
+    const { store, rows } = memoryStore(["a", "b"]);
+    const { timers, scheduled } = fakeTimers();
+    const locked: boolean[] = [];
+    let subscribed = false;
+    const q = createSyncQueue({
+      store,
+      send: async (m) => {
+        if (!subscribed) throw new HttpError(402);
+        return ok(m);
+      },
+      timers,
+      onLockedChange: (l) => locked.push(l),
+    });
+    expect(await q.flush()).toBe("locked");
+    expect([...rows.values()].map((r) => [r.status, r.attempts])).toEqual([["pending", 0], ["pending", 0]]);
+    expect(scheduled).toHaveLength(0); // no pointless retries
+    subscribed = true;
+    expect(await q.flush()).toBe("done");
+    expect(locked).toEqual([true, false, false]);
+  });
+
   it("shares one run between concurrent flushes and picks up messages added mid-run", async () => {
     const { store, rows } = memoryStore(["a"]);
     const sent: string[] = [];

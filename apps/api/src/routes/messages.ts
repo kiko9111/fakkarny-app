@@ -6,6 +6,7 @@ import {
   type PostMessageResponse,
 } from "@fakkarni/shared";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
+import { canChat } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
 import type { preHandlerAsyncHookHandler } from "fastify";
 import { toWireItem, toWireMemory, toWireMessage } from "../serialize";
@@ -15,6 +16,8 @@ export interface MessageRoutesOptions {
   pipeline: MessagePipeline;
   now?: () => Date;
   authenticate: preHandlerAsyncHookHandler;
+  /** FR-9: lock chatting without the "pro" entitlement (after the free first exchange). */
+  requireSubscription?: boolean;
 }
 
 const isValidTimeZone = (tz: string) => {
@@ -57,6 +60,14 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
         duplicate: true,
       };
       return reply.code(200).send(res);
+    }
+
+    // FR-9: chat locks when there's no active plan (data stays readable). The phone keeps
+    // the message queued and shows the paywall.
+    if (opts.requireSubscription) {
+      const sent = await prisma.message.count({ where: { userId: user.id, role: "user" } });
+      const access = canChat(user, sent, now());
+      if (!access.ok) return reply.code(402).send({ error: access.reason });
     }
 
     // The phone's timestamp is when the user wrote it (it may have been offline), but the

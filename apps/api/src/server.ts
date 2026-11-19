@@ -17,6 +17,11 @@ const app = buildApp(
     prisma,
     pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
     auth: { supabaseUrl, supabaseJwtSecret: env.SUPABASE_JWT_SECRET, allowInstallId: env.ALLOW_INSTALL_ID === "1" },
+    billing: {
+      requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
+      webhookAuth: env.REVENUECAT_WEBHOOK_AUTH,
+      revenueCatSecretKey: env.REVENUECAT_SECRET_KEY,
+    },
     deleteAuthUser:
       supabaseUrl && serviceKey
         ? async (sub) => {
@@ -35,7 +40,13 @@ if (!model) app.log.warn("ANTHROPIC_API_KEY not set: messages are stored but the
 
 const boss =
   prisma && env.DATABASE_URL && env.DISABLE_JOBS !== "1"
-    ? await startJobs(env.DATABASE_URL, { prisma, model, push: createExpoPushSender(fetch, env.EXPO_ACCESS_TOKEN), log: app.log })
+    ? await startJobs(env.DATABASE_URL, {
+        prisma,
+        model,
+        push: createExpoPushSender(fetch, env.EXPO_ACCESS_TOKEN),
+        log: app.log,
+        requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
+      })
     : undefined;
 
 const shutdown = async (signal: string) => {

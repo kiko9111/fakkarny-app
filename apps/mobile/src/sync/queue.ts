@@ -6,6 +6,8 @@ import type { PostMessageRequest, PostMessageResponse } from "@fakkarni/shared";
  *
  * - Messages are sent one at a time, oldest first, so the friend sees them in order.
  * - Offline / 5xx / 409 / 429 → stop and retry later with backoff (the order is kept).
+ * - 402 → chat is locked (no subscription): keep everything queued, stop, and tell the UI
+ *   to show the paywall. Messages go out once the user subscribes.
  * - Other 4xx → the server will never accept it; mark failed and move on.
  * - The server dedupes on client_id, so resending after a lost response is safe.
  */
@@ -35,7 +37,7 @@ export interface Timers {
   clearTimeout(handle: unknown): void;
 }
 
-export type FlushOutcome = "idle" | "done" | "offline" | "retrying";
+export type FlushOutcome = "idle" | "done" | "offline" | "retrying" | "locked";
 
 export function isRetryable(err: unknown): boolean {
   if (err instanceof HttpError) return err.status >= 500 || err.status === 409 || err.status === 429 || err.status === 408;
@@ -54,6 +56,8 @@ export function createSyncQueue(deps: {
   onBusyChange?: (busy: boolean) => void;
   /** Called after any message changes state, so the UI can reload. */
   onChange?: () => void;
+  /** Called with true when the server says chat is locked (402), false after a successful send. */
+  onLockedChange?: (locked: boolean) => void;
 }) {
   const timers: Timers = deps.timers ?? { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) };
   let running: Promise<FlushOutcome> | null = null;
@@ -78,8 +82,13 @@ export function createSyncQueue(deps: {
           const { attempts: _attempts, ...body } = msg;
           const res = await deps.send(body);
           await deps.store.markSynced(msg.client_id, res);
+          deps.onLockedChange?.(false);
           deps.onChange?.();
         } catch (err) {
+          if (err instanceof HttpError && err.status === 402) {
+            deps.onLockedChange?.(true);
+            return "locked";
+          }
           if (isRetryable(err)) {
             await deps.store.markAttempt(msg.client_id);
             deps.onChange?.();

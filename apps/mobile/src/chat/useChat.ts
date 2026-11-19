@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { kvGet, kvSet } from "@/db/kv";
 import { addUserMessage, listMessages, type LocalMessage } from "@/db/messages";
 import { ensurePermissionAndRegister } from "@/notifications";
-import { messagesChanged, syncBusy, syncQueue } from "@/sync";
+import { chatLocked, isChatLocked, messagesChanged, syncBusy, syncQueue } from "@/sync";
 
 export function useChat() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [locked, setLocked] = useState(isChatLocked);
 
   const reload = useCallback(async () => {
     setMessages(await listMessages());
@@ -18,9 +19,11 @@ export function useChat() {
     void reload();
     const offChange = messagesChanged.subscribe(() => void reload());
     const offBusy = syncBusy.subscribe(setTyping);
+    const offLocked = chatLocked.subscribe(setLocked);
     return () => {
       offChange();
       offBusy();
+      offLocked();
     };
   }, [reload]);
 
@@ -39,5 +42,5 @@ export function useChat() {
     [reload],
   );
 
-  return { messages, loaded, typing, send };
+  return { messages, loaded, typing, locked, send };
 }

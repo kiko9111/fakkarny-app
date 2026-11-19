@@ -1,7 +1,10 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { MessageKind, PrismaClient, User } from "../generated/prisma/client";
 import { costUsd, FRIEND_MODEL, type FriendModel } from "../ai/model";
-import { toLocalIso } from "../lib/time";
+import { isAwake, toLocalIso } from "../lib/time";
+
+const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, user.wakeTime, user.sleepTime);
+import { canChat, hasActivePlan } from "../billing/plan";
 import { detectScript, type Script } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
 import type { PushSender } from "./push";
@@ -15,6 +18,8 @@ export interface TickDeps {
   model?: FriendModel;
   push: PushSender;
   log?: FastifyBaseLogger;
+  /** Skip users whose chat is locked (FR-9). */
+  requireSubscription?: boolean;
 }
 
 /** Which language to start a conversation in: follow how the user last wrote, else their setting. */
@@ -24,9 +29,36 @@ async function scriptFor(prisma: PrismaClient, user: User): Promise<Script> {
   return user.language === "en" ? "english" : "arabic";
 }
 
+const TRIAL_NOTICE: Record<Script, string> = {
+  arabic: "على فكرة، التجربة المجانية بتاعتك بتخلص بعد يومين. لو حابب نكمّل سوا، تقدر تشترك من الإعدادات — ولو لأ، ولا يهمك 🙂",
+  franco: "3ala fekra, el free trial bta3ak bey5las ba3d yomen. Law 7abeb nekamel sawa te2dar teshtrek men el settings — w law la2, wala yhemmak 🙂",
+  english: "Heads up: your free trial ends in 2 days. If you'd like to keep chatting you can subscribe in settings — and if not, no worries 🙂",
+};
+
+/** F1: one honest heads-up on day 5 of the 7-day trial (no pressure, no guilt). */
+async function trialNotice(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  if (user.plan !== "trial" || !user.planExpiresAt) return false;
+  const left = user.planExpiresAt.getTime() - now.getTime();
+  if (left <= 0 || left > 48 * 3600_000) return false;
+  const already = await deps.prisma.event.findFirst({ where: { userId: user.id, name: "trial_ending_notice", createdAt: { gte: new Date(now.getTime() - 7 * 86400_000) } } });
+  if (already) return false;
+  const script = await scriptFor(deps.prisma, user);
+  await deps.prisma.message.create({
+    data: { userId: user.id, role: "friend", kind: "checkin", text: TRIAL_NOTICE[script], clientId: `proactive:trial:${now.toISOString()}`, createdAt: now },
+  });
+  await deps.prisma.event.create({ data: { userId: user.id, name: "trial_ending_notice", propsJson: {} } });
+  return true;
+}
+
 /** Plan + write + store + push for one user. Returns the plan that was sent, if any. */
 export async function runForUser(deps: TickDeps, user: User, now: Date): Promise<ProactivePlan | null> {
   const { prisma } = deps;
+  if (deps.requireSubscription) {
+    // Locked chats get no proactive messages; the free first exchange counts as unlocked.
+    const sent = hasActivePlan(user, now) ? 0 : await prisma.message.count({ where: { userId: user.id, role: "user" } });
+    if (!canChat(user, sent, now).ok) return null;
+  }
+  if (isAwakeForNotice(user, now) && (await trialNotice(deps, user, now))) return null;
   const tz = user.timezone;
   const startOfDayLocal = toLocalIso(now, tz).slice(0, 10);
 

@@ -70,6 +70,14 @@ Rules:
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
 - Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
+- Subscriptions (M6): RevenueCat app user id = our User.id. POST /webhooks/revenuecat
+  (Authorization = REVENUECAT_WEBHOOK_AUTH) mirrors the plan onto User; POST
+  /me/plan/refresh re-reads it with REVENUECAT_SECRET_KEY right after a purchase.
+  With REQUIRE_SUBSCRIPTION=1, POST /messages returns 402 after
+  FREE_MESSAGES_BEFORE_PAYWALL messages without an active plan (apps/api/src/billing).
+  The phone keeps 402'd messages queued and swaps the input for the paywall CTA.
+  Locked users get no proactive messages; trial users get one honest notice 2 days
+  before the trial ends. Local dev: REQUIRE_SUBSCRIPTION=0 in apps/api/.env.
 - Proactive messages (M4): pg-boss cron `proactive-tick` every minute
   (apps/api/src/jobs) → `planProactive` (pure; decides morning/night/check-in/
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
@@ -92,5 +100,5 @@ Rules:
 - [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
-- [ ] M6 Paywall
+- [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
 - [ ] M7 Hardening and launch

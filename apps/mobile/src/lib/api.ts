@@ -111,3 +111,8 @@ export async function deleteAccount(): Promise<void> {
 export async function listMemories() {
   return ListMemoriesResponse.parse(await request("/memories")).memories;
 }
+
+/** Ask the server to re-read the RevenueCat entitlement (right after a purchase or restore). */
+export async function refreshPlan(): Promise<User> {
+  return MeResponse.parse(await request("/me/plan/refresh", { method: "POST" })).user;
+}
