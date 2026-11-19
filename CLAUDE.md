@@ -38,9 +38,16 @@ Rules:
   under tsx in both dev and start.
 - Mobile unit tests (vitest) cover pure modules only; don't import react-native in them.
   Keep logic pure and inject storage/transport (see apps/mobile/src/sync/queue.ts).
-- Identity until M5: the phone sends a random install ID in the `x-install-id` header
-  (stored in SQLite `kv`); the API upserts `User.authId = "install:<id>"`
-  (apps/api/src/plugins/auth.ts). M5 swaps this for Supabase JWTs.
+- Identity (apps/api/src/plugins/auth.ts): Supabase JWT in `Authorization: Bearer`
+  (verified via SUPABASE_URL's JWKS, or SUPABASE_JWT_SECRET) → `authId "supabase:<sub>"`;
+  otherwise the phone's random install ID (`x-install-id`) → `"install:<id>"`, unless
+  ALLOW_INSTALL_ID=0. After sign-in the phone calls POST /auth/link to move its
+  pre-sign-in data to the account, then pulls everything (apps/mobile/src/sync/full.ts).
+  Every route plugin gets the same `authenticate` hook from buildApp.
+- Mobile config: apps/mobile/.env.local with EXPO_PUBLIC_SUPABASE_URL and
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (sign-in is hidden without them). Small sync
+  prefs (language, always_direct, onboarded) live in src/lib/prefs.ts (expo-sqlite
+  localStorage) so the language/RTL is known before the first render.
 - Messages: phone saves to SQLite (`apps/mobile/src/db/`), the outbox
   (`src/sync/`) POSTs oldest-first, the API dedupes on (user, client_id). Friend reply
   rows use client_id `<user client_id>:reply:<n>` so retries return the same replies.
@@ -84,6 +91,6 @@ Rules:
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
 - [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
-- [ ] M5 Auth, sync and screens
+- [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [ ] M6 Paywall
 - [ ] M7 Hardening and launch

@@ -1,10 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import { RegisterDeviceRequest } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
-import { requireUser } from "../plugins/auth";
+import type { preHandlerAsyncHookHandler } from "fastify";
 
-export const deviceRoutes: FastifyPluginAsync<{ prisma: PrismaClient }> = async (app, { prisma }) => {
-  app.addHook("preHandler", requireUser(prisma));
+export const deviceRoutes: FastifyPluginAsync<{ prisma: PrismaClient; authenticate: preHandlerAsyncHookHandler }> = async (app, { prisma, authenticate }) => {
+  app.addHook("preHandler", authenticate);
 
   /** Register (or move) a push token to this user. A token belongs to one device/user at a time. */
   app.post("/devices", async (req, reply) => {

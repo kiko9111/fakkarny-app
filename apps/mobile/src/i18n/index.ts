@@ -1,8 +1,18 @@
+import { I18nManager } from "react-native";
 import { getLocales } from "expo-localization";
+import type { Language } from "@fakkarni/shared";
+import { prefs } from "@/lib/prefs";
 import { pickLanguage } from "./pick";
 import { strings } from "./strings";
 
-// M1: language follows the device. M5 adds the in-app language setting (F10).
-export const language = pickLanguage(getLocales().map((l) => l.languageTag));
+// The user's choice (settings/onboarding) wins over the device language.
+const chosen = prefs.get("language");
+export const language: Language = chosen === "en" || chosen === "ar-EG" ? chosen : pickLanguage(getLocales().map((l) => l.languageTag));
 export const t = strings[language];
 export const isRTL = language === "ar-EG";
+
+// Full RTL for Arabic even when the device itself is set to English (takes effect after a reload).
+if (I18nManager.isRTL !== isRTL) {
+  I18nManager.allowRTL(isRTL);
+  I18nManager.forceRTL(isRTL);
+}

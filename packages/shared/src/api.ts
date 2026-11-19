@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { Item, Memory, Message } from "./entities";
+import { Item, Memory, Message, TimeOfDay, User } from "./entities";
+import { CheckinInterval, Language, Tone } from "./enums";
 
 /** GET /health */
 export const HealthResponse = z.object({
@@ -74,3 +75,33 @@ export const RegisterDeviceRequest = z.object({
   push_token: z.string().min(1).max(300).nullable(),
 });
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequest>;
+
+/** GET/PATCH /me */
+export const MeResponse = z.object({ user: User });
+export type MeResponse = z.infer<typeof MeResponse>;
+
+export const PatchMeRequest = z
+  .object({
+    name: z.string().trim().min(1).max(60).nullable(),
+    language: Language,
+    timezone: z.string().min(1).max(64),
+    wake_time: TimeOfDay,
+    sleep_time: TimeOfDay,
+    tone: Tone,
+    checkin_interval_h: CheckinInterval,
+    always_direct: z.boolean(),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update");
+export type PatchMeRequest = z.infer<typeof PatchMeRequest>;
+
+/** GET /me/export */
+export const ExportResponse = z.object({
+  exported_at: z.string(),
+  user: User,
+  messages: z.array(Message),
+  items: z.array(Item),
+  memories: z.array(Memory),
+  summaries: z.array(z.object({ period_start: z.string(), period_end: z.string(), text: z.string() })),
+});
+export type ExportResponse = z.infer<typeof ExportResponse>;

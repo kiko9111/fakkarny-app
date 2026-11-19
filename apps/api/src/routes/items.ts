@@ -2,14 +2,14 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { PatchItemRequest, type ItemResponse, type ListItemsResponse, type ListMemoriesResponse } from "@fakkarni/shared";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
-import { requireUser } from "../plugins/auth";
+import type { preHandlerAsyncHookHandler } from "fastify";
 import { toWireItem, toWireMemory } from "../serialize";
 
 const IdParam = z.object({ id: z.uuid() });
 const ListQuery = z.object({ status: z.enum(["open", "done", "cancelled"]).optional() });
 
-export const itemRoutes: FastifyPluginAsync<{ prisma: PrismaClient }> = async (app, { prisma }) => {
-  app.addHook("preHandler", requireUser(prisma));
+export const itemRoutes: FastifyPluginAsync<{ prisma: PrismaClient; authenticate: preHandlerAsyncHookHandler }> = async (app, { prisma, authenticate }) => {
+  app.addHook("preHandler", authenticate);
 
   app.get("/items", async (req, reply) => {
     const q = ListQuery.safeParse(req.query);

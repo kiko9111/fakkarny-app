@@ -7,13 +7,14 @@ import {
 } from "@fakkarni/shared";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import type { MessagePipeline } from "../pipeline/types";
-import { requireUser } from "../plugins/auth";
+import type { preHandlerAsyncHookHandler } from "fastify";
 import { toWireItem, toWireMemory, toWireMessage } from "../serialize";
 
 export interface MessageRoutesOptions {
   prisma: PrismaClient;
   pipeline: MessagePipeline;
   now?: () => Date;
+  authenticate: preHandlerAsyncHookHandler;
 }
 
 const isValidTimeZone = (tz: string) => {
@@ -28,7 +29,7 @@ const isValidTimeZone = (tz: string) => {
 export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (app, opts) => {
   const { prisma, pipeline } = opts;
   const now = opts.now ?? (() => new Date());
-  app.addHook("preHandler", requireUser(prisma));
+  app.addHook("preHandler", opts.authenticate);
 
   app.post("/messages", async (req, reply) => {
     const body = PostMessageRequest.safeParse(req.body);

@@ -5,6 +5,7 @@ import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import type { Item } from "@fakkarni/shared";
 import { kvGet, kvSet } from "@/db/kv";
+import { prefs } from "@/lib/prefs";
 import { upsertItem } from "@/db/messages";
 import { t } from "@/i18n";
 import { patchItem, registerDevice } from "@/lib/api";
@@ -70,7 +71,7 @@ export async function scheduleItem(item: Item) {
   await Notifications.cancelScheduledNotificationAsync(hintId(item.id)).catch(() => {});
   await Notifications.cancelScheduledNotificationAsync(clearId(item.id)).catch(() => {});
   if (item.type !== "reminder" && item.type !== "task") return;
-  const alwaysDirect = (await kvGet("always_direct")) === "1";
+  const alwaysDirect = prefs.get("always_direct") === "1";
   const planned = planReminderNotifications(item, {
     now: new Date(),
     alwaysDirect,

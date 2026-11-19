@@ -9,10 +9,27 @@ import { loadEnv } from "./env";
 const env = loadEnv();
 const prisma = env.DATABASE_URL ? db() : undefined;
 const model = env.ANTHROPIC_API_KEY ? createAnthropicModel({ apiKey: env.ANTHROPIC_API_KEY }) : undefined;
+const supabaseUrl = env.SUPABASE_URL;
+const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
 const app = buildApp(
   { logger: { level: env.LOG_LEVEL, redact: LOG_REDACT } },
-  { prisma, pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined },
+  {
+    prisma,
+    pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
+    auth: { supabaseUrl, supabaseJwtSecret: env.SUPABASE_JWT_SECRET, allowInstallId: env.ALLOW_INSTALL_ID === "1" },
+    deleteAuthUser:
+      supabaseUrl && serviceKey
+        ? async (sub) => {
+            const res = await fetch(new URL(`/auth/v1/admin/users/${sub}`, supabaseUrl), {
+              method: "DELETE",
+              headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` },
+            });
+            if (!res.ok && res.status !== 404) throw new Error(`Supabase delete failed: ${res.status}`);
+          }
+        : undefined,
+  },
 );
+if (!supabaseUrl && !env.SUPABASE_JWT_SECRET) app.log.warn("Supabase not configured: only install-ID identity is accepted");
 if (!prisma) app.log.warn("DATABASE_URL not set: only /health is served");
 if (!model) app.log.warn("ANTHROPIC_API_KEY not set: messages are stored but the friend won't reply");
 

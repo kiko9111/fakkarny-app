@@ -70,6 +70,7 @@ export function toWireUser(u: User): WireUser {
     ignored_checkins: u.ignoredCheckins,
     plan: u.plan,
     plan_expires_at: isoOrNull(u.planExpiresAt),
+    always_direct: u.alwaysDirect,
     created_at: iso(u.createdAt),
     last_active_at: isoOrNull(u.lastActiveAt),
   };

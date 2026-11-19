@@ -2,8 +2,14 @@ import Constants from "expo-constants";
 import {
   HealthResponse,
   INSTALL_ID_HEADER,
+  ExportResponse,
   ItemResponse,
+  ListItemsResponse,
+  ListMemoriesResponse,
   ListMessagesResponse,
+  MeResponse,
+  type PatchMeRequest,
+  type User,
   PostMessageResponse,
   type RegisterDeviceRequest,
   type Item,
@@ -13,6 +19,7 @@ import {
 import { getInstallId } from "@/db/kv";
 import { HttpError } from "@/sync/queue";
 import { resolveApiUrl } from "./api-url";
+import { accessToken } from "./supabase";
 
 export const API_URL = resolveApiUrl({
   envUrl: process.env.EXPO_PUBLIC_API_URL,
@@ -25,6 +32,7 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
+    const token = await accessToken();
     const res = await fetch(`${API_URL}${path}`, {
       ...init,
       signal: init.signal ?? ctrl.signal,
@@ -32,6 +40,7 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
         // Only with a body: Fastify rejects an empty body sent as JSON.
         ...(init.body ? { "content-type": "application/json" } : {}),
         [INSTALL_ID_HEADER]: await getInstallId(),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
     });
@@ -67,4 +76,38 @@ export async function listMessagesAfter(after: string | null): Promise<ListMessa
 
 export async function registerDevice(body: RegisterDeviceRequest): Promise<void> {
   await request("/devices", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function listMessagesPage(after: string | null, limit = 200): Promise<ListMessagesResponse> {
+  const q = new URLSearchParams({ limit: String(limit), ...(after ? { after } : {}) });
+  return ListMessagesResponse.parse(await request(`/messages?${q}`));
+}
+
+export async function listItems(status?: "open" | "done" | "cancelled") {
+  return ListItemsResponse.parse(await request(`/items${status ? `?status=${status}` : ""}`)).items;
+}
+
+export async function getMe(): Promise<User> {
+  return MeResponse.parse(await request("/me")).user;
+}
+
+export async function patchMe(body: PatchMeRequest): Promise<User> {
+  return MeResponse.parse(await request("/me", { method: "PATCH", body: JSON.stringify(body) })).user;
+}
+
+/** After sign-in: attach what this phone captured before signing in to the account. */
+export async function linkAccount(): Promise<User> {
+  return MeResponse.parse(await request("/auth/link", { method: "POST" })).user;
+}
+
+export async function exportData(): Promise<ExportResponse> {
+  return ExportResponse.parse(await request("/me/export"));
+}
+
+export async function deleteAccount(): Promise<void> {
+  await request("/me", { method: "DELETE" });
+}
+
+export async function listMemories() {
+  return ListMemoriesResponse.parse(await request("/memories")).memories;
 }

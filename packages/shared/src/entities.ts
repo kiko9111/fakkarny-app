@@ -36,6 +36,7 @@ export const User = z.object({
   ignored_checkins: z.number().int().nonnegative(),
   plan: Plan,
   plan_expires_at: Instant.nullable(),
+  always_direct: z.boolean(),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });
