@@ -1,6 +1,7 @@
 import Fastify, { type FastifyBaseLogger, type FastifyServerOptions } from "fastify";
 import type { PrismaClient } from "./generated/prisma/client";
 import { noopPipeline, type MessagePipeline } from "./pipeline/types";
+import { deviceRoutes } from "./routes/devices";
 import { healthRoutes } from "./routes/health";
 import { itemRoutes } from "./routes/items";
 import { messageRoutes } from "./routes/messages";
@@ -29,6 +30,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     const pipeline = deps.pipeline ?? deps.pipelineFactory?.(app.log) ?? noopPipeline;
     app.register(messageRoutes, { prisma: deps.prisma, pipeline, now: deps.now });
     app.register(itemRoutes, { prisma: deps.prisma });
+    app.register(deviceRoutes, { prisma: deps.prisma });
   }
 
   return app;

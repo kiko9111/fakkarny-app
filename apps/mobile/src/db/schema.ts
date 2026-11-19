@@ -43,4 +43,6 @@ export const MIGRATIONS: readonly string[] = [
     value TEXT NOT NULL
   );
   `,
+  // v2 — M4: the friend's indirect question for the reminder notification
+  `ALTER TABLE items ADD COLUMN nudge TEXT;`,
 ];

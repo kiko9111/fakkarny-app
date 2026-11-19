@@ -59,6 +59,7 @@ const ModelItem = z.object({
   remind_at_local: z.string().nullable(),
   follow_up_at_local: z.string().nullable(),
   important: z.boolean(),
+  nudge: z.string().nullable(),
   debt: z.object({ person: z.string(), amount: z.number(), direction: z.enum(["owed_to_me", "i_owe"]) }).nullable(),
 });
 const ModelUpdate = z.object({

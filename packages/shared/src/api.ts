@@ -67,3 +67,10 @@ export type ListItemsResponse = z.infer<typeof ListItemsResponse>;
 /** GET /memories — "what it remembers" in settings (FR-4: view and delete any memory). */
 export const ListMemoriesResponse = z.object({ memories: z.array(Memory) });
 export type ListMemoriesResponse = z.infer<typeof ListMemoriesResponse>;
+
+/** POST /devices — register this phone's Expo push token (briefs and check-ins arrive as push). */
+export const RegisterDeviceRequest = z.object({
+  platform: z.enum(["ios", "android"]),
+  push_token: z.string().min(1).max(300).nullable(),
+});
+export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequest>;

@@ -58,6 +58,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
             remindAt,
             followUpAt: safeLocalToUtc(c.follow_up_at_local, tz),
             important: c.important ?? false,
+            nudge: c.nudge ?? null,
             debtPerson: c.debt?.person ?? null,
             debtAmount: c.debt?.amount ?? null,
             debtDirection: c.debt?.direction ?? null,

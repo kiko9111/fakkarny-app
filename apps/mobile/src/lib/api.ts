@@ -3,7 +3,9 @@ import {
   HealthResponse,
   INSTALL_ID_HEADER,
   ItemResponse,
+  ListMessagesResponse,
   PostMessageResponse,
+  type RegisterDeviceRequest,
   type Item,
   type PatchItemRequest,
   type PostMessageRequest,
@@ -56,4 +58,13 @@ export async function patchItem(id: string, body: PatchItemRequest): Promise<Ite
 
 export async function deleteMemory(id: string): Promise<void> {
   await request(`/memories/${id}`, { method: "DELETE" });
+}
+
+export async function listMessagesAfter(after: string | null): Promise<ListMessagesResponse> {
+  const q = after ? `?after=${encodeURIComponent(after)}` : "";
+  return ListMessagesResponse.parse(await request(`/messages${q}`));
+}
+
+export async function registerDevice(body: RegisterDeviceRequest): Promise<void> {
+  await request("/devices", { method: "POST", body: JSON.stringify(body) });
 }

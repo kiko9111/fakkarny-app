@@ -94,6 +94,14 @@ model User {
   ignoredCheckins  Int             @default(0) @map("ignored_checkins")
   plan             Plan            @default(none)
   planExpiresAt    DateTime?       @map("plan_expires_at")
+  // F5: skip the indirect hint and always send the clear reminder.
+  alwaysDirect     Boolean         @default(false) @map("always_direct")
+  // Proactive-message bookkeeping (M4).
+  lastMorningAt    DateTime?       @map("last_morning_at")
+  lastNightAt      DateTime?       @map("last_night_at")
+  lastCheckinAt    DateTime?       @map("last_checkin_at")
+  lastUserMessageAt DateTime?      @map("last_user_message_at")
+  slowdownNoticed  Boolean         @default(false) @map("slowdown_noticed")
   createdAt        DateTime        @default(now()) @map("created_at")
   lastActiveAt     DateTime?       @map("last_active_at")
 
@@ -111,7 +119,7 @@ model Device {
   id         String    @id @default(uuid()) @db.Uuid
   userId     String    @map("user_id") @db.Uuid
   platform   Platform
-  pushToken  String?   @map("push_token")
+  pushToken  String?   @unique @map("push_token")
   lastSeenAt DateTime? @map("last_seen_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -147,11 +155,14 @@ model Item {
   // and by F5 escalation (important items get the clear version at due time).
   remindAt        DateTime?      @map("remind_at")
   important       Boolean        @default(false)
+  // F5: the friend's indirect question shown in the local reminder notification.
+  nudge           String?
   status          ItemStatus     @default(open)
   debtPerson      String?        @map("debt_person")
   debtAmount      Decimal?       @map("debt_amount") @db.Decimal(12, 2)
   debtDirection   DebtDirection? @map("debt_direction")
   followUpAt      DateTime?      @map("follow_up_at")
+  followedUpAt    DateTime?      @map("followed_up_at")
   sourceMessageId String?        @map("source_message_id") @db.Uuid
   updatedAt       DateTime       @updatedAt @map("updated_at")
   createdAt       DateTime       @default(now()) @map("created_at")

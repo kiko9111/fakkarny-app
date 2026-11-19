@@ -83,6 +83,12 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       throw err;
     }
 
+    // The user answered: reset the check-in slowdown (F7) and note when they last wrote.
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { lastUserMessageAt: message.createdAt, ignoredCheckins: 0, slowdownNoticed: false },
+    });
+
     const result = await pipeline({ prisma, user, message, now: now() });
     const res: PostMessageResponse = {
       message: toWireMessage(message),

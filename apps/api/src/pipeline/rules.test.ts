@@ -42,7 +42,7 @@ describe("toFriendResponse", () => {
   it("drops nulls so optional fields validate", () => {
     const r = toFriendResponse({
       ...base,
-      create_items: [{ type: "task", title: "Call mom", due_at_local: null, remind_at_local: null, follow_up_at_local: null, important: false, debt: null }],
+      create_items: [{ type: "task", title: "Call mom", due_at_local: null, remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, debt: null }],
     });
     expect(r.create_items[0]).toEqual({ type: "task", title: "Call mom", important: false });
   });
@@ -51,7 +51,7 @@ describe("toFriendResponse", () => {
     expect(() =>
       toFriendResponse({
         ...base,
-        create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, debt: null }],
+        create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, debt: null }],
       }),
     ).toThrow();
     expect(() => toFriendResponse({ ...base, reply: ["a", "b", "c", "d"] })).toThrow();

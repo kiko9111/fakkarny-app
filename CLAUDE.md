@@ -63,7 +63,19 @@ Rules:
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
 - Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
-- Schema change: edit apps/api/prisma/schema.prisma, then
+- Proactive messages (M4): pg-boss cron `proactive-tick` every minute
+  (apps/api/src/jobs) → `planProactive` (pure; decides morning/night/check-in/
+  follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
+  template fallback) → stored as a friend Message + Expo push. The phone pulls them
+  with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Reminders are local notifications on the phone (apps/mobile/src/notifications):
+  `planReminderNotifications` (pure) → indirect hint at remind time + clear backup
+  near the deadline; quick replies Done/Later. Remote push needs a dev build and an
+  EAS projectId in app.json (`extra.eas.projectId`); local reminders work in Expo Go.
+- Schema change: edit apps/api/prisma/schema.prisma, then (non-interactive shells)
+  `mkdir prisma/migrations/<timestamp>_<name>` and
+  `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script > .../migration.sql`,
+  then `npx prisma migrate deploy` (in apps/api, DATABASE_URL set). Interactive:
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 
@@ -71,7 +83,7 @@ Rules:
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
 - [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
-- [ ] M4 Notifications
+- [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [ ] M5 Auth, sync and screens
 - [ ] M6 Paywall
 - [ ] M7 Hardening and launch

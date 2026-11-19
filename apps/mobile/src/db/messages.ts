@@ -71,15 +71,15 @@ export async function upsertItem(i: Item): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO items (id, type, title, due_at, remind_at, important, status, debt_person, debt_amount, debt_direction,
-       follow_up_at, source_message_id, updated_at, created_at, done_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       follow_up_at, source_message_id, updated_at, created_at, done_at, nudge)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, due_at=excluded.due_at,
        remind_at=excluded.remind_at, important=excluded.important, status=excluded.status,
        debt_person=excluded.debt_person, debt_amount=excluded.debt_amount, debt_direction=excluded.debt_direction,
-       follow_up_at=excluded.follow_up_at, updated_at=excluded.updated_at, done_at=excluded.done_at
+       follow_up_at=excluded.follow_up_at, updated_at=excluded.updated_at, done_at=excluded.done_at, nudge=excluded.nudge
      WHERE excluded.updated_at >= items.updated_at`,
     i.id, i.type, i.title, i.due_at, i.remind_at, i.important ? 1 : 0, i.status, i.debt_person, i.debt_amount,
-    i.debt_direction, i.follow_up_at, i.source_message_id, i.updated_at, i.created_at, i.done_at,
+    i.debt_direction, i.follow_up_at, i.source_message_id, i.updated_at, i.created_at, i.done_at, i.nudge,
   );
 }
 
@@ -140,4 +140,11 @@ export async function setSaved(clientId: string, saved: SavedSummary | null): Pr
   const db = await getDb();
   const empty = !saved || (saved.items.length === 0 && saved.memories.length === 0);
   await db.runAsync("UPDATE messages SET saved_json = ? WHERE client_id = ?", empty ? null : JSON.stringify(saved), clientId);
+}
+
+/** Newest server timestamp we hold, used to pull messages the server started (briefs, check-ins). */
+export async function latestServerMessageAt(): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ at: string | null }>("SELECT MAX(created_at) AS at FROM messages WHERE server_id IS NOT NULL");
+  return row?.at ?? null;
 }

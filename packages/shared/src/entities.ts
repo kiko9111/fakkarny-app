@@ -70,6 +70,8 @@ export const Item = z.object({
   due_at: Instant.nullable(),
   remind_at: Instant.nullable(),
   important: z.boolean(),
+  /** The friend's indirect question used as the reminder notification text (F5). */
+  nudge: z.string().nullable(),
   status: ItemStatus,
   debt_person: z.string().nullable(),
   debt_amount: z.number().nullable(),

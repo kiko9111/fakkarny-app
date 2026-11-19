@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { kvGet, kvSet } from "@/db/kv";
 import { addUserMessage, listMessages, type LocalMessage } from "@/db/messages";
+import { ensurePermissionAndRegister } from "@/notifications";
 import { messagesChanged, syncBusy, syncQueue } from "@/sync";
 
 export function useChat() {
@@ -28,6 +30,11 @@ export function useChat() {
       await addUserMessage(text); // shown instantly, saved locally first
       await reload();
       void syncQueue.flush();
+      // F1: after the first real exchange, ask for notifications "so I can check on you".
+      if (!(await kvGet("asked_notifications"))) {
+        await kvSet("asked_notifications", "1");
+        setTimeout(() => void ensurePermissionAndRegister(), 1500);
+      }
     },
     [reload],
   );

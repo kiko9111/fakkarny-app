@@ -32,6 +32,7 @@ export function toWireItem(i: Item): WireItem {
     due_at: isoOrNull(i.dueAt),
     remind_at: isoOrNull(i.remindAt),
     important: i.important,
+    nudge: i.nudge,
     status: i.status,
     debt_person: i.debtPerson,
     debt_amount: i.debtAmount === null ? null : Number(i.debtAmount),
