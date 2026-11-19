@@ -42,7 +42,7 @@ Push notifications, Apple sign-in, RevenueCat purchases and widgets need a
 | | `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SENTRY_DSN` | API location (optional in dev), crash reports |
 
 ## Launch checklist (manual steps from PRD §8)
-- [ ] Choose the iOS bundle ID / Android package and add them to `apps/mobile/app.json`; run `eas init` (adds `extra.eas.projectId`, needed for push).
+- [x] Bundle ID `com.fakkarni.app` (iOS + Android) is set in `apps/mobile/app.json`. Run `eas init` (adds `extra.eas.projectId`, needed for push).
 - [ ] Supabase: create the project, enable Phone (SMS provider), Apple and Google providers, add `fakkarni://auth/callback` as a redirect URL.
 - [ ] RevenueCat: products (monthly, yearly, 7-day trial) in App Store Connect and Google Play, entitlement `pro`, current offering with monthly + annual packages, webhook to `https://<api>/webhooks/revenuecat` with the `REVENUECAT_WEBHOOK_AUTH` header.
 - [ ] Set `ANTHROPIC_API_KEY`, run `npm run eval -- --strict` until extraction ≥ 90%, and have native speakers rate `evals/out/review.csv` (target 90% "sounds like a friend").
