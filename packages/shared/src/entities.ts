@@ -36,6 +36,7 @@ export const User = z.object({
   ignored_checkins: z.number().int().nonnegative(),
   plan: Plan,
   plan_expires_at: Instant.nullable(),
+  always_direct: z.boolean(),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });
@@ -68,6 +69,10 @@ export const Item = z.object({
   type: ItemType,
   title: z.string().min(1),
   due_at: Instant.nullable(),
+  remind_at: Instant.nullable(),
+  important: z.boolean(),
+  /** The friend's indirect question used as the reminder notification text (F5). */
+  nudge: z.string().nullable(),
   status: ItemStatus,
   debt_person: z.string().nullable(),
   debt_amount: z.number().nullable(),

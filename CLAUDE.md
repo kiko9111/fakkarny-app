@@ -37,12 +37,74 @@ Rules:
 - packages/shared is consumed as TypeScript source (no build step). The API runs
   under tsx in both dev and start.
 - Mobile unit tests (vitest) cover pure modules only; don't import react-native in them.
+  Keep logic pure and inject storage/transport (see apps/mobile/src/sync/queue.ts).
+- Identity (apps/api/src/plugins/auth.ts): Supabase JWT in `Authorization: Bearer`
+  (verified via SUPABASE_URL's JWKS, or SUPABASE_JWT_SECRET) → `authId "supabase:<sub>"`;
+  otherwise the phone's random install ID (`x-install-id`) → `"install:<id>"`, unless
+  ALLOW_INSTALL_ID=0. After sign-in the phone calls POST /auth/link to move its
+  pre-sign-in data to the account, then pulls everything (apps/mobile/src/sync/full.ts).
+  Every route plugin gets the same `authenticate` hook from buildApp.
+- Mobile config: apps/mobile/.env.local with EXPO_PUBLIC_SUPABASE_URL and
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (sign-in is hidden without them). Small sync
+  prefs (language, always_direct, onboarded) live in src/lib/prefs.ts (expo-sqlite
+  localStorage) so the language/RTL is known before the first render.
+- Messages: phone saves to SQLite (`apps/mobile/src/db/`), the outbox
+  (`src/sync/`) POSTs oldest-first, the API dedupes on (user, client_id). Friend reply
+  rows use client_id `<user client_id>:reply:<n>` so retries return the same replies.
+- API DB tests need Postgres: set `TEST_DATABASE_URL` in apps/api/.env (they skip
+  without it). Locally: `service postgresql start`; dev DB `fakkarni`, test DB
+  `fakkarni_test`, user/password postgres/postgres.
+- Conversation pipeline (apps/api/src/pipeline/conversation.ts): rules fast path
+  (rules.ts: thanks/emoji, crisis keyword safety net) → context (context.ts: ~20
+  ranked memories, open items with ids, rolling summary, last 15 messages, local NOW)
+  → one Claude call (src/ai/model.ts, `claude-haiku-5-5`, structured output, persona
+  system prompt cached) → strict zod validation → apply.ts in a transaction. Model
+  times are local wall-clock, converted with src/lib/time.ts. Every call logs an
+  `ai_call` Event with tokens + cost (no content). The pipeline is injected into
+  buildApp, so tests use a scripted fake model.
+- The app's Anthropic client ignores the shell's ANTHROPIC_BASE_URL on purpose
+  (override with FAKKARNI_ANTHROPIC_BASE_URL). The server needs ANTHROPIC_API_KEY or
+  the friend won't reply (messages are still stored).
+- Evals: evals/cases/*.jsonl (one case per line; default NOW is Thu 2026-11-19 10:00
+  Cairo). `npm run eval` validates cases and, with ANTHROPIC_API_KEY, scores
+  extraction (target 90%) + style checks, writing evals/out/review.csv for blind
+  native review. Add every message the friend gets wrong as a new line.
+- Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
+- Subscriptions (M6): RevenueCat app user id = our User.id. POST /webhooks/revenuecat
+  (Authorization = REVENUECAT_WEBHOOK_AUTH) mirrors the plan onto User; POST
+  /me/plan/refresh re-reads it with REVENUECAT_SECRET_KEY right after a purchase.
+  With REQUIRE_SUBSCRIPTION=1, POST /messages returns 402 after
+  FREE_MESSAGES_BEFORE_PAYWALL messages without an active plan (apps/api/src/billing).
+  The phone keeps 402'd messages queued and swaps the input for the paywall CTA.
+  Locked users get no proactive messages; trial users get one honest notice 2 days
+  before the trial ends. Local dev: REQUIRE_SUBSCRIPTION=0 in apps/api/.env.
+- Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
+  keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
+  still saved, user told once), Sentry on API and app with all content collection off,
+  in-memory error-rate metrics, GET /admin (Basic auth, ADMIN_PASSWORD; counts and
+  costs only, never chat content). Deploy the API with the root Dockerfile; build the
+  app with apps/mobile/eas.json profiles (development / preview / production).
+- Proactive messages (M4): pg-boss cron `proactive-tick` every minute
+  (apps/api/src/jobs) → `planProactive` (pure; decides morning/night/check-in/
+  follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
+  template fallback) → stored as a friend Message + Expo push. The phone pulls them
+  with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Reminders are local notifications on the phone (apps/mobile/src/notifications):
+  `planReminderNotifications` (pure) → indirect hint at remind time + clear backup
+  near the deadline; quick replies Done/Later. Remote push needs a dev build and an
+  EAS projectId in app.json (`extra.eas.projectId`); local reminders work in Expo Go.
+- Schema change: edit apps/api/prisma/schema.prisma, then (non-interactive shells)
+  `mkdir prisma/migrations/<timestamp>_<name>` and
+  `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script > .../migration.sql`,
+  then `npx prisma migrate deploy` (in apps/api, DATABASE_URL set). Interactive:
+  `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
+  changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
-- [ ] M2 Capture and local storage
-- [ ] M3 Conversation and memory (+ evals/, real `npm run eval`)
-- [ ] M4 Notifications
-- [ ] M5 Auth, sync and screens
-- [ ] M6 Paywall
-- [ ] M7 Hardening and launch
+- [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
+- [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
+- [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
+- [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
+- [x] M7 Hardening: Sentry, rate limits + daily cap, retries, admin dashboard with AI cost per user, EAS profiles, Dockerfile. Store submission steps are manual (see README launch checklist).

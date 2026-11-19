@@ -24,6 +24,8 @@ export const CreateItemAction = z.object({
   follow_up_at_local: LocalDateTime.optional(),
   /** Medicine, flights, payments with penalties: get the clear version at due time (F5). */
   important: z.boolean().optional(),
+  /** Indirect friend question for the reminder notification, e.g. "Heading out soon? Traffic to Dokki is crazy 😅". */
+  nudge: z.string().min(1).max(200).optional(),
   debt: DebtDetails.optional(),
 });
 export type CreateItemAction = z.infer<typeof CreateItemAction>;

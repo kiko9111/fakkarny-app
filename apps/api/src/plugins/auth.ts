@@ -1,0 +1,103 @@
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { z } from "zod";
+import { INSTALL_ID_HEADER } from "@fakkarni/shared";
+import type { PrismaClient, User } from "../generated/prisma/client";
+
+declare module "fastify" {
+  interface FastifyRequest {
+    user: User;
+  }
+}
+
+/**
+ * Identity (FR-10). Supabase Auth (phone OTP, Apple, Google) issues a JWT the phone sends as
+ * `Authorization: Bearer`. Before sign-in — and in development — the phone's random install ID
+ * works too, unless ALLOW_INSTALL_ID is off.
+ */
+export interface AuthConfig {
+  /** e.g. https://abcd.supabase.co — verifies tokens with the project's JWKS (asymmetric keys). */
+  supabaseUrl?: string;
+  /** Legacy HS256 projects: the JWT secret. */
+  supabaseJwtSecret?: string;
+  allowInstallId: boolean;
+}
+
+export const supabaseAuthId = (sub: string) => `supabase:${sub}`;
+export const installAuthId = (id: string) => `install:${id}`;
+
+const InstallId = z.uuid();
+
+export interface Verifier {
+  /** Supabase user id (`sub`) for a valid token, else null. */
+  verify(token: string): Promise<string | null>;
+}
+
+export function createVerifier(cfg: AuthConfig): Verifier | null {
+  let key: Uint8Array | JWTVerifyGetKey | null = null;
+  if (cfg.supabaseJwtSecret) key = new TextEncoder().encode(cfg.supabaseJwtSecret);
+  else if (cfg.supabaseUrl) key = createRemoteJWKSet(new URL("/auth/v1/.well-known/jwks.json", cfg.supabaseUrl));
+  if (!key) return null;
+  const issuer = cfg.supabaseUrl ? new URL("/auth/v1", cfg.supabaseUrl).toString() : undefined;
+  return {
+    async verify(token) {
+      try {
+        const { payload } = await jwtVerify(token, key as Uint8Array, { audience: "authenticated", ...(issuer ? { issuer } : {}) });
+        return typeof payload.sub === "string" && payload.sub ? payload.sub : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+function bearer(req: FastifyRequest): string | null {
+  const h = req.headers.authorization;
+  return h?.startsWith("Bearer ") ? h.slice(7) : null;
+}
+
+/** Resolve the calling user, creating the row on first contact. */
+export function requireUser(prisma: PrismaClient, cfg: AuthConfig = { allowInstallId: true }, verifier = createVerifier(cfg)) {
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    let authId: string | null = null;
+    const token = bearer(req);
+    if (token) {
+      const sub = verifier ? await verifier.verify(token) : null;
+      if (!sub) return reply.code(401).send({ error: "invalid_token" });
+      authId = supabaseAuthId(sub);
+    } else if (cfg.allowInstallId) {
+      const parsed = InstallId.safeParse(req.headers[INSTALL_ID_HEADER]);
+      if (parsed.success) authId = installAuthId(parsed.data);
+    }
+    if (!authId) return reply.code(401).send({ error: "unauthorized" });
+    req.user = await prisma.user.upsert({
+      where: { authId },
+      create: { authId },
+      update: { lastActiveAt: new Date() },
+    });
+  };
+}
+
+/**
+ * After sign-in, attach what this phone captured before sign-in to the account (POST /auth/link).
+ * If the account is new, the install user simply becomes it; otherwise the install user's data
+ * moves over and the install user is removed.
+ */
+export async function linkInstallToAccount(prisma: PrismaClient, installId: string, accountAuthId: string): Promise<User> {
+  return prisma.$transaction(async (tx) => {
+    const install = await tx.user.findUnique({ where: { authId: installAuthId(installId) } });
+    const account = await tx.user.findUnique({ where: { authId: accountAuthId } });
+    if (!install) return account ?? tx.user.create({ data: { authId: accountAuthId } });
+    if (!account) return tx.user.update({ where: { id: install.id }, data: { authId: accountAuthId } });
+    if (install.id === account.id) return account;
+    const move = { where: { userId: install.id }, data: { userId: account.id } };
+    await tx.message.updateMany(move);
+    await tx.item.updateMany(move);
+    await tx.memory.updateMany(move);
+    await tx.summary.updateMany(move);
+    await tx.device.updateMany(move);
+    await tx.event.updateMany(move);
+    await tx.user.delete({ where: { id: install.id } });
+    return tx.user.update({ where: { id: account.id }, data: { name: account.name ?? install.name, lastActiveAt: new Date() } });
+  });
+}
