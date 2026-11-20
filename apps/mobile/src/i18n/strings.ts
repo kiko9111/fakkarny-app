@@ -27,6 +27,8 @@ const arEG = {
     done: "خلصت ✅",
     later: "بعد ساعة ⏰",
     clear: "عشان متنساش: {title} الساعة {time}",
+    doneSay: "خلصت «{title}» ✅",
+    laterSay: "فكرني بـ«{title}» كمان ساعة",
     channel: "التذكيرات",
   },
   upcoming: {
@@ -152,6 +154,8 @@ const en: DeepStringShape<Strings> = {
     done: "Done ✅",
     later: "In 1 hour ⏰",
     clear: "Just so you don't miss it: {title} at {time}",
+    doneSay: "Done: {title} ✅",
+    laterSay: "Remind me about “{title}” in an hour",
     channel: "Reminders",
   },
   upcoming: {

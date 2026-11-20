@@ -160,7 +160,7 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     const app = appWith(model);
     const { status, body } = await send(app, "ana 3ayez a2ollak 7aga");
     expect(status).toBe(201);
-    expect(body.replies[0]!.text).toContain("Ma3lesh");
+    expect(body.replies[0]!.text).toContain("معلش"); // Franco in, Arabic out
     expect(await prisma.message.count({ where: { role: "user" } })).toBe(1);
     await app.close();
   });

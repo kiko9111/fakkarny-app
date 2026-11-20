@@ -106,8 +106,10 @@ export const sqliteOutbox: OutboxStore = {
     const saved = summarizeSaved(res);
     await db.withTransactionAsync(async () => {
       await db.runAsync(
-        "UPDATE messages SET sync_status = 'synced', server_id = ?, saved_json = ? WHERE client_id = ?",
-        res.message.id, saved ? JSON.stringify(saved) : null, clientId,
+        // Take the server's timestamp too: replies carry server time, and a phone clock
+        // that runs ahead would otherwise sort every reply above the message it answers.
+        "UPDATE messages SET sync_status = 'synced', server_id = ?, saved_json = ?, created_at = ? WHERE client_id = ?",
+        res.message.id, saved ? JSON.stringify(saved) : null, res.message.created_at, clientId,
       );
       await insertServerMessages(res.replies);
       for (const item of res.items) await upsertItem(item);

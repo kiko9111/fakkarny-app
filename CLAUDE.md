@@ -89,7 +89,9 @@ Rules:
   (`src/sync/`) POSTs oldest-first, the API dedupes on (user, client_id). Friend reply
   rows use client_id `<user client_id>:reply:<n>` so retries return the same replies.
 - API DB tests need Postgres: set `TEST_DATABASE_URL` in apps/api/.env (they skip
-  without it). Locally: `service postgresql start`; dev DB `fakkarni`, test DB
+  without it, silently: check the test summary says 0 skipped). Claude Code cloud
+  sessions have Postgres installed: `service postgresql start`, set the postgres
+  password, `createdb fakkarni_test`, then write apps/api/.env. Locally: `service postgresql start`; dev DB `fakkarni`, test DB
   `fakkarni_test`, user/password postgres/postgres.
 - Conversation pipeline (apps/api/src/pipeline/conversation.ts): rules fast path
   (rules.ts: thanks/emoji, crisis keyword safety net) → context (context.ts: ~20
@@ -119,9 +121,9 @@ Rules:
   the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
-  Last measured (persona 2026-11-21.2, 112 cases, effort medium): extraction 99–100%,
-  style 99–100% across runs; the baseline before tuning was 76% / 76%. Cases named
-  `talk-*` come from a real device chat; `reply_none` and `no_memories` catch nagging
+  Last measured (persona 2026-11-21.3, 124 cases, effort medium): extraction 99%,
+  style 100% across runs; the baseline before tuning was 76% / 76%. Cases named
+  `talk-*` and `real-*` come from real device chats; `reply_none` and `no_memories` catch nagging
   ("anything tomorrow?"), Modern Standard words and memories saved for small talk. Scores move a case or two
   between runs, so run twice before concluding a prompt change helped or hurt.
 - Helpline numbers in apps/api/src/persona/prompt.ts were checked against official
@@ -146,6 +148,14 @@ Rules:
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
   template fallback) → stored as a friend Message + Expo push. The phone pulls them
   with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Everything shows in the chat (owner decision, 2026-11-21). The local notification
+  still fires on the phone, and `postDueReminders` (proactive tick) writes the same
+  nudge into the chat as a friend Message of kind "reminder" (client_id
+  `reminder:<itemId>:<remindAt>`, no push). Done / Later on the notification also send
+  a normal chat message ("خلصت «…» ✅"), which the friend answers and acts on.
+- Message order on the phone: a synced user message takes the server's `created_at`.
+  Replies carry server time, so with a phone clock running ahead every reply used to
+  sort above the message it answered.
 - Reminders are local notifications on the phone (apps/mobile/src/notifications):
   `planReminderNotifications` (pure) → indirect hint at remind time + clear backup
   near the deadline; quick replies Done/Later. Remote push needs a dev build and an

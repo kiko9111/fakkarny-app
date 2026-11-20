@@ -63,7 +63,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
     try {
-      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(ctx.recent.at(-1)?.text ?? "") });
+      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(ctx.recent.at(-1)?.text ?? ""), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) });
       usage = result.usage;
       if (result.ok) {
         replies = result.output.reply;

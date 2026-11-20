@@ -92,7 +92,7 @@ async function main() {
   let totalCost = 0;
   const results = await mapLimit(cases, 5, async (c) => {
     const res = await model
-      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(c.message) })
+      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(c.message), todayLocal: c.now.slice(0, 10) })
       .catch((err: unknown) => ({ ok: false as const, reason: `error: ${(err as Error).message}`, usage: null as Usage | null }));
     if (res.usage) totalCost += costUsd(res.usage);
     if (!res.ok) {

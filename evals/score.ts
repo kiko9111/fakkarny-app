@@ -56,7 +56,8 @@ export const EvalCase = z.object({
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 
-const lc = (s: string) => s.toLowerCase();
+// Lower-case and fold Arabic-Indic digits, so "١٦٣٢٨" matches "16328".
+const lc = (s: string) => s.toLowerCase().replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 const anyIn = (hay: string, needles: string[]) => needles.some((n) => lc(hay).includes(lc(n)));
 
 function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["create_items"][number]): boolean {

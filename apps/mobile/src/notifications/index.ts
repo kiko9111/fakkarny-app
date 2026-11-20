@@ -100,13 +100,24 @@ export async function scheduleItems(items: Item[]) {
  * Quick replies on reminders (FR-6: "replies update the item"), plus tap-to-open-chat.
  * `onMessage` pulls new friend messages when a push arrives.
  */
-export function listenForNotifications(onMessage: () => void) {
+export function listenForNotifications(onMessage: () => void, say: (text: string) => void) {
+  // The server writes each reminder into the chat within a minute of its time: pull now and again shortly.
+  const pullSoon = () => {
+    onMessage();
+    setTimeout(onMessage, 20_000);
+    setTimeout(onMessage, 75_000);
+  };
   const received = Notifications.addNotificationReceivedListener((n) => {
-    if (n.request.content.data?.["type"] === "message") onMessage();
+    const type = n.request.content.data?.["type"];
+    if (type === "message") onMessage();
+    if (type === "reminder") pullSoon();
   });
   const response = Notifications.addNotificationResponseReceivedListener(async (res) => {
     const data = res.notification.request.content.data as { type?: string; itemId?: string; title?: string } | undefined;
+    if (data?.type === "reminder") pullSoon();
     if (res.actionIdentifier === ACTION_DONE && data?.itemId) {
+      // Everything goes through the conversation: the answer shows in the chat and the friend replies.
+      if (data.title) say(fill(t.notifications.doneSay, { title: data.title }));
       try {
         const item = await patchItem(data.itemId, { status: "done" });
         await upsertItem(item);
@@ -115,6 +126,7 @@ export function listenForNotifications(onMessage: () => void) {
         // Offline: keep it open; the friend will ask about it later.
       }
     } else if (res.actionIdentifier === ACTION_LATER && data?.itemId) {
+      if (data.title) say(fill(t.notifications.laterSay, { title: data.title }));
       await Notifications.scheduleNotificationAsync({
         identifier: hintId(data.itemId),
         content: { title: "Fakkarni", body: res.notification.request.content.body ?? data.title ?? "", categoryIdentifier: CATEGORY, data, sound: true },
