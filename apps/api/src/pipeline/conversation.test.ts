@@ -149,7 +149,7 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     ]);
     const app = appWith(model);
     const { body } = await send(app, "I want to kill myself");
-    expect(body.replies.at(-1)!.text).toContain("08008880700");
+    expect(body.replies.at(-1)!.text).toContain("16328");
     expect(body.items).toEqual([]);
     expect(await prisma.event.count({ where: { name: "crisis_flag" } })).toBe(1);
     await app.close();

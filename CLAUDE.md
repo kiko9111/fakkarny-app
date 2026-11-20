@@ -29,6 +29,11 @@ Rules:
   client is generated into apps/api/src/generated/ (gitignored; `postinstall` runs
   `prisma generate`), and it connects through @prisma/adapter-pg. Use `db()` from
   apps/api/src/db.ts.
+- Supabase project ref `cyvslirlrcxpyhynzxrg` (eu-west-1). Migrations through
+  20261120140000_enable_rls are applied there. Every table has row level security on
+  with no policies: the API connects as the table owner (bypasses RLS), and Supabase's
+  public Data API gets nothing. Enable RLS in the migration of any new table. Connect
+  with the session pooler (port 5432), not the transaction pooler: pg-boss needs it.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
@@ -44,6 +49,17 @@ Rules:
   ALLOW_INSTALL_ID=0. After sign-in the phone calls POST /auth/link to move its
   pre-sign-in data to the account, then pulls everything (apps/mobile/src/sync/full.ts).
   Every route plugin gets the same `authenticate` hook from buildApp.
+- Sign-in methods (apps/mobile/src/auth): one field takes an email or a phone number
+  (`parseContact`, pure). Email → Supabase mails a sign-in link that reopens the app at
+  `auth/callback` (route src/app/auth/callback.tsx, PKCE code exchange shared with the
+  Google flow via `completeCallback`). It is a link, not a code, because Supabase's
+  free built-in mailer cannot use a custom template (and sends about 2 emails an hour:
+  set up custom SMTP before launch). Phone → SMS code (needs an SMS provider). The
+  Supabase redirect allow list has `fakkarni://auth/callback` and `exp://**` (Expo Go).
+- Legal pages: GET /legal/terms and /legal/privacy on the API (?lang=en, Arabic by
+  default), text in apps/api/src/legal/content.ts, linked from the paywall and
+  Settings. They show a draft notice until LEGAL_REVIEWED=1; set LEGAL_OPERATOR and
+  LEGAL_CONTACT_EMAIL. Keep the privacy text in step with what the code collects.
 - Mobile config: apps/mobile/.env.local with EXPO_PUBLIC_SUPABASE_URL and
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (sign-in is hidden without them). Small sync
   prefs (language, always_direct, onboarded) live in src/lib/prefs.ts (expo-sqlite
@@ -59,17 +75,27 @@ Rules:
   ranked memories, open items with ids, rolling summary, last 15 messages, local NOW)
   → one Claude call (src/ai/model.ts, `claude-haiku-5-5`, structured output, persona
   system prompt cached) → strict zod validation → apply.ts in a transaction. Model
-  times are local wall-clock, converted with src/lib/time.ts. Every call logs an
+  times are local wall-clock, converted with src/lib/time.ts. The context also carries
+  UPCOMING DAYS (14 dated weekdays, so the model looks dates up instead of computing
+  them) and REPLY SCRIPT (decided in code from the last message's letters); a reply
+  with Arabic letters to a Latin-letter message gets one retry (`latinOnly`). Every call logs an
   `ai_call` Event with tokens + cost (no content). The pipeline is injected into
   buildApp, so tests use a scripted fake model.
 - The app's Anthropic client ignores the shell's ANTHROPIC_BASE_URL on purpose
   (override with FAKKARNI_ANTHROPIC_BASE_URL). The server needs ANTHROPIC_API_KEY or
   the friend won't reply (messages are still stored).
 - Evals: evals/cases/*.jsonl (one case per line; default NOW is Thu 2026-11-19 10:00
-  Cairo). `npm run eval` validates cases and, with ANTHROPIC_API_KEY, scores
+  Cairo). `npm run eval` validates cases and, with ANTHROPIC_API_KEY (or
+  FAKKARNI_ANTHROPIC_API_KEY: Claude Code cloud sessions drop ANTHROPIC_API_KEY from
+  the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
-- Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
+  Last measured (persona 2026-11-20.1+, 101 cases): extraction 98–100%, style 100%
+  across runs; the baseline before tuning was 76% / 76%. Scores move a case or two
+  between runs, so run twice before concluding a prompt change helped or hurt.
+- Helpline numbers in apps/api/src/persona/prompt.ts were checked against official
+  sources on 2026-11-20 (Egypt now leads with 16328). Still to do before launch: one
+  test call per number, and a re-check before each release.
 - Subscriptions (M6): RevenueCat app user id = our User.id. POST /webhooks/revenuecat
   (Authorization = REVENUECAT_WEBHOOK_AUTH) mirrors the plan onto User; POST
   /me/plan/refresh re-reads it with REVENUECAT_SECRET_KEY right after a purchase.
@@ -103,8 +129,8 @@ Rules:
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
-- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming deferred.
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
-- [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
+- [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
 - [x] M7 Hardening: Sentry, rate limits + daily cap, retries, admin dashboard with AI cost per user, EAS profiles, Dockerfile. Store submission steps are manual (see README launch checklist).

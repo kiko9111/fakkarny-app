@@ -1,19 +1,21 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { appleAvailable, authAvailable, sendPhoneCode, signInWithApple, signInWithGoogle, verifyPhoneCode } from "@/auth";
+import { appleAvailable, authAvailable, sendCode, signInWithApple, signInWithGoogle, verifyPhoneCode } from "@/auth";
+import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
 import { colors } from "@/lib/theme";
 
 /**
- * F1 (under 2 minutes): pick a language, sign in with phone OTP, Apple or Google.
+ * F1 (under 2 minutes): pick a language, sign in with an emailed link, an SMS code, Apple or Google.
  * No tutorial screens — afterwards the friend opens the chat and asks your name.
  */
 export default function OnboardingScreen() {
   const [step, setStep] = useState<"language" | "signin">(prefs.get("language") ? "signin" : "language");
-  const [phone, setPhone] = useState("");
+  const [contactText, setContactText] = useState("");
+  const contact = parseContact(contactText);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -65,25 +67,31 @@ export default function OnboardingScreen() {
         <>
           <TextInput
             style={styles.input}
-            value={phone}
-            onChangeText={setPhone}
-            placeholder={t.onboarding.phone}
-            keyboardType="phone-pad"
-            autoComplete="tel"
+            value={contactText}
+            onChangeText={(v) => {
+              setContactText(v);
+              setCodeSent(false);
+            }}
+            placeholder={t.onboarding.contact}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
             textAlign="left"
           />
-          {codeSent ? (
+          {codeSent && contact?.kind === "email" ? <Text style={styles.note}>{t.onboarding.linkSent}</Text> : null}
+          {codeSent && contact?.kind === "phone" ? (
             <>
               <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder={t.onboarding.code} keyboardType="number-pad" autoComplete="one-time-code" textAlign="center" />
-              <Pressable style={styles.primary} disabled={busy} onPress={() => void run(() => verifyPhoneCode(phone.trim(), code.trim()))}>
+              <Pressable style={styles.primary} disabled={busy} onPress={() => void run(() => verifyPhoneCode(contact.value, code.trim()))}>
                 <Text style={styles.primaryText}>{t.onboarding.verify}</Text>
               </Pressable>
             </>
-          ) : (
-            <Pressable style={styles.primary} disabled={busy || phone.trim().length < 8} onPress={() => void run(() => sendPhoneCode(phone.trim()), () => setCodeSent(true))}>
-              <Text style={styles.primaryText}>{t.onboarding.sendCode}</Text>
+          ) : null}
+          {!codeSent ? (
+            <Pressable style={[styles.primary, !contact && styles.dim]} disabled={busy || !contact} onPress={() => contact && void run(() => sendCode(contact), () => setCodeSent(true))}>
+              <Text style={styles.primaryText}>{contact?.kind === "phone" ? t.onboarding.sendCode : t.onboarding.sendLink}</Text>
             </Pressable>
-          )}
+          ) : null}
           {appleAvailable ? (
             <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithApple)}>
               <Text style={styles.secondaryText}>{t.onboarding.apple}</Text>
@@ -109,6 +117,7 @@ const styles = StyleSheet.create({
   disclosure: { color: colors.muted, textAlign: "center", marginTop: 12 },
   input: { backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17, color: colors.text },
   primary: { backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 14, alignItems: "center" },
+  dim: { opacity: 0.5 },
   primaryText: { color: "#fff", fontSize: 17, fontWeight: "600" },
   secondary: { borderWidth: 1, borderColor: colors.text, borderRadius: 14, paddingVertical: 13, alignItems: "center" },
   secondaryText: { color: colors.text, fontSize: 16, fontWeight: "600" },

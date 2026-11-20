@@ -12,6 +12,7 @@ import { billingRoutes } from "./routes/billing";
 import { deviceRoutes } from "./routes/devices";
 import { healthRoutes } from "./routes/health";
 import { itemRoutes } from "./routes/items";
+import { legalRoutes, type LegalOptions } from "./routes/legal";
 import { meRoutes } from "./routes/me";
 import { messageRoutes } from "./routes/messages";
 
@@ -33,6 +34,8 @@ export interface AppDeps {
   /** Send unhandled errors to Sentry (initSentry must have run). */
   sentry?: boolean;
   metrics?: Metrics;
+  /** Contact details and review status for the public /legal pages. */
+  legal?: LegalOptions;
 }
 
 // CLAUDE.md: never log message content. Fastify doesn't log bodies by default;
@@ -65,6 +68,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
   }
 
   app.register(healthRoutes);
+  app.register(legalRoutes, deps.legal ?? {});
   if (deps.prisma) {
     const prisma = deps.prisma;
     const auth = deps.auth ?? { allowInstallId: true };

@@ -35,6 +35,8 @@ export interface FriendModelInput {
   system: string;
   context: string;
   history: ChatTurn[];
+  /** The user wrote in Latin letters (Franco/English): a reply with Arabic letters gets one retry. */
+  latinOnly?: boolean;
 }
 
 export type FriendModelResult =
@@ -79,13 +81,20 @@ export const ModelOutput = z.object({
 });
 export type ModelOutput = z.infer<typeof ModelOutput>;
 
+/** Drop nulls and blank strings ("" for "no nudge") so optional fields are simply absent. */
 const dropNulls = <T extends Record<string, unknown>>(o: T) =>
-  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined && !(typeof v === "string" && !v.trim())));
+
+/** The persona allows 1–3 messages; if the model sends more, fold the extras into the third instead of losing the turn. */
+function capReplies(reply: string[], max = 3): string[] {
+  const clean = reply.map((r) => r.trim()).filter(Boolean);
+  return clean.length <= max ? clean : [...clean.slice(0, max - 1), clean.slice(max - 1).join(" ")];
+}
 
 /** Loose model output → strict FriendResponse (throws ZodError if it doesn't fit). */
 export function toFriendResponse(raw: ModelOutput): FriendResponse {
   return FriendResponse.parse({
-    reply: raw.reply.map((r) => r.trim()).filter(Boolean),
+    reply: capReplies(raw.reply),
     create_items: raw.create_items.map((i) => dropNulls(i)),
     update_items: raw.update_items.map((u) => dropNulls(u)),
     save_memories: raw.save_memories,
@@ -115,9 +124,17 @@ export function buildMessages(input: FriendModelInput): Anthropic.MessageParam[]
   ];
 }
 
+/**
+ * The app's API key. FAKKARNI_ANTHROPIC_API_KEY wins, for shells where the tooling
+ * removes or owns ANTHROPIC_API_KEY (e.g. Claude Code cloud sessions).
+ */
+export function anthropicApiKey(): string | undefined {
+  return process.env["FAKKARNI_ANTHROPIC_API_KEY"] || process.env["ANTHROPIC_API_KEY"] || undefined;
+}
+
 export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string } = {}): FriendModel {
   const client = new Anthropic({
-    apiKey: opts.apiKey ?? process.env["ANTHROPIC_API_KEY"],
+    apiKey: opts.apiKey ?? anthropicApiKey(),
     // Explicit, so a tooling-level ANTHROPIC_BASE_URL in the shell never redirects app traffic.
     baseURL: opts.baseURL ?? process.env["FAKKARNI_ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com",
     maxRetries: 2,
@@ -142,7 +159,10 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
         if (res.stop_reason === "max_tokens") return { ok: false, reason: "max_tokens", usage };
         if (!res.parsed_output) continue;
         try {
-          return { ok: true, output: toFriendResponse(res.parsed_output), usage };
+          const output = toFriendResponse(res.parsed_output);
+          // Wrong script on a Franco/English message: try once more, then take what we get.
+          if (input.latinOnly && attempt === 0 && /[\u0600-\u06FF]/.test(output.reply.join(" "))) continue;
+          return { ok: true, output, usage };
         } catch {
           continue;
         }
