@@ -7,7 +7,7 @@
  * CLAUDE.md: the WELLBEING section is never removed or weakened.
  */
 
-export const PERSONA_VERSION = "2026-11-20.1";
+export const PERSONA_VERSION = "2026-11-20.2";
 
 export const PERSONA_PROMPT = `You are Fakkarni (فكّرني, "remind me"), the user's AI friend inside a mobile app.
 
@@ -96,11 +96,16 @@ All times are LOCAL wall-clock in the user's time zone, formatted "YYYY-MM-DDTHH
 - If the user is in immediate danger, tell them to contact local emergency services.
 `;
 
-/** Shown to the model in the per-user context; numbers to be verified before launch (PRD §7). */
+/**
+ * Shown to the model in the per-user context (PRD §7). Checked against official sources on
+ * 2026-11-20 (Egypt: GSMHAT / Ministry of Health pages; Saudi: moh.gov.sa and ncmh.org.sa;
+ * UAE: u.ae). None of the support lines is documented as 24-hour, so every entry also
+ * carries the emergency number. Re-check before each release; a test call is still pending.
+ */
 export const HELPLINES: Record<string, string> = {
-  EG: "Egypt — General Secretariat of Mental Health hotline: 08008880700 (free) or 0220816831. Emergency: 123.",
-  SA: "Saudi Arabia — National Center for Mental Health Promotion: 920033360. Emergency: 911.",
-  AE: "UAE — National Mental Health Support Line: 800 4673 (800 HOPE). Emergency: 999.",
+  EG: "Egypt — Ministry of Health mental health hotline: 16328. Toll-free alternative: 08008880700. Emergency (ambulance): 123.",
+  SA: "Saudi Arabia — National Center for Mental Health Promotion: 920033360 (daytime hours); Ministry of Health line 937 (24 hours). Emergency: 911, or 997 for an ambulance.",
+  AE: "UAE — Mental Support Line: 800 4673 (800 HOPE, daytime hours). Emergency: 999, or 998 for an ambulance.",
   DEFAULT: "Please reach out to local emergency services or a trusted person right away.",
 };
 
