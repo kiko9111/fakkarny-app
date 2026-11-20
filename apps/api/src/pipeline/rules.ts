@@ -62,8 +62,12 @@ const CRISIS_PATTERNS: RegExp[] = [
   /\b(ant[ae]?7ar|a2tel nafsy|a2tel nafsi|3ayez amoot|3ayza amoot|nefsy amoot|mesh 3ayez a3eesh|msh 3ayez a3ish)\b/i,
 ];
 
+/** Arabic is typed with or without hamzas and diacritics ("أعيش" / "اعيش"); match both. */
+const foldArabic = (t: string) => t.replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآٱ]/g, "ا");
+
 export function looksLikeCrisis(text: string): boolean {
-  return CRISIS_PATTERNS.some((re) => re.test(text));
+  const folded = foldArabic(text);
+  return CRISIS_PATTERNS.some((re) => re.test(text) || re.test(folded));
 }
 
 const HELPLINE_LEAD: Record<Script, string> = {

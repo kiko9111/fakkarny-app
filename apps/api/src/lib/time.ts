@@ -116,8 +116,25 @@ export function isValidTimeZone(tz: string): boolean {
 }
 
 /** Human-readable local "now" for the model, e.g. "Thursday 2026-11-19 14:05 (Africa/Cairo)". */
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * The next `days` local dates with their weekday names, starting today, e.g.
+ * "today Thursday 2026-11-19, tomorrow Friday 2026-11-20, Saturday 2026-11-21, …".
+ * Given to the model so it looks weekdays up instead of doing date arithmetic.
+ */
+export function describeUpcomingDays(date: Date, tz: string, days = 14): string {
+  const p = localParts(date, tz);
+  return Array.from({ length: days }, (_, i) => {
+    // Calendar arithmetic on the local date (noon UTC avoids any DST edge).
+    const d = new Date(Date.UTC(p.year, p.month - 1, p.day + i, 12));
+    const label = `${DAY_NAMES[d.getUTCDay()]} ${d.toISOString().slice(0, 10)}`;
+    return i === 0 ? `today ${label}` : i === 1 ? `tomorrow ${label}` : label;
+  }).join(", ");
+}
+
 export function describeNow(date: Date, tz: string): string {
-  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const names = DAY_NAMES;
   const p = localParts(date, tz);
   return `${names[p.weekday]} ${toLocalIso(date, tz).replace("T", " ")} (${tz})`;
 }

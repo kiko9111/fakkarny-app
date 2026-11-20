@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeNow, isAwake, localToUtc, toLocalIso } from "./time";
+import { describeNow, describeUpcomingDays, isAwake, localToUtc, toLocalIso } from "./time";
 
 describe("time zones", () => {
   it("converts Cairo wall-clock to UTC (Egypt is UTC+2 in November)", () => {
@@ -45,5 +45,12 @@ describe("isAwake", () => {
   it("handles a sleep time after midnight", () => {
     expect(isAwake(new Date("2026-11-19T22:30:00Z"), tz, "09:00", "01:30")).toBe(true); // 00:30 local
     expect(isAwake(new Date("2026-11-19T00:00:00Z"), tz, "09:00", "01:30")).toBe(false); // 02:00 local
+  });
+
+  it("lists upcoming local dates with weekdays, across a month end", () => {
+    // 23:30 UTC on Nov 28 is already Nov 29 01:30 in Cairo.
+    expect(describeUpcomingDays(new Date("2026-11-28T23:30:00.000Z"), "Africa/Cairo", 4)).toBe(
+      "today Sunday 2026-11-29, tomorrow Monday 2026-11-30, Tuesday 2026-12-01, Wednesday 2026-12-02",
+    );
   });
 });
