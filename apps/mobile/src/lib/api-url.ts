@@ -12,3 +12,8 @@ export function resolveApiUrl(opts: { envUrl?: string; hostUri?: string | null }
   const host = opts.hostUri?.split(":")[0];
   return `http://${host || "localhost"}:${API_PORT}`;
 }
+
+/** Public Terms / Privacy page on the API, in the app's language. */
+export function legalUrl(apiUrl: string, doc: "terms" | "privacy", language: string): string {
+  return `${apiUrl}/legal/${doc}?lang=${language === "en" ? "en" : "ar"}`;
+}

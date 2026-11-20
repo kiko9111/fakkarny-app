@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveApiUrl } from "./api-url";
+import { legalUrl, resolveApiUrl } from "./api-url";
 import { pickLanguage } from "../i18n/pick";
 import { strings } from "../i18n/strings";
 
@@ -42,5 +42,12 @@ describe("strings", () => {
   it("tells the user the friend is an AI in every language (PRD §7)", () => {
     expect(strings["ar-EG"].settings.aiDisclosure).toBeTruthy();
     expect(strings.en.settings.aiDisclosure).toMatch(/AI/);
+  });
+});
+
+describe("legalUrl", () => {
+  it("points at the API's legal pages in the app language", () => {
+    expect(legalUrl("https://api.fakkarni.app", "terms", "ar-EG")).toBe("https://api.fakkarni.app/legal/terms?lang=ar");
+    expect(legalUrl("https://api.fakkarni.app", "privacy", "en")).toBe("https://api.fakkarni.app/legal/privacy?lang=en");
   });
 });
