@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
 import { ChatInput } from "@/chat/ChatInput";
 import { MessageBubble } from "@/chat/MessageBubble";
@@ -29,6 +30,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (locked) void getMe().then((u) => setNeverSubscribed(u.plan === "none")).catch(() => {});
   }, [locked]);
+  const headerHeight = useHeaderHeight();
   const network = useNetworkState();
   const offline = network.isConnected === false || network.isInternetReachable === false;
 
@@ -38,8 +40,9 @@ export default function ChatScreen() {
     return [...all].reverse();
   }, [messages, loaded]);
 
+  // Android is edge-to-edge, so the window no longer resizes for the keyboard: padding on both platforms.
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
       {offline ? (
         <View style={styles.offline}>
           <Text style={styles.offlineText}>{t.chat.offline}</Text>

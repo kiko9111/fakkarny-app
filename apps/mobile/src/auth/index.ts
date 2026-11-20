@@ -9,7 +9,11 @@ import type { Contact } from "./contact";
 
 /** Sign-in options (FR-10): a code by email or SMS, Apple, Google — all through Supabase Auth. */
 export const authAvailable = supabase !== null;
-export const appleAvailable = Platform.OS === "ios";
+// Each provider has to be switched on in Supabase first; offering one that is off only
+// shows the user an error. Email links need no provider, so they are always available.
+export const appleAvailable = Platform.OS === "ios" && process.env.EXPO_PUBLIC_SIGNIN_APPLE === "1";
+export const googleAvailable = process.env.EXPO_PUBLIC_SIGNIN_GOOGLE === "1";
+export const phoneAvailable = process.env.EXPO_PUBLIC_SIGNIN_PHONE === "1";
 
 /** After any successful sign-in: keep what this phone captured, then pull the full chat. */
 async function afterSignIn() {
