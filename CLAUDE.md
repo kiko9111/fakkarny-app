@@ -29,6 +29,11 @@ Rules:
   client is generated into apps/api/src/generated/ (gitignored; `postinstall` runs
   `prisma generate`), and it connects through @prisma/adapter-pg. Use `db()` from
   apps/api/src/db.ts.
+- Supabase project ref `cyvslirlrcxpyhynzxrg` (eu-west-1). Migrations through
+  20261120140000_enable_rls are applied there. Every table has row level security on
+  with no policies: the API connects as the table owner (bypasses RLS), and Supabase's
+  public Data API gets nothing. Enable RLS in the migration of any new table. Connect
+  with the session pooler (port 5432), not the transaction pooler: pg-boss needs it.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by

@@ -43,7 +43,7 @@ Push notifications, Apple sign-in, RevenueCat purchases and widgets need a
 
 ## Launch checklist (manual steps from PRD §8)
 - [x] Bundle ID `com.fakkarni.app` (iOS + Android) is set in `apps/mobile/app.json`. Run `eas init` (adds `extra.eas.projectId`, needed for push).
-- [ ] Supabase: create the project, enable Phone (SMS provider), Apple and Google providers, add `fakkarni://auth/callback` as a redirect URL.
+- [ ] Supabase: project created, tables migrated and `fakkarni://auth/callback` added as a redirect URL (done 2026-11-20). Still to do: enable Phone (SMS provider), Apple and Google providers.
 - [ ] RevenueCat: products (monthly, yearly, 7-day trial) in App Store Connect and Google Play, entitlement `pro`, current offering with monthly + annual packages, webhook to `https://<api>/webhooks/revenuecat` with the `REVENUECAT_WEBHOOK_AUTH` header.
 - [ ] Set `ANTHROPIC_API_KEY`, run `npm run eval -- --strict` until extraction ≥ 90%, and have native speakers rate `evals/out/review.csv` (target 90% "sounds like a friend").
 - [ ] Helpline numbers in `apps/api/src/persona/prompt.ts` were checked against official sources on 2026-11-20; make one test call per number before launch.
