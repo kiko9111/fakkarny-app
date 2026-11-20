@@ -94,14 +94,22 @@ Rules:
 - Conversation pipeline (apps/api/src/pipeline/conversation.ts): rules fast path
   (rules.ts: thanks/emoji, crisis keyword safety net) → context (context.ts: ~20
   ranked memories, open items with ids, rolling summary, last 15 messages, local NOW)
-  → one Claude call (src/ai/model.ts, `claude-haiku-5-5`, structured output, persona
+  → one Claude call (src/ai/model.ts, `claude-haiku-5-5` at medium effort, structured output, persona
   system prompt cached) → strict zod validation → apply.ts in a transaction. Model
   times are local wall-clock, converted with src/lib/time.ts. The context also carries
   UPCOMING DAYS (14 dated weekdays, so the model looks dates up instead of computing
-  them) and REPLY SCRIPT (decided in code from the last message's letters); a reply
-  with Arabic letters to a Latin-letter message gets one retry (`latinOnly`). Every call logs an
+  them), REPLY SCRIPT and ADDRESS THE USER AS (both decided in code). Every call logs an
   `ai_call` Event with tokens + cost (no content). The pipeline is injected into
   buildApp, so tests use a scripted fake model.
+- Reply language (owner decision, 2026-11-21, replaces the PRD's "Franco → Franco"):
+  the friend reads Franco but never writes it. Arabic and Franco messages are answered
+  in Egyptian Arabic in Arabic letters (titles, nudges and names too); English in
+  English. `detectScript` (rules.ts) classifies the input, `replyLang` maps it, the
+  context states REPLY SCRIPT and ADDRESS THE USER AS (masculine until a memory says
+  "المؤنث"), and a reply without Arabic letters gets one retry (`requireArabic`). The
+  persona carries the colloquial-not-Modern-Standard rules and a Franco reading glossary.
+- The friend runs `claude-haiku-5-5` at effort "medium": at "low" it invented details
+  when reading Franco. Override with FAKKARNI_FRIEND_EFFORT / FAKKARNI_FRIEND_MODEL.
 - The app's Anthropic client ignores the shell's ANTHROPIC_BASE_URL on purpose
   (override with FAKKARNI_ANTHROPIC_BASE_URL). The server needs ANTHROPIC_API_KEY or
   the friend won't reply (messages are still stored).
@@ -111,8 +119,10 @@ Rules:
   the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
-  Last measured (persona 2026-11-20.1+, 101 cases): extraction 98–100%, style 100%
-  across runs; the baseline before tuning was 76% / 76%. Scores move a case or two
+  Last measured (persona 2026-11-21.2, 112 cases, effort medium): extraction 99–100%,
+  style 99–100% across runs; the baseline before tuning was 76% / 76%. Cases named
+  `talk-*` come from a real device chat; `reply_none` and `no_memories` catch nagging
+  ("anything tomorrow?"), Modern Standard words and memories saved for small talk. Scores move a case or two
   between runs, so run twice before concluding a prompt change helped or hurt.
 - Helpline numbers in apps/api/src/persona/prompt.ts were checked against official
   sources on 2026-11-20 (Egypt now leads with 16328). Still to do before launch: one

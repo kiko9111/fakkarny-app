@@ -5,7 +5,7 @@ import { isAwake, toLocalIso } from "../lib/time";
 
 const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, user.wakeTime, user.sleepTime);
 import { canChat, hasActivePlan } from "../billing/plan";
-import { detectScript, type Script } from "../pipeline/rules";
+import { detectScript, replyLang, type ReplyLang } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
@@ -23,15 +23,14 @@ export interface TickDeps {
 }
 
 /** Which language to start a conversation in: follow how the user last wrote, else their setting. */
-async function scriptFor(prisma: PrismaClient, user: User): Promise<Script> {
+async function scriptFor(prisma: PrismaClient, user: User): Promise<ReplyLang> {
   const last = await prisma.message.findFirst({ where: { userId: user.id, role: "user" }, orderBy: { createdAt: "desc" }, select: { text: true } });
-  if (last) return detectScript(last.text);
+  if (last) return replyLang(detectScript(last.text));
   return user.language === "en" ? "english" : "arabic";
 }
 
-const TRIAL_NOTICE: Record<Script, string> = {
+const TRIAL_NOTICE: Record<ReplyLang, string> = {
   arabic: "على فكرة، التجربة المجانية بتاعتك بتخلص بعد يومين. لو حابب نكمّل سوا، تقدر تشترك من الإعدادات — ولو لأ، ولا يهمك 🙂",
-  franco: "3ala fekra, el free trial bta3ak bey5las ba3d yomen. Law 7abeb nekamel sawa te2dar teshtrek men el settings — w law la2, wala yhemmak 🙂",
   english: "Heads up: your free trial ends in 2 days. If you'd like to keep chatting you can subscribe in settings — and if not, no worries 🙂",
 };
 

@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anthropicApiKey, createAnthropicModel, costUsd, type Usage } from "../apps/api/src/ai/model";
 import type { Item, Message, User } from "../apps/api/src/generated/prisma/client";
-import { isLatinOnly, renderContext } from "../apps/api/src/pipeline/context";
+import { mustReplyInArabic, renderContext } from "../apps/api/src/pipeline/context";
 import { localToUtc } from "../apps/api/src/lib/time";
 import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
@@ -92,7 +92,7 @@ async function main() {
   let totalCost = 0;
   const results = await mapLimit(cases, 5, async (c) => {
     const res = await model
-      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], latinOnly: isLatinOnly(c.message) })
+      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(c.message) })
       .catch((err: unknown) => ({ ok: false as const, reason: `error: ${(err as Error).message}`, usage: null as Usage | null }));
     if (res.usage) totalCost += costUsd(res.usage);
     if (!res.ok) {

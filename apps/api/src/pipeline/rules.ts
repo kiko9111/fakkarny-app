@@ -4,16 +4,46 @@
  * that runs on every message regardless of what the model says.
  */
 
+/** How the user wrote. Franco is Egyptian Arabic typed in Latin letters and digits. */
 export type Script = "arabic" | "franco" | "english";
+/** What the friend writes back. It reads Franco but never writes it: Franco gets Arabic letters. */
+export type ReplyLang = "arabic" | "english";
+export const replyLang = (script: Script): ReplyLang => (script === "english" ? "english" : "arabic");
 
-const ARABIC_RE = /[؀-ۿ]/;
-// Franco: Latin text using digits as Arabic letters (2, 3, 5, 7, 8, 9) or common Franco words.
-const FRANCO_RE = /\b\w*[a-z][2357]\w*\b|\b(ana|enta|enty|ya3ni|3ayez|3ayza|keda|bas|mesh|msh|leh|izzay|ezay|tamam|7aga|bokra|el?nharda|yalla|inshallah|wallahi)\b/i;
+const ARABIC_RE = /[\u0600-\u06FF]/;
+// A digit used as a letter next to a Latin letter ("3andy", "sa3a", "5amis", "ro7t")…
+const DIGIT_LETTER_RE = /[a-z][235789]|[235789][a-z]/;
+// …but not English number forms ("3pm", "2nd", "5k", "7am", "mp3", "h2o").
+const ENGLISH_NUMBERISH_RE = /^(\d+(am|pm|st|nd|rd|th|k|m|kg|km|gb|mb|x|d|h|min|mins|s)?|[a-z]{1,2}\d+[a-z]?)$/;
+const FRANCO_WORDS = new Set([
+  "ana", "enta", "enty", "enti", "e7na", "howa", "heya", "ezay", "ezayak", "ezayek", "izzay", "ezzay", "keda", "kda", "mesh", "msh", "mish",
+  "leh", "eh", "aywa", "aiwa", "tamam", "bokra", "enharda", "elnaharda", "embare7", "yalla", "inshallah", "wallahi", "lazem", "fakarny",
+  "fakkarny", "fakarni", "akalem", "bas", "bass", "awi", "awy", "gedan", "kwayes", "kowayes", "tab", "tayeb", "delwa2ty", "shokran",
+  "ma3lesh", "5alas", "khalas", "mafeesh", "mafish", "feen", "fein", "emta", "leeh", "3ashan", "bta3", "bta3ty", "bta3y", "elly",
+  "habibi", "sa7by", "mama", "baba", "ya", "yom", "sa3a", "gai", "gaya", "ray7", "ray7a", "kaman", "tany", "tani", "kol", "7aga",
+]);
+// Too common in English to count for much on their own.
+const WEAK_FRANCO_WORDS = new Set(["el", "w", "fe", "fi", "da", "di", "ma3", "men", "law", "wala", "aw", "abl", "ba3d", "kan", "la"]);
 
+/**
+ * Arabic letters → "arabic". Latin letters → "franco" when the words are Arabic, else
+ * "english". One Franco word in an English sentence ("ya3ni Ahmed borrowed 500 again")
+ * stays English.
+ */
 export function detectScript(text: string): Script {
   if (ARABIC_RE.test(text)) return "arabic";
-  if (FRANCO_RE.test(text)) return "franco";
-  return "english";
+  const words = text.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+  const letterWords = words.filter((w) => /[a-z]/.test(w));
+  if (letterWords.length === 0) return "english";
+  let strong = 0;
+  let weak = 0;
+  for (const w of letterWords) {
+    if (FRANCO_WORDS.has(w) || (DIGIT_LETTER_RE.test(w) && !ENGLISH_NUMBERISH_RE.test(w))) strong++;
+    else if (WEAK_FRANCO_WORDS.has(w)) weak++;
+  }
+  if (strong >= 2) return "franco";
+  if (strong === 1 && letterWords.length <= 6) return "franco";
+  return strong >= 1 && (strong + weak) / letterWords.length >= 0.4 ? "franco" : "english";
 }
 
 const norm = (t: string) => t.trim().toLowerCase().replace(/[.!؟?،,\s]+/g, " ").trim();
@@ -25,14 +55,12 @@ const THANKS = new Set([
 
 const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|‍|️|\s)+$/u;
 
-const THANKS_REPLIES: Record<Script, string[]> = {
+const THANKS_REPLIES: Record<ReplyLang, string[]> = {
   arabic: ["العفو يا جميل 😊", "ولا يهمك!", "على إيه بس، أنا هنا."],
-  franco: ["El 3afw 😊", "Wala yhemmak!", "3ala eh bas, ana hena."],
   english: ["Anytime 😊", "Of course!", "That's what I'm here for."],
 };
-const EMOJI_REPLIES: Record<Script, string[]> = {
+const EMOJI_REPLIES: Record<ReplyLang, string[]> = {
   arabic: ["😄"],
-  franco: ["😄"],
   english: ["😄"],
 };
 
@@ -40,10 +68,10 @@ const EMOJI_REPLIES: Record<Script, string[]> = {
  * A canned friend reply when no AI is needed, else null. Only for messages that carry no
  * information (thanks, a lone emoji); anything that could contain a plan goes to the model.
  */
-export function fastReply(text: string, scriptHint: Script, pick: (n: number) => number = (n) => Math.floor(Math.random() * n)): string | null {
+export function fastReply(text: string, langHint: ReplyLang, pick: (n: number) => number = (n) => Math.floor(Math.random() * n)): string | null {
   const t = norm(text);
   if (!t) return null;
-  const script = ARABIC_RE.test(t) ? "arabic" : scriptHint;
+  const script: ReplyLang = ARABIC_RE.test(t) ? "arabic" : langHint;
   if (THANKS.has(t)) {
     const opts = THANKS_REPLIES[script];
     return opts[pick(opts.length)] ?? null;
@@ -70,19 +98,17 @@ export function looksLikeCrisis(text: string): boolean {
   return CRISIS_PATTERNS.some((re) => re.test(text) || re.test(folded));
 }
 
-const HELPLINE_LEAD: Record<Script, string> = {
+const HELPLINE_LEAD: Record<ReplyLang, string> = {
   arabic: "أنا جنبك. لو حاسس إنك ممكن تأذي نفسك، كلّم حد بتثق فيه دلوقتي، أو اتصل بالخط الساخن:",
-  franco: "Ana gambak. Law 7asses enak momken t2zy nafsak, kallem 7ad betse2 feeh delwa2ty, aw etasel bel hotline:",
   english: "I'm here with you. If you might hurt yourself, please reach out to someone you trust right now, or call:",
 };
 
-export function helplineMessage(script: Script, helpline: string): string {
+export function helplineMessage(script: ReplyLang, helpline: string): string {
   return `${HELPLINE_LEAD[script]} ${helpline}`;
 }
 
 /** Shown when the AI is unavailable; the user's message is already saved. */
-export const FALLBACK_REPLY: Record<Script, string> = {
+export const FALLBACK_REPLY: Record<ReplyLang, string> = {
   arabic: "معلش، دماغي هنجت ثانية 😅 قولّي تاني؟",
-  franco: "Ma3lesh, demaghy hangat sanya 😅 2olly tany?",
   english: "Sorry, my brain froze for a second 😅 Say that again?",
 };

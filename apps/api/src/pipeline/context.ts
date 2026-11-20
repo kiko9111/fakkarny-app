@@ -1,6 +1,7 @@
 import type { Item, Memory, Message, PrismaClient, Summary, User } from "../generated/prisma/client";
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
+import { detectScript } from "./rules";
 
 export const RECENT_MESSAGES = 15;
 export const MAX_MEMORIES = 20;
@@ -63,21 +64,35 @@ function describeItem(i: Item, tz: string): string {
 }
 
 /**
- * Which letters the reply must use, decided in code from the message being answered
- * (the model alone drifts to Arabic letters on Franco messages). Null when the message
- * has no letters (emoji, a bare number): then the model follows the conversation.
+ * The language of the reply, decided in code from the message being answered (left to
+ * itself the model drifts). Null when the message has no letters (emoji, a bare
+ * number): then the model follows the conversation.
  */
-/** True when the message being answered is written in Latin letters only (Franco or English). */
-export function isLatinOnly(text: string): boolean {
-  return /[a-z]/i.test(text) && !/[\u0600-\u06FF]/.test(text);
+export function replyScript(lastUserText: string): string | null {
+  if (!/[a-z\u0600-\u06FF]/i.test(lastUserText)) return null;
+  switch (detectScript(lastUserText)) {
+    case "arabic":
+      return "Egyptian Arabic in Arabic letters (their last message is in Arabic script)";
+    case "franco":
+      return "Egyptian Arabic in ARABIC letters (their last message is Franco: read it as Arabic, never answer in Latin letters). Titles, nudges and names in Arabic letters too";
+    default:
+      return "English (their last message is in English). If it is actually Arabic typed in Latin letters, answer in Egyptian Arabic in Arabic letters instead";
+  }
 }
 
-export function replyScript(lastUserText: string): string | null {
-  if (/[\u0600-\u06FF]/.test(lastUserText)) return "Arabic letters (their last message is in Arabic script)";
-  if (/[a-z]/i.test(lastUserText)) {
-    return "Latin letters ONLY, no Arabic letters anywhere in reply, titles or nudges (their last message is in Latin letters: answer in Franco if it is Franco, in English if it is English)";
-  }
-  return null;
+/**
+ * Arabic needs a grammatical gender for "you". Decided in code so it stays stable from
+ * one reply to the next: feminine once a memory records it, otherwise masculine.
+ */
+export function addressAs(memories: Pick<Memory, "content">[]): string {
+  return memories.some((m) => m.content.includes("المؤنث"))
+    ? "a woman (feminine forms: إنتي، قوليلي، عاملة إيه)"
+    : "a man (masculine forms, the default: إنت، قولي، عامل إيه) unless their own words in this conversation are feminine";
+}
+
+/** True when the reply to this message has to contain Arabic letters (Arabic or Franco input). */
+export function mustReplyInArabic(lastUserText: string): boolean {
+  return /[a-z\u0600-\u06FF]/i.test(lastUserText) && detectScript(lastUserText) !== "english";
 }
 
 /**
@@ -90,9 +105,10 @@ export function renderContext(ctx: ConversationContext): string {
   const lines: string[] = [];
   lines.push(`NOW: ${describeNow(now, tz)}`);
   lines.push(`UPCOMING DAYS: ${describeUpcomingDays(now, tz)}`);
-  lines.push(`USER: name=${user.name ?? "(unknown — ask what to call them if it fits)"}; app language (fallback only; reply in the script of their last message)=${user.language === "ar_EG" ? "Egyptian Arabic" : "English"}; tone=${user.tone}; wakes ${user.wakeTime}, sleeps ${user.sleepTime}`);
+  lines.push(`USER: name=${user.name ?? "(unknown — ask what to call them if it fits)"}; app language (fallback only; REPLY SCRIPT decides)=${user.language === "ar_EG" ? "Egyptian Arabic" : "English"}; tone=${user.tone}; wakes ${user.wakeTime}, sleeps ${user.sleepTime}`);
   const script = replyScript(ctx.recent.at(-1)?.text ?? "");
   if (script) lines.push(`REPLY SCRIPT: ${script}`);
+  lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories)}`);
   lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
   lines.push("");
   lines.push("MEMORIES (what you know about their life):");

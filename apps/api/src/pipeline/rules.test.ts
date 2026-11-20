@@ -1,14 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { toFriendResponse, type ModelOutput } from "../ai/model";
-import { detectScript, fastReply, looksLikeCrisis } from "./rules";
-import { isLatinOnly, rankMemories, replyScript } from "./context";
+import { detectScript, fastReply, looksLikeCrisis, replyLang } from "./rules";
+import { addressAs, mustReplyInArabic, rankMemories, replyScript } from "./context";
 
 describe("detectScript", () => {
   it.each([
     ["عندي دكتور الأسنان الأحد الساعة ٦", "arabic"],
-    ["ya3ni Ahmed borrowed 500 again", "franco"],
+    ["meeting مع المدير", "arabic"],
+    // Franco: Arabic words in Latin letters, with or without digits.
     ["ana 3ayez afakar el electricity", "franco"],
+    ["3andy dentist el 7ad el sa3a 6", "franco"],
+    ["3andy doctor yom el talat el sa3a 7", "franco"],
+    ["hassan 3aleh 2500 men el shahr elly fat", "franco"],
+    ["fakarny akalem mama bokra", "franco"],
+    ["lazem a3ady el passport", "franco"],
+    ["el ahly kesbo enharda!! ⚽", "franco"],
+    ["mahmoud 5ad 3 karateen w hayedfa3 1200 yom el 5amis", "franco"],
+    ["enahrda ro7t l mama w et8adeet ma3 o5ty", "franco"],
+    ["bat w keshk w ro2a2 w ms7ashy w mesa23a", "franco"],
+    ["mama tanya y3ny eh", "franco"],
+    ["la2sh fahem", "franco"],
+    ["ezayak ya basha", "franco"],
+    ["shokran", "franco"],
+    // English, including one stray Franco word and English number forms.
+    ["ya3ni Ahmed borrowed 500 again and I have the dentist Sunday at 6, ugh", "english"],
     ["Send the report to the manager before 2", "english"],
+    ["my flight to Jeddah is Saturday at 7am", "english"],
+    ["Hassan moved our meeting to 3pm", "english"],
+    ["rent is due on the 5th, there's a late fee if I miss it", "english"],
+    ["upload the mp3 to s3 for me", "english"],
+    ["pick up the kids at 3:30 today", "english"],
+    ["hey! how are you?", "english"],
   ])("%s → %s", (text, script) => expect(detectScript(text)).toBe(script));
 });
 
@@ -16,7 +38,8 @@ describe("fastReply", () => {
   it("answers thanks and lone emojis without AI", () => {
     expect(fastReply("شكراً", "arabic", () => 0)).toBe("العفو يا جميل 😊");
     expect(fastReply("Thanks!", "english", () => 0)).toBe("Anytime 😊");
-    expect(fastReply("shokran", "franco", () => 0)).toBe("El 3afw 😊");
+    // Franco thanks get the Arabic reply: the friend reads Franco but never writes it.
+    expect(fastReply("shokran", replyLang(detectScript("shokran")), () => 0)).toBe("العفو يا جميل 😊");
     expect(fastReply("😂😂", "english", () => 0)).toBe("😄");
   });
 
@@ -75,17 +98,25 @@ describe("rankMemories", () => {
 });
 
 describe("replyScript", () => {
-  it("is decided by the letters of the message being answered", () => {
-    expect(replyScript("عندي دكتور بكرة")).toMatch(/^Arabic letters/);
-    expect(replyScript("3andy doctor bokra")).toMatch(/^Latin letters ONLY/);
-    expect(replyScript("dentist Sunday at 6")).toMatch(/^Latin letters ONLY/);
+  it("answers Arabic and Franco in Arabic letters, English in English", () => {
+    expect(replyScript("عندي دكتور بكرة")).toMatch(/^Egyptian Arabic in Arabic letters/);
+    expect(replyScript("3andy doctor bokra")).toMatch(/^Egyptian Arabic in ARABIC letters/);
+    expect(replyScript("dentist Sunday at 6")).toMatch(/^English/);
     expect(replyScript("👍")).toBeNull();
     expect(replyScript("300")).toBeNull();
   });
 
-  it("isLatinOnly is false as soon as there is an Arabic letter", () => {
-    expect(isLatinOnly("hassan 3aleh 2500")).toBe(true);
-    expect(isLatinOnly("meeting مع المدير")).toBe(false);
-    expect(isLatinOnly("٣٠٠")).toBe(false);
+  it("requires Arabic letters in the reply for Arabic and Franco messages only", () => {
+    expect(mustReplyInArabic("hassan 3aleh 2500")).toBe(true);
+    expect(mustReplyInArabic("meeting مع المدير")).toBe(true);
+    expect(mustReplyInArabic("meeting with Hassan Monday 11am")).toBe(false);
+    expect(mustReplyInArabic("٣٠٠")).toBe(true); // Arabic digits: an Arabic keyboard
+    expect(mustReplyInArabic("300")).toBe(false);
+  });
+
+  it("addresses the user as a man until a memory says otherwise", () => {
+    expect(addressAs([])).toMatch(/^a man/);
+    expect(addressAs([{ content: "مراتي، وبتشتغل دكتورة" }])).toMatch(/^a man/);
+    expect(addressAs([{ content: "بتتكلم عن نفسها بصيغة المؤنث" }])).toMatch(/^a woman/);
   });
 });
