@@ -31,8 +31,12 @@ export default function OnboardingScreen() {
     try {
       await fn();
       then ? then() : finish();
-    } catch {
-      Alert.alert(t.onboarding.failed);
+    } catch (err) {
+      // Supabase limits how often a sign-in email can be sent (once a minute per address, and
+      // a small hourly total on the built-in mailer). That is "wait", not "something broke".
+      const e = err as { status?: number; code?: string };
+      const limited = e?.status === 429 || (typeof e?.code === "string" && e.code.includes("rate_limit"));
+      Alert.alert(limited ? t.onboarding.tooSoon : t.onboarding.failed);
     } finally {
       setBusy(false);
     }

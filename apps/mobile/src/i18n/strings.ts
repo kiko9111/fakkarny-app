@@ -102,6 +102,7 @@ const arEG = {
     skip: "بعدين",
     notConfigured: "الدخول بالحساب لسه مش متفعّل في النسخة دي.",
     failed: "معرفناش ندخلك. جرّب تاني.",
+    tooSoon: "بعتنالك لينك من شوية. بص في الإيميل (والـ Spam)، ولو ملقتوش استنى شوية وجرّب تاني. تقدر تكمّل دلوقتي من «بعدين».",
   },
   paywall: {
     title: "ابدأ تجربتك المجانية ٧ أيام",
@@ -230,6 +231,7 @@ const en: DeepStringShape<Strings> = {
     skip: "Later",
     notConfigured: "Sign-in isn't set up in this build yet.",
     failed: "Couldn't sign you in. Try again.",
+    tooSoon: "We just emailed you a link. Check your inbox (and Spam); if it isn't there, wait a little and try again. You can carry on now with “Later”.",
   },
   paywall: {
     title: "Start your 7-day free trial",
