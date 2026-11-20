@@ -20,6 +20,7 @@ const app = buildApp(
     pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
     auth: { supabaseUrl, supabaseJwtSecret: env.SUPABASE_JWT_SECRET, allowInstallId: env.ALLOW_INSTALL_ID === "1" },
     adminPassword: env.ADMIN_PASSWORD,
+    legal: { operator: env.LEGAL_OPERATOR, contactEmail: env.LEGAL_CONTACT_EMAIL, reviewed: env.LEGAL_REVIEWED === "1" },
     sentry,
     billing: {
       requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",

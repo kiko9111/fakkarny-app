@@ -5,8 +5,9 @@ import * as WebBrowser from "expo-web-browser";
 import { linkAccount } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { fullSync } from "@/sync/full";
+import type { Contact } from "./contact";
 
-/** Sign-in options (FR-10): phone OTP, Apple, Google — all through Supabase Auth. */
+/** Sign-in options (FR-10): a code by email or SMS, Apple, Google — all through Supabase Auth. */
 export const authAvailable = supabase !== null;
 export const appleAvailable = Platform.OS === "ios";
 
@@ -16,9 +17,16 @@ async function afterSignIn() {
   await fullSync();
 }
 
-export async function sendPhoneCode(phone: string) {
+/**
+ * Email: Supabase mails a sign-in link that reopens the app at auth/callback (the
+ * built-in mailer can only send a link, not a code). Phone: an SMS code.
+ */
+export async function sendCode(contact: Contact) {
   if (!supabase) throw new Error("auth not configured");
-  const { error } = await supabase.auth.signInWithOtp({ phone });
+  const { error } =
+    contact.kind === "email"
+      ? await supabase.auth.signInWithOtp({ email: contact.value, options: { shouldCreateUser: true, emailRedirectTo: Linking.createURL("auth/callback") } })
+      : await supabase.auth.signInWithOtp({ phone: contact.value });
   if (error) throw error;
 }
 
@@ -27,6 +35,25 @@ export async function verifyPhoneCode(phone: string, token: string) {
   const { error } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
   if (error) throw error;
   await afterSignIn();
+}
+
+// A sign-in code can be exchanged only once, but the callback screen and the Google
+// flow can both receive the same redirect: share one exchange per code.
+const exchanges = new Map<string, Promise<void>>();
+
+/** Finish a sign-in that came back to fakkarni://auth/callback?code=… (email link, Google). */
+export function completeCallback(code: string): Promise<void> {
+  let pending = exchanges.get(code);
+  if (!pending) {
+    pending = (async () => {
+      if (!supabase) throw new Error("auth not configured");
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      await afterSignIn();
+    })();
+    exchanges.set(code, pending);
+  }
+  return pending;
 }
 
 export async function signInWithApple() {
@@ -50,9 +77,7 @@ export async function signInWithGoogle() {
   if (result.type !== "success") throw new Error("cancelled");
   const code = new URL(result.url).searchParams.get("code");
   if (!code) throw new Error("no code");
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-  if (exchangeError) throw exchangeError;
-  await afterSignIn();
+  await completeCallback(code);
 }
 
 export async function currentAccountLabel(): Promise<string | null> {

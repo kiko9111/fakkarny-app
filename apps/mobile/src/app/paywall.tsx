@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { billingAvailable, getPlanOptions, purchase, restore, type PlanOption } from "@/billing";
-import { t } from "@/i18n";
+import { language, t } from "@/i18n";
+import { legalUrl } from "@/lib/api-url";
+import { API_URL } from "@/lib/api";
 import { colors } from "@/lib/theme";
 
 /** FR-9: 7-day trial, then monthly or yearly. Prices come from the store (regional pricing). */
@@ -77,12 +79,21 @@ export default function PaywallScreen() {
         </Pressable>
       ) : null}
       <Text style={styles.terms}>{t.paywall.terms}</Text>
+      <View style={styles.legalRow}>
+        <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))}>
+          <Text style={styles.restore}>{t.paywall.termsLink}</Text>
+        </Pressable>
+        <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))}>
+          <Text style={styles.restore}>{t.paywall.privacyLink}</Text>
+        </Pressable>
+      </View>
       <Text style={styles.terms}>{t.settings.aiDisclosure}</Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  legalRow: { flexDirection: "row", justifyContent: "center", gap: 24 },
   page: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 24, gap: 14 },
   title: { fontSize: 24, fontWeight: "700", color: colors.text, textAlign: "center" },

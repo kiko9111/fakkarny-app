@@ -18,6 +18,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="memories" options={{ title: t.memories.title }} />
         <Stack.Screen name="paywall" options={{ presentation: "modal", title: "" }} />
         <Stack.Screen name="saved/[clientId]" options={{ presentation: "modal" }} />

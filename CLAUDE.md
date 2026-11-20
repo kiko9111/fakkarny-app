@@ -49,6 +49,17 @@ Rules:
   ALLOW_INSTALL_ID=0. After sign-in the phone calls POST /auth/link to move its
   pre-sign-in data to the account, then pulls everything (apps/mobile/src/sync/full.ts).
   Every route plugin gets the same `authenticate` hook from buildApp.
+- Sign-in methods (apps/mobile/src/auth): one field takes an email or a phone number
+  (`parseContact`, pure). Email → Supabase mails a sign-in link that reopens the app at
+  `auth/callback` (route src/app/auth/callback.tsx, PKCE code exchange shared with the
+  Google flow via `completeCallback`). It is a link, not a code, because Supabase's
+  free built-in mailer cannot use a custom template (and sends about 2 emails an hour:
+  set up custom SMTP before launch). Phone → SMS code (needs an SMS provider). The
+  Supabase redirect allow list has `fakkarni://auth/callback` and `exp://**` (Expo Go).
+- Legal pages: GET /legal/terms and /legal/privacy on the API (?lang=en, Arabic by
+  default), text in apps/api/src/legal/content.ts, linked from the paywall and
+  Settings. They show a draft notice until LEGAL_REVIEWED=1; set LEGAL_OPERATOR and
+  LEGAL_CONTACT_EMAIL. Keep the privacy text in step with what the code collects.
 - Mobile config: apps/mobile/.env.local with EXPO_PUBLIC_SUPABASE_URL and
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (sign-in is hidden without them). Small sync
   prefs (language, always_direct, onboarded) live in src/lib/prefs.ts (expo-sqlite
@@ -120,6 +131,6 @@ Rules:
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
 - [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming deferred.
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
-- [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
+- [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
 - [x] M7 Hardening: Sentry, rate limits + daily cap, retries, admin dashboard with AI cost per user, EAS profiles, Dockerfile. Store submission steps are manual (see README launch checklist).

@@ -27,6 +27,11 @@ const Env = z.object({
   SENTRY_DSN: z.string().optional().transform((v) => v || undefined),
   NODE_ENV: z.string().default("development"),
   /** Optional Expo access token if push security is enabled for the project. */
+  /** Public /legal pages: who runs the service and how to reach them. */
+  LEGAL_OPERATOR: z.string().optional().transform((v) => v || undefined),
+  LEGAL_CONTACT_EMAIL: z.string().optional().transform((v) => v || undefined),
+  /** "1" once a lawyer has reviewed apps/api/src/legal/content.ts; removes the draft notice. */
+  LEGAL_REVIEWED: z.enum(["0", "1"]).default("0"),
   EXPO_ACCESS_TOKEN: z.string().optional().transform((v) => v || undefined),
 });
 export type Env = z.infer<typeof Env>;

@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-/** Supabase Auth client (phone OTP, Apple, Google), or null until the project is configured. */
+/** Supabase Auth client (email link, phone OTP, Apple, Google), or null until the project is configured. */
 export const supabase: SupabaseClient | null =
   url && key
     ? createClient(url, key, {

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -8,6 +8,7 @@ import { authAvailable, currentAccountLabel, signOut } from "@/auth";
 import { resetLocalData } from "@/db/reset";
 import { language, t } from "@/i18n";
 import { API_URL, deleteAccount, exportData, getMe, patchMe } from "@/lib/api";
+import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
 import { colors } from "@/lib/theme";
@@ -181,6 +182,12 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))}>
+        <Text style={styles.link}>{t.paywall.termsLink}</Text>
+      </Pressable>
+      <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))}>
+        <Text style={styles.link}>{t.paywall.privacyLink}</Text>
+      </Pressable>
       <Text style={styles.footer}>{t.settings.aiDisclosure}</Text>
       <Text style={styles.footerSmall}>{API_URL}</Text>
     </ScrollView>
