@@ -46,7 +46,7 @@ Push notifications, Apple sign-in, RevenueCat purchases and widgets need a
 - [ ] Supabase: create the project, enable Phone (SMS provider), Apple and Google providers, add `fakkarni://auth/callback` as a redirect URL.
 - [ ] RevenueCat: products (monthly, yearly, 7-day trial) in App Store Connect and Google Play, entitlement `pro`, current offering with monthly + annual packages, webhook to `https://<api>/webhooks/revenuecat` with the `REVENUECAT_WEBHOOK_AUTH` header.
 - [ ] Set `ANTHROPIC_API_KEY`, run `npm run eval -- --strict` until extraction ≥ 90%, and have native speakers rate `evals/out/review.csv` (target 90% "sounds like a friend").
-- [ ] Verify the helpline numbers in `apps/api/src/persona/prompt.ts`.
+- [ ] Helpline numbers in `apps/api/src/persona/prompt.ts` were checked against official sources on 2026-11-20; make one test call per number before launch.
 - [ ] Deploy the API (root `Dockerfile`) to Railway or Fly.io with `REQUIRE_SUBSCRIPTION=1`, `ALLOW_INSTALL_ID=0`, `ADMIN_PASSWORD`, `SENTRY_DSN`.
 - [ ] Sentry source maps: `npx @sentry/wizard@latest -i reactNative` in apps/mobile.
 - [ ] Add Terms of Use and Privacy Policy links to the paywall and store listings (required by Apple).

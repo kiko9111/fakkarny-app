@@ -74,10 +74,12 @@ Rules:
   the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
-  Last measured (persona 2026-11-20.1, 101 cases): extraction 98–100%, style 100%
+  Last measured (persona 2026-11-20.1+, 101 cases): extraction 98–100%, style 100%
   across runs; the baseline before tuning was 76% / 76%. Scores move a case or two
   between runs, so run twice before concluding a prompt change helped or hurt.
-- Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
+- Helpline numbers in apps/api/src/persona/prompt.ts were checked against official
+  sources on 2026-11-20 (Egypt now leads with 16328). Still to do before launch: one
+  test call per number, and a re-check before each release.
 - Subscriptions (M6): RevenueCat app user id = our User.id. POST /webhooks/revenuecat
   (Authorization = REVENUECAT_WEBHOOK_AUTH) mirrors the plan onto User; POST
   /me/plan/refresh re-reads it with REVENUECAT_SECRET_KEY right after a purchase.
