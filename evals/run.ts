@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anthropicApiKey, createAnthropicModel, costUsd, type Usage } from "../apps/api/src/ai/model";
 import type { Item, Message, User } from "../apps/api/src/generated/prisma/client";
-import { renderContext } from "../apps/api/src/pipeline/context";
+import { isLatinOnly, renderContext } from "../apps/api/src/pipeline/context";
 import { localToUtc } from "../apps/api/src/lib/time";
 import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
@@ -59,7 +59,7 @@ function contextFor(c: EvalCase): string {
         sourceMessageId: null, updatedAt: now, createdAt: now, doneAt: null,
       }) as unknown as Item,
   );
-  return renderContext({ user, now, memories: [], openItems, summary: null, recent: [] as Message[] });
+  return renderContext({ user, now, memories: [], openItems, summary: null, recent: [{ text: c.message }] as unknown as Message[] });
 }
 
 async function mapLimit<T, R>(xs: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -92,7 +92,7 @@ async function main() {
   let totalCost = 0;
   const results = await mapLimit(cases, 5, async (c) => {
     const res = await model
-      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }] })
+      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], latinOnly: isLatinOnly(c.message) })
       .catch((err: unknown) => ({ ok: false as const, reason: `error: ${(err as Error).message}`, usage: null as Usage | null }));
     if (res.usage) totalCost += costUsd(res.usage);
     if (!res.ok) {

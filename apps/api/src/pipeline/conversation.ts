@@ -5,7 +5,7 @@ import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } fr
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
-import { loadContext, renderContext } from "./context";
+import { isLatinOnly, loadContext, renderContext } from "./context";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import type { MessagePipeline } from "./types";
@@ -64,7 +64,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
     try {
-      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history });
+      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, latinOnly: isLatinOnly(ctx.recent.at(-1)?.text ?? "") });
       usage = result.usage;
       if (result.ok) {
         replies = result.output.reply;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toFriendResponse, type ModelOutput } from "../ai/model";
 import { detectScript, fastReply, looksLikeCrisis } from "./rules";
-import { rankMemories } from "./context";
+import { isLatinOnly, rankMemories, replyScript } from "./context";
 
 describe("detectScript", () => {
   it.each([
@@ -28,7 +28,7 @@ describe("fastReply", () => {
 });
 
 describe("looksLikeCrisis", () => {
-  it.each(["I want to kill myself", "عايز اموت", "3ayez amoot", "thinking about suicide"])("flags %s", (t) =>
+  it.each(["I want to kill myself", "عايز اموت", "عايز أموت", "أنا تعبت ومش عايز أعيش خلاص", "3ayez amoot", "thinking about suicide"])("flags %s", (t) =>
     expect(looksLikeCrisis(t)).toBe(true),
   );
   it.each(["this traffic is killing me", "I'm dying to see the match", "الدنيا زحمة موت"])("does not flag %s", (t) =>
@@ -47,14 +47,17 @@ describe("toFriendResponse", () => {
     expect(r.create_items[0]).toEqual({ type: "task", title: "Call mom", important: false });
   });
 
-  it("rejects bad local dates and over-long replies", () => {
+  it("rejects bad local dates", () => {
     expect(() =>
       toFriendResponse({
         ...base,
         create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, debt: null }],
       }),
     ).toThrow();
-    expect(() => toFriendResponse({ ...base, reply: ["a", "b", "c", "d"] })).toThrow();
+  });
+
+  it("folds extra messages into the third instead of failing the turn", () => {
+    expect(toFriendResponse({ ...base, reply: ["a", "b", "c", "d"] }).reply).toEqual(["a", "b", "c d"]);
   });
 
   it("trims and drops empty reply strings", () => {
@@ -68,5 +71,21 @@ describe("rankMemories", () => {
   it("puts memories mentioned in the chat first, then the newest", () => {
     const ranked = rankMemories([mk("Omar", "2026-01-01"), mk("Ahmed", "2026-01-02"), mk("Dokki", "2026-03-01")], "did ahmed pay?", 2);
     expect(ranked.map((m) => m.subject)).toEqual(["Ahmed", "Dokki"]);
+  });
+});
+
+describe("replyScript", () => {
+  it("is decided by the letters of the message being answered", () => {
+    expect(replyScript("عندي دكتور بكرة")).toMatch(/^Arabic letters/);
+    expect(replyScript("3andy doctor bokra")).toMatch(/^Latin letters ONLY/);
+    expect(replyScript("dentist Sunday at 6")).toMatch(/^Latin letters ONLY/);
+    expect(replyScript("👍")).toBeNull();
+    expect(replyScript("300")).toBeNull();
+  });
+
+  it("isLatinOnly is false as soon as there is an Arabic letter", () => {
+    expect(isLatinOnly("hassan 3aleh 2500")).toBe(true);
+    expect(isLatinOnly("meeting مع المدير")).toBe(false);
+    expect(isLatinOnly("٣٠٠")).toBe(false);
   });
 });

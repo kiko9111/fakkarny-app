@@ -59,7 +59,10 @@ Rules:
   ranked memories, open items with ids, rolling summary, last 15 messages, local NOW)
   → one Claude call (src/ai/model.ts, `claude-haiku-5-5`, structured output, persona
   system prompt cached) → strict zod validation → apply.ts in a transaction. Model
-  times are local wall-clock, converted with src/lib/time.ts. Every call logs an
+  times are local wall-clock, converted with src/lib/time.ts. The context also carries
+  UPCOMING DAYS (14 dated weekdays, so the model looks dates up instead of computing
+  them) and REPLY SCRIPT (decided in code from the last message's letters); a reply
+  with Arabic letters to a Latin-letter message gets one retry (`latinOnly`). Every call logs an
   `ai_call` Event with tokens + cost (no content). The pipeline is injected into
   buildApp, so tests use a scripted fake model.
 - The app's Anthropic client ignores the shell's ANTHROPIC_BASE_URL on purpose
@@ -71,6 +74,9 @@ Rules:
   the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
+  Last measured (persona 2026-11-20.1, 101 cases): extraction 98–100%, style 100%
+  across runs; the baseline before tuning was 76% / 76%. Scores move a case or two
+  between runs, so run twice before concluding a prompt change helped or hurt.
 - Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.
 - Subscriptions (M6): RevenueCat app user id = our User.id. POST /webhooks/revenuecat
   (Authorization = REVENUECAT_WEBHOOK_AUTH) mirrors the plan onto User; POST
@@ -105,7 +111,7 @@ Rules:
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
-- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; accuracy not yet measured — needs ANTHROPIC_API_KEY). Reply streaming deferred.
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming deferred.
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [x] M5 Auth, sync and screens: Supabase sign-in (phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice

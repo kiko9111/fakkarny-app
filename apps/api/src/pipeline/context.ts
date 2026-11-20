@@ -1,5 +1,5 @@
 import type { Item, Memory, Message, PrismaClient, Summary, User } from "../generated/prisma/client";
-import { describeNow, toLocalIso } from "../lib/time";
+import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
 
 export const RECENT_MESSAGES = 15;
@@ -63,6 +63,24 @@ function describeItem(i: Item, tz: string): string {
 }
 
 /**
+ * Which letters the reply must use, decided in code from the message being answered
+ * (the model alone drifts to Arabic letters on Franco messages). Null when the message
+ * has no letters (emoji, a bare number): then the model follows the conversation.
+ */
+/** True when the message being answered is written in Latin letters only (Franco or English). */
+export function isLatinOnly(text: string): boolean {
+  return /[a-z]/i.test(text) && !/[\u0600-\u06FF]/.test(text);
+}
+
+export function replyScript(lastUserText: string): string | null {
+  if (/[\u0600-\u06FF]/.test(lastUserText)) return "Arabic letters (their last message is in Arabic script)";
+  if (/[a-z]/i.test(lastUserText)) {
+    return "Latin letters ONLY, no Arabic letters anywhere in reply, titles or nudges (their last message is in Latin letters: answer in Franco if it is Franco, in English if it is English)";
+  }
+  return null;
+}
+
+/**
  * The per-user context block, sent as the first user turn (after the cached persona).
  * Kept deterministic for a given state so repeated calls can share cache where possible.
  */
@@ -71,7 +89,10 @@ export function renderContext(ctx: ConversationContext): string {
   const tz = user.timezone;
   const lines: string[] = [];
   lines.push(`NOW: ${describeNow(now, tz)}`);
-  lines.push(`USER: name=${user.name ?? "(unknown — ask what to call them if it fits)"}; app language=${user.language === "ar_EG" ? "Egyptian Arabic" : "English"}; tone=${user.tone}; wakes ${user.wakeTime}, sleeps ${user.sleepTime}`);
+  lines.push(`UPCOMING DAYS: ${describeUpcomingDays(now, tz)}`);
+  lines.push(`USER: name=${user.name ?? "(unknown — ask what to call them if it fits)"}; app language (fallback only; reply in the script of their last message)=${user.language === "ar_EG" ? "Egyptian Arabic" : "English"}; tone=${user.tone}; wakes ${user.wakeTime}, sleeps ${user.sleepTime}`);
+  const script = replyScript(ctx.recent.at(-1)?.text ?? "");
+  if (script) lines.push(`REPLY SCRIPT: ${script}`);
   lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
   lines.push("");
   lines.push("MEMORIES (what you know about their life):");
