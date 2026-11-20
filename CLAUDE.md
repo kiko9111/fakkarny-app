@@ -71,12 +71,13 @@ Rules:
   pre-sign-in data to the account, then pulls everything (apps/mobile/src/sync/full.ts).
   Every route plugin gets the same `authenticate` hook from buildApp.
 - Sign-in methods (apps/mobile/src/auth): one field takes an email or a phone number
-  (`parseContact`, pure). Email → Supabase mails a sign-in link that reopens the app at
-  `auth/callback` (route src/app/auth/callback.tsx, PKCE code exchange shared with the
-  Google flow via `completeCallback`). It is a link, not a code, because Supabase's
-  free built-in mailer cannot use a custom template (and sends about 2 emails an hour:
-  set up custom SMTP before launch). Phone → SMS code (needs an SMS provider). The
-  Supabase redirect allow list has `fakkarni://auth/callback` and `exp://**` (Expo Go).
+  (`parseContact`, pure). Email → a 6-digit code typed into the app (`verifyOtp`, type
+  "email"). Supabase sends through custom SMTP (a Gmail account with an app password,
+  set in the dashboard on 2026-11-21); the code template and the 60-an-hour limit were
+  set through the management API. Before that, the built-in mailer allowed about 2
+  emails an hour for the whole project and could not send a code. The `auth/callback`
+  route stays for the Google redirect. Phone → SMS code (needs an SMS provider). Move
+  to a sending service with the project's own domain before public launch.
 - Legal pages: GET /legal/terms and /legal/privacy on the API (?lang=en, Arabic by
   default), text in apps/api/src/legal/content.ts, linked from the paywall and
   Settings. They show a draft notice until LEGAL_REVIEWED=1; set LEGAL_OPERATOR and
