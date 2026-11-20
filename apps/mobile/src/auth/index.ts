@@ -22,8 +22,8 @@ async function afterSignIn() {
 }
 
 /**
- * Email: Supabase mails a sign-in link that reopens the app at auth/callback (the
- * built-in mailer can only send a link, not a code). Phone: an SMS code.
+ * Sends a 6-digit code: by email (through the project's own SMTP sender, whose template
+ * carries the code) or by SMS. The email has no link, so it works on any device.
  */
 export async function sendCode(contact: Contact) {
   if (!supabase) throw new Error("auth not configured");
@@ -34,9 +34,12 @@ export async function sendCode(contact: Contact) {
   if (error) throw error;
 }
 
-export async function verifyPhoneCode(phone: string, token: string) {
+export async function verifyCode(contact: Contact, token: string) {
   if (!supabase) throw new Error("auth not configured");
-  const { error } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
+  const { error } =
+    contact.kind === "email"
+      ? await supabase.auth.verifyOtp({ email: contact.value, token, type: "email" })
+      : await supabase.auth.verifyOtp({ phone: contact.value, token, type: "sms" });
   if (error) throw error;
   await afterSignIn();
 }
