@@ -49,6 +49,49 @@ async function trialNotice(deps: TickDeps, user: User, now: Date): Promise<boole
   return true;
 }
 
+/** How far back a missed reminder is still worth posting (server was down, user was inactive). */
+const REMINDER_LOOKBACK_MS = 6 * 3600_000;
+
+const REMINDER_FALLBACK: Record<ReplyLang, (title: string) => string> = {
+  arabic: (title) => `فاكر «${title}»؟ ده وقته.`,
+  english: (title) => `Remember “${title}”? It's time.`,
+};
+
+/**
+ * Reminders fire as local notifications on the phone (they work offline), but the
+ * conversation is the product: the same nudge is also written into the chat, so the
+ * user sees it there and the friend knows it reminded them. No push: the phone already
+ * notified. Idempotent through the unique (user, client_id).
+ */
+export async function postDueReminders(prisma: PrismaClient, user: User, now: Date): Promise<number> {
+  const due = await prisma.item.findMany({
+    where: {
+      userId: user.id,
+      status: "open",
+      type: { in: ["reminder", "task"] },
+      remindAt: { lte: now, gte: new Date(now.getTime() - REMINDER_LOOKBACK_MS) },
+    },
+    orderBy: { remindAt: "asc" },
+    take: 20,
+  });
+  if (!due.length) return 0;
+  const lang = await scriptFor(prisma, user);
+  const { count } = await prisma.message.createMany({
+    data: due.map((item, n) => ({
+      userId: user.id,
+      role: "friend" as const,
+      kind: "reminder" as const,
+      text: item.nudge?.trim() || REMINDER_FALLBACK[lang](item.title),
+      // One message per item and remind time: moving the reminder makes a new one.
+      clientId: `reminder:${item.id}:${item.remindAt!.toISOString()}`,
+      // "now", not the remind time: the phone pulls messages newer than the last one it has.
+      createdAt: new Date(now.getTime() + n),
+    })),
+    skipDuplicates: true,
+  });
+  return count;
+}
+
 /** Plan + write + store + push for one user. Returns the plan that was sent, if any. */
 export async function runForUser(deps: TickDeps, user: User, now: Date): Promise<ProactivePlan | null> {
   const { prisma } = deps;
@@ -146,6 +189,7 @@ export async function runTick(deps: TickDeps, now = new Date()): Promise<number>
   let sent = 0;
   for (const user of users) {
     try {
+      await postDueReminders(deps.prisma, user, now);
       if (await runForUser(deps, user, now)) sent++;
     } catch (err) {
       deps.log?.error({ err: (err as Error).name, userId: user.id }, "proactive message failed");

@@ -44,6 +44,8 @@ export interface FriendModelInput {
   history: ChatTurn[];
   /** The user wrote Arabic or Franco: a reply without Arabic letters gets one retry. */
   requireArabic?: boolean;
+  /** Today's local date ("YYYY-MM-DD"): a new reminder or task dated before it gets one retry. */
+  todayLocal?: string;
 }
 
 export type FriendModelResult =
@@ -168,6 +170,10 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
           const output = toFriendResponse(res.parsed_output);
           // Franco or English back to an Arabic/Franco message: try once more, then take what we get.
           if (input.requireArabic && attempt === 0 && !output.reply.every((r) => /[\u0600-\u06FF]/.test(r))) continue;
+          // "Before the 10th" said on the 19th sometimes comes back as the 10th just gone.
+          const today = input.todayLocal;
+          const pastDue = today && output.create_items.some((i) => (i.type === "reminder" || i.type === "task") && i.due_at_local && i.due_at_local.slice(0, 10) < today);
+          if (pastDue && attempt === 0) continue;
           return { ok: true, output, usage };
         } catch {
           continue;
