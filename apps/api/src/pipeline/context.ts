@@ -1,7 +1,7 @@
 import type { Item, Memory, Message, PrismaClient, Summary, User } from "../generated/prisma/client";
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
-import { detectScript } from "./rules";
+import { detectScriptInContext, type Script } from "./rules";
 
 export const RECENT_MESSAGES = 15;
 export const MAX_MEMORIES = 20;
@@ -56,6 +56,7 @@ function describeItem(i: Item, tz: string): string {
   const bits = [`id=${i.id}`, i.type, JSON.stringify(i.title)];
   if (i.dueAt) bits.push(`due ${local(i.dueAt, tz)}`);
   if (i.remindAt) bits.push(`remind ${local(i.remindAt, tz)}`);
+  if (i.repeatEveryMinutes) bits.push(`repeats every ${i.repeatEveryMinutes} min`);
   if (i.important) bits.push("important");
   if (i.type === "debt" && i.debtPerson) {
     bits.push(`${i.debtDirection === "i_owe" ? "user owes" : "owes user"}: ${i.debtPerson} ${i.debtAmount?.toString() ?? "?"}`);
@@ -68,16 +69,28 @@ function describeItem(i: Item, tz: string): string {
  * itself the model drifts). Null when the message has no letters (emoji, a bare
  * number): then the model follows the conversation.
  */
-export function replyScript(lastUserText: string): string | null {
-  if (!/[a-z\u0600-\u06FF]/i.test(lastUserText)) return null;
-  switch (detectScript(lastUserText)) {
+export function replyScript(userTexts: string[], fallback: Script = "english"): string | null {
+  const last = userTexts.at(-1) ?? "";
+  if (!/[a-z\u0600-\u06FF]/i.test(last)) return null;
+  switch (detectScriptInContext(userTexts, fallback)) {
     case "arabic":
       return "Egyptian Arabic in Arabic letters (their last message is in Arabic script)";
     case "franco":
-      return "Egyptian Arabic in ARABIC letters (their last message is Franco: read it as Arabic, never answer in Latin letters). Titles, nudges and names in Arabic letters too";
+      return "Egyptian Arabic in ARABIC letters (they write Franco: read it as Arabic, never answer in Latin letters). Titles, nudges and names in Arabic letters too";
     default:
       return "English (their last message is in English). If it is actually Arabic typed in Latin letters, answer in Egyptian Arabic in Arabic letters instead";
   }
+}
+
+/** True when the reply to the latest message has to contain Arabic letters (Arabic or Franco conversation). */
+export function mustReplyInArabic(userTexts: string[], fallback: Script = "english"): boolean {
+  const last = userTexts.at(-1) ?? "";
+  return /[a-z\u0600-\u06FF]/i.test(last) && detectScriptInContext(userTexts, fallback) !== "english";
+}
+
+/** The user's own messages in the recent chat, oldest first. */
+export function userTexts(recent: Pick<Message, "role" | "text">[]): string[] {
+  return recent.filter((m) => m.role === "user").map((m) => m.text);
 }
 
 /**
@@ -88,11 +101,6 @@ export function addressAs(memories: Pick<Memory, "content">[]): string {
   return memories.some((m) => m.content.includes("المؤنث"))
     ? "a woman (feminine forms: إنتي، قوليلي، عاملة إيه)"
     : "a man (masculine forms, the default: إنت، قولي، عامل إيه) unless their own words in this conversation are feminine";
-}
-
-/** True when the reply to this message has to contain Arabic letters (Arabic or Franco input). */
-export function mustReplyInArabic(lastUserText: string): boolean {
-  return /[a-z\u0600-\u06FF]/i.test(lastUserText) && detectScript(lastUserText) !== "english";
 }
 
 /**
@@ -106,7 +114,7 @@ export function renderContext(ctx: ConversationContext): string {
   lines.push(`NOW: ${describeNow(now, tz)}`);
   lines.push(`UPCOMING DAYS: ${describeUpcomingDays(now, tz)}`);
   lines.push(`USER: name=${user.name ?? "(unknown — ask what to call them if it fits)"}; app language (fallback only; REPLY SCRIPT decides)=${user.language === "ar_EG" ? "Egyptian Arabic" : "English"}; tone=${user.tone}; wakes ${user.wakeTime}, sleeps ${user.sleepTime}`);
-  const script = replyScript(ctx.recent.at(-1)?.text ?? "");
+  const script = replyScript(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic");
   if (script) lines.push(`REPLY SCRIPT: ${script}`);
   lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories)}`);
   lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);

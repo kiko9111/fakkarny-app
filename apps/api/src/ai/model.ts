@@ -71,6 +71,7 @@ const ModelItem = z.object({
   follow_up_at_local: z.string().nullable(),
   important: z.boolean(),
   nudge: z.string().nullable(),
+  repeat_every_minutes: z.number().nullable(),
   debt: z.object({ person: z.string(), amount: z.number(), direction: z.enum(["owed_to_me", "i_owe"]) }).nullable(),
 });
 const ModelUpdate = z.object({
@@ -80,6 +81,7 @@ const ModelUpdate = z.object({
   due_at_local: z.string().nullable(),
   remind_at_local: z.string().nullable(),
   follow_up_at_local: z.string().nullable(),
+  repeat_every_minutes: z.number().nullable(),
 });
 export const ModelOutput = z.object({
   reply: z.array(z.string()),

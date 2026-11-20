@@ -86,6 +86,22 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
     expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(2);
   });
 
+  it("keeps a repeating reminder going, skipping the night", async () => {
+    const user = await makeUser({ lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T21:30"), lastNightAt: at("2026-11-22T22:00") });
+    const item = await prisma.item.create({
+      data: { userId: user.id, type: "reminder", title: "اشرب مية", nudge: "شربت مية ولا لسه؟", remindAt: at("2026-11-22T21:30"), dueAt: at("2026-11-22T21:30"), repeatEveryMinutes: 60 },
+    });
+    const remindAt = async () => (await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).remindAt!.toISOString();
+
+    await runTick({ prisma, model, push }, at("2026-11-22T21:30"));
+    expect(await remindAt()).toBe(at("2026-11-22T22:30").toISOString());
+    await runTick({ prisma, model, push }, at("2026-11-22T22:30"));
+    // 23:30 is past the 23:00 bedtime: the next one is 07:30 tomorrow.
+    expect(await remindAt()).toBe(at("2026-11-23T07:30").toISOString());
+    expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(2);
+    expect((await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).status).toBe("open");
+  });
+
   it("uses a plain line when a reminder has no nudge", async () => {
     const user = await makeUser({ lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T09:30") });
     await prisma.item.create({ data: { userId: user.id, type: "task", title: "تجديد الباسبور", remindAt: at("2026-11-22T10:00") } });

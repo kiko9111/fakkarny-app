@@ -42,6 +42,11 @@ function loadCases(): EvalCase[] {
   return cases;
 }
 
+/** The conversation as the pipeline sees it: the history, then the message being answered. */
+function turnsOf(c: EvalCase): { role: "user" | "friend"; text: string }[] {
+  return [...c.history.map((h) => ({ role: h.role === "user" ? ("user" as const) : ("friend" as const), text: h.text })), { role: "user" as const, text: c.message }];
+}
+
 /** Build the same context the API would, from the case (no database). */
 function contextFor(c: EvalCase): string {
   const now = localToUtc(c.now, c.tz);
@@ -54,12 +59,12 @@ function contextFor(c: EvalCase): string {
     (o) =>
       ({
         id: o.id, userId: user.id, type: o.type, title: o.title, dueAt: o.due_local ? localToUtc(o.due_local, c.tz) : null,
-        remindAt: null, important: false, status: "open", debtPerson: o.debt_person ?? null,
+        remindAt: o.due_local ? localToUtc(o.due_local, c.tz) : null, repeatEveryMinutes: o.repeat ?? null, important: false, status: "open", debtPerson: o.debt_person ?? null,
         debtAmount: o.debt_amount ?? null, debtDirection: o.debt_direction ?? null, followUpAt: null,
         sourceMessageId: null, updatedAt: now, createdAt: now, doneAt: null,
       }) as unknown as Item,
   );
-  return renderContext({ user, now, memories: [], openItems, summary: null, recent: [{ text: c.message }] as unknown as Message[] });
+  return renderContext({ user, now, memories: [], openItems, summary: null, recent: turnsOf(c) as unknown as Message[] });
 }
 
 async function mapLimit<T, R>(xs: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -92,7 +97,7 @@ async function main() {
   let totalCost = 0;
   const results = await mapLimit(cases, 5, async (c) => {
     const res = await model
-      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(c.message), todayLocal: c.now.slice(0, 10) })
+      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(turnsOf(c).filter((m) => m.role === "user").map((m) => m.text), c.expect.script === "english" ? "english" : "arabic"), todayLocal: c.now.slice(0, 10) })
       .catch((err: unknown) => ({ ok: false as const, reason: `error: ${(err as Error).message}`, usage: null as Usage | null }));
     if (res.usage) totalCost += costUsd(res.usage);
     if (!res.ok) {

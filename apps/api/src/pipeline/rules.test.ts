@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toFriendResponse, type ModelOutput } from "../ai/model";
-import { detectScript, fastReply, looksLikeCrisis, replyLang } from "./rules";
+import { detectScript, detectScriptInContext, fastReply, looksLikeCrisis, replyLang } from "./rules";
 import { addressAs, mustReplyInArabic, rankMemories, replyScript } from "./context";
 
 describe("detectScript", () => {
@@ -65,7 +65,7 @@ describe("toFriendResponse", () => {
   it("drops nulls so optional fields validate", () => {
     const r = toFriendResponse({
       ...base,
-      create_items: [{ type: "task", title: "Call mom", due_at_local: null, remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, debt: null }],
+      create_items: [{ type: "task", title: "Call mom", due_at_local: null, remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, repeat_every_minutes: null, debt: null }],
     });
     expect(r.create_items[0]).toEqual({ type: "task", title: "Call mom", important: false });
   });
@@ -74,7 +74,7 @@ describe("toFriendResponse", () => {
     expect(() =>
       toFriendResponse({
         ...base,
-        create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, debt: null }],
+        create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, repeat_every_minutes: null, debt: null }],
       }),
     ).toThrow();
   });
@@ -99,19 +99,32 @@ describe("rankMemories", () => {
 
 describe("replyScript", () => {
   it("answers Arabic and Franco in Arabic letters, English in English", () => {
-    expect(replyScript("عندي دكتور بكرة")).toMatch(/^Egyptian Arabic in Arabic letters/);
-    expect(replyScript("3andy doctor bokra")).toMatch(/^Egyptian Arabic in ARABIC letters/);
-    expect(replyScript("dentist Sunday at 6")).toMatch(/^English/);
-    expect(replyScript("👍")).toBeNull();
-    expect(replyScript("300")).toBeNull();
+    expect(replyScript(["عندي دكتور بكرة"])).toMatch(/^Egyptian Arabic in Arabic letters/);
+    expect(replyScript(["3andy doctor bokra"])).toMatch(/^Egyptian Arabic in ARABIC letters/);
+    expect(replyScript(["dentist Sunday at 6"])).toMatch(/^English/);
+    expect(replyScript(["👍"])).toBeNull();
+    expect(replyScript(["300"])).toBeNull();
   });
 
   it("requires Arabic letters in the reply for Arabic and Franco messages only", () => {
-    expect(mustReplyInArabic("hassan 3aleh 2500")).toBe(true);
-    expect(mustReplyInArabic("meeting مع المدير")).toBe(true);
-    expect(mustReplyInArabic("meeting with Hassan Monday 11am")).toBe(false);
-    expect(mustReplyInArabic("٣٠٠")).toBe(true); // Arabic digits: an Arabic keyboard
-    expect(mustReplyInArabic("300")).toBe(false);
+    expect(mustReplyInArabic(["hassan 3aleh 2500"])).toBe(true);
+    expect(mustReplyInArabic(["meeting مع المدير"])).toBe(true);
+    expect(mustReplyInArabic(["meeting with Hassan Monday 11am"])).toBe(false);
+    expect(mustReplyInArabic(["٣٠٠"])).toBe(true); // Arabic digits: an Arabic keyboard
+    expect(mustReplyInArabic(["300"])).toBe(false);
+  });
+
+  it("reads a bare name or 'ok' in the language of the conversation", () => {
+    // From a real chat: "yara" after Franco was answered in English.
+    expect(detectScriptInContext(["tyb ana meraty esmaha eh", "yara"])).toBe("franco");
+    expect(detectScriptInContext(["عندي دكتور بكرة", "ok"])).toBe("arabic");
+    expect(detectScriptInContext(["my wife's name is", "Yara"])).toBe("english");
+    expect(detectScriptInContext(["3andy doctor bokra", "ok", "yara"])).toBe("franco");
+    expect(detectScriptInContext(["yara"])).toBe("english");
+    expect(detectScriptInContext(["yara"], "arabic")).toBe("arabic");
+    // A real English sentence still switches to English.
+    expect(detectScriptInContext(["3andy doctor bokra", "what time is it"])).toBe("english");
+    expect(mustReplyInArabic(["tyb ana meraty esmaha eh", "yara"])).toBe(true);
   });
 
   it("addresses the user as a man until a memory says otherwise", () => {

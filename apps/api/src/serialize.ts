@@ -38,6 +38,7 @@ export function toWireItem(i: Item): WireItem {
     debt_amount: i.debtAmount === null ? null : Number(i.debtAmount),
     debt_direction: i.debtDirection,
     follow_up_at: isoOrNull(i.followUpAt),
+    repeat_every_minutes: i.repeatEveryMinutes,
     source_message_id: i.sourceMessageId,
     updated_at: iso(i.updatedAt),
     created_at: iso(i.createdAt),

@@ -121,7 +121,7 @@ Rules:
   the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
-  Last measured (persona 2026-11-21.3, 124 cases, effort medium): extraction 99%,
+  Last measured (persona 2026-11-21.5, 137 cases, effort medium): extraction 98–99%,
   style 100% across runs; the baseline before tuning was 76% / 76%. Cases named
   `talk-*` and `real-*` come from real device chats; `reply_none` and `no_memories` catch nagging
   ("anything tomorrow?"), Modern Standard words and memories saved for small talk. Scores move a case or two
@@ -153,6 +153,19 @@ Rules:
   nudge into the chat as a friend Message of kind "reminder" (client_id
   `reminder:<itemId>:<remindAt>`, no push). Done / Later on the notification also send
   a normal chat message ("خلصت «…» ✅"), which the friend answers and acts on.
+- Repeating reminders ("every hour"): Item.repeat_every_minutes (server column, shared
+  types, phone SQLite v3). `nextOccurrences` in packages/shared/src/repeat.ts is used
+  by both sides from the same anchor: the tick posts the chat message and moves
+  remind_at to the next waking-hours occurrence; the phone schedules the next 16 local
+  notifications and tops them up whenever the app returns to the foreground. Done on a
+  repeating reminder does not close it; "stop reminding me" cancels it. The phone
+  assumes waking hours 07:00–23:00 (the server uses the user's settings).
+- Follow-ups ("how was the dentist, did it hurt?"): the persona sets follow_up_at for
+  events with an outcome; the tick writes the question (not counted against the daily
+  cap); the phone shows a local notification at the same time, because remote push
+  needs FCM credentials that are not set up yet (devices register no push token).
+- A short Latin message with no language of its own ("yara", "ok") follows the
+  conversation: `detectScriptInContext` (rules.ts).
 - Message order on the phone: a synced user message takes the server's `created_at`.
   Replies carry server time, so with a phone clock running ahead every reply used to
   sort above the message it answered.

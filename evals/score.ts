@@ -13,6 +13,10 @@ export const ExpectedItem = z.object({
   due: LocalMinute.optional(),
   due_date: z.union([LocalDate, z.array(LocalDate)]).optional(),
   important: z.boolean().optional(),
+  /** Minutes between occurrences of a repeating reminder. */
+  repeat: z.number().optional(),
+  /** True when the item must carry a follow-up time ("how did it go?"). */
+  follow_up: z.boolean().optional(),
   debt: z
     .object({ person_any: z.array(z.string()), amount: z.number(), direction: z.enum(["owed_to_me", "i_owe"]) })
     .optional(),
@@ -31,6 +35,7 @@ export const EvalCase = z.object({
         type: ItemType,
         title: z.string(),
         due_local: LocalMinute.optional(),
+        repeat: z.number().optional(),
         debt_person: z.string().optional(),
         debt_amount: z.number().optional(),
         debt_direction: z.enum(["owed_to_me", "i_owe"]).optional(),
@@ -70,6 +75,8 @@ function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["creat
     if (!got.due_at_local || !allowed.includes(got.due_at_local.slice(0, 10))) return false;
   }
   if (exp.important && !got.important) return false;
+  if (exp.repeat !== undefined && got.repeat_every_minutes !== exp.repeat) return false;
+  if (exp.follow_up && !got.follow_up_at_local) return false;
   if (exp.debt) {
     if (!got.debt) return false;
     if (!anyIn(`${got.debt.person} ${got.title}`, exp.debt.person_any)) return false;
