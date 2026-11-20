@@ -48,6 +48,9 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
       let remindAt = safeLocalToUtc(c.remind_at_local, tz);
       // A reminder always needs a nudge time; fall back to the due time.
       if (c.type === "reminder" && !remindAt) remindAt = dueAt;
+      // "Every hour, starting now": no time given, so the first one is one interval from now.
+      const repeat = c.repeat_every_minutes ?? null;
+      if (repeat && !remindAt) remindAt = new Date(now.getTime() + repeat * 60_000);
       items.push(
         await tx.item.create({
           data: {
@@ -56,7 +59,9 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
             title: c.title,
             dueAt,
             remindAt,
-            followUpAt: safeLocalToUtc(c.follow_up_at_local, tz),
+            // A repeating reminder has no single "after" moment to ask about.
+            followUpAt: repeat ? null : safeLocalToUtc(c.follow_up_at_local, tz),
+            repeatEveryMinutes: repeat,
             important: c.important ?? false,
             nudge: c.nudge ?? null,
             debtPerson: c.debt?.person ?? null,
@@ -88,6 +93,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
         else if (due) data.remindAt = due; // moved without a new nudge time: nudge at the new time
         const follow = safeLocalToUtc(u.follow_up_at_local, tz);
         if (follow) data.followUpAt = follow;
+        if (u.repeat_every_minutes) data.repeatEveryMinutes = u.repeat_every_minutes;
         items.push(await tx.item.update({ where: { id: u.id }, data }));
       }
     }

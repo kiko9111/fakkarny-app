@@ -16,6 +16,7 @@ const item = (o: Partial<Item>): Item => ({
   debt_amount: null,
   debt_direction: null,
   follow_up_at: null,
+  repeat_every_minutes: null,
   source_message_id: null,
   updated_at: "2026-11-19T00:00:00.000Z",
   created_at: "2026-11-19T00:00:00.000Z",

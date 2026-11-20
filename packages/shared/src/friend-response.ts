@@ -26,6 +26,8 @@ export const CreateItemAction = z.object({
   important: z.boolean().optional(),
   /** Indirect friend question for the reminder notification, e.g. "Heading out soon? Traffic to Dokki is crazy 😅". */
   nudge: z.string().min(1).max(200).optional(),
+  /** "Every hour" = 60, "every day" = 1440. The first occurrence is remind_at_local / due_at_local. */
+  repeat_every_minutes: z.number().int().min(15).max(10080).optional(),
   debt: DebtDetails.optional(),
 });
 export type CreateItemAction = z.infer<typeof CreateItemAction>;
@@ -37,6 +39,7 @@ export const UpdateItemAction = z.object({
   due_at_local: LocalDateTime.optional(),
   remind_at_local: LocalDateTime.optional(),
   follow_up_at_local: LocalDateTime.optional(),
+  repeat_every_minutes: z.number().int().min(15).max(10080).optional(),
 });
 export type UpdateItemAction = z.infer<typeof UpdateItemAction>;
 

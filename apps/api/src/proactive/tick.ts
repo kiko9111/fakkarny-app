@@ -5,6 +5,7 @@ import { isAwake, toLocalIso } from "../lib/time";
 
 const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, user.wakeTime, user.sleepTime);
 import { canChat, hasActivePlan } from "../billing/plan";
+import { nextOccurrences } from "@fakkarni/shared";
 import { detectScript, replyLang, type ReplyLang } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
 import type { PushSender } from "./push";
@@ -76,20 +77,31 @@ export async function postDueReminders(prisma: PrismaClient, user: User, now: Da
   });
   if (!due.length) return 0;
   const lang = await scriptFor(prisma, user);
-  const { count } = await prisma.message.createMany({
-    data: due.map((item, n) => ({
-      userId: user.id,
-      role: "friend" as const,
-      kind: "reminder" as const,
-      text: item.nudge?.trim() || REMINDER_FALLBACK[lang](item.title),
-      // One message per item and remind time: moving the reminder makes a new one.
-      clientId: `reminder:${item.id}:${item.remindAt!.toISOString()}`,
-      // "now", not the remind time: the phone pulls messages newer than the last one it has.
-      createdAt: new Date(now.getTime() + n),
-    })),
-    skipDuplicates: true,
-  });
-  return count;
+  let posted = 0;
+  for (const [n, item] of due.entries()) {
+    const { count } = await prisma.message.createMany({
+      data: [
+        {
+          userId: user.id,
+          role: "friend",
+          kind: "reminder",
+          text: item.nudge?.trim() || REMINDER_FALLBACK[lang](item.title),
+          // One message per item and remind time: a moved or repeating reminder makes a new one.
+          clientId: `reminder:${item.id}:${item.remindAt!.toISOString()}`,
+          // "now", not the remind time: the phone pulls messages newer than the last one it has.
+          createdAt: new Date(now.getTime() + n),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    posted += count;
+    if (item.repeatEveryMinutes) {
+      // Move a repeating reminder to its next waking-hours occurrence.
+      const [next] = nextOccurrences(item.remindAt!, item.repeatEveryMinutes, now, 1, (at) => isAwake(at, user.timezone, user.wakeTime, user.sleepTime));
+      if (next) await prisma.item.update({ where: { id: item.id }, data: { remindAt: next, dueAt: next } });
+    }
+  }
+  return posted;
 }
 
 /** Plan + write + store + push for one user. Returns the plan that was sent, if any. */

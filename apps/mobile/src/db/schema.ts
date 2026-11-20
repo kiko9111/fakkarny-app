@@ -45,4 +45,6 @@ export const MIGRATIONS: readonly string[] = [
   `,
   // v2 — M4: the friend's indirect question for the reminder notification
   `ALTER TABLE items ADD COLUMN nudge TEXT;`,
+  // v3 — repeating reminders ("every hour"): minutes between occurrences
+  `ALTER TABLE items ADD COLUMN repeat_every_minutes INTEGER;`,
 ];

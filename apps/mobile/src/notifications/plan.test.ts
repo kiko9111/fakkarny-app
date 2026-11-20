@@ -53,3 +53,38 @@ describe("fill", () => {
     expect(fill("{title} at {time}", { title: "Dentist", time: "6:00" })).toBe("Dentist at 6:00");
   });
 });
+
+describe("repeating reminders and follow-ups", () => {
+  const awake = (at: Date) => at.getUTCHours() >= 7 && at.getUTCHours() < 23;
+  const water: ReminderItem = { id: "w1", title: "اشرب مية", nudge: "شربت مية ولا لسه؟", status: "open", due_at: null, remind_at: "2026-11-22T09:30:00.000Z", important: false, repeat_every_minutes: 60 };
+
+  it("plans the next occurrences from the anchor, skipping the night", () => {
+    const p = planReminderNotifications(water, { now, alwaysDirect: false, clearText, awake });
+    expect(p).toHaveLength(16);
+    expect(p[0]!.date.toISOString()).toBe("2026-11-22T10:30:00.000Z");
+    expect(p[1]!.date.toISOString()).toBe("2026-11-22T11:30:00.000Z");
+    expect(p.every((n) => n.kind === "repeat" && n.body === "شربت مية ولا لسه؟" && awake(n.date))).toBe(true);
+    expect(new Set(p.map((n) => n.identifier)).size).toBe(16);
+    // 22:30 is the last one today; the next is 07:30 tomorrow.
+    const times = p.map((n) => n.date.toISOString());
+    expect(times[12]).toBe("2026-11-22T22:30:00.000Z");
+    expect(times[13]).toBe("2026-11-23T07:30:00.000Z");
+  });
+
+  it("includes a first occurrence that is still ahead", () => {
+    const later = { ...water, remind_at: "2026-11-22T10:20:00.000Z" };
+    const p = planReminderNotifications(later, { now, alwaysDirect: false, clearText, awake });
+    expect(p[0]!.date.toISOString()).toBe("2026-11-22T10:20:00.000Z");
+    expect(p[1]!.date.toISOString()).toBe("2026-11-22T11:20:00.000Z");
+  });
+
+  it("adds a follow-up notification after the event, only in waking hours", () => {
+    const withFollow = { ...dentist, follow_up_at: "2026-11-22T18:00:00.000Z" };
+    const followupText = (title: string) => `How did ${title} go?`;
+    const p = planReminderNotifications(withFollow, { now, alwaysDirect: false, clearText, followupText, awake });
+    expect(p.at(-1)).toMatchObject({ kind: "followup", body: "How did Dentist go?" });
+    expect(p.at(-1)!.date.toISOString()).toBe("2026-11-22T18:00:00.000Z");
+    const night = planReminderNotifications({ ...withFollow, follow_up_at: "2026-11-22T23:30:00.000Z" }, { now, alwaysDirect: false, clearText, followupText, awake });
+    expect(night.some((n) => n.kind === "followup")).toBe(false);
+  });
+});

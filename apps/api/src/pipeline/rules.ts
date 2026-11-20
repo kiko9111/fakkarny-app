@@ -46,6 +46,34 @@ export function detectScript(text: string): Script {
   return strong >= 1 && (strong + weak) / letterWords.length >= 0.4 ? "franco" : "english";
 }
 
+// Words that mark a Latin message as English when nothing marks it as Franco.
+const ENGLISH_WORDS = new Set([
+  "the", "a", "an", "is", "are", "was", "i", "i'm", "im", "my", "me", "you", "your", "it", "it's", "to", "at", "on", "in", "of", "for",
+  "and", "but", "with", "what", "when", "how", "why", "who", "do", "did", "have", "has", "need", "want", "remind", "please", "thanks",
+  "thank", "hello", "hi", "hey", "yes", "no", "not", "this", "that", "today", "tomorrow", "tonight", "good", "morning", "can", "will",
+]);
+
+/** A Latin message that shows no language by itself: a name, "ok", "lol", a number with a word. */
+export function isAmbiguousLatin(text: string): boolean {
+  if (ARABIC_RE.test(text) || detectScript(text) !== "english") return false;
+  const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
+  return words.length <= 3 && !words.some((w) => ENGLISH_WORDS.has(w));
+}
+
+/**
+ * The script of the latest message, read in context: "yara" after a Franco conversation
+ * continues that conversation, it is not a switch to English. `texts` is oldest first.
+ */
+export function detectScriptInContext(texts: string[], fallback: Script = "english"): Script {
+  const last = texts.at(-1) ?? "";
+  if (!isAmbiguousLatin(last)) return detectScript(last);
+  for (let i = texts.length - 2; i >= 0; i--) {
+    const t = texts[i]!;
+    if (/[a-z\u0600-\u06FF]/i.test(t) && !isAmbiguousLatin(t)) return detectScript(t);
+  }
+  return fallback;
+}
+
 const norm = (t: string) => t.trim().toLowerCase().replace(/[.!؟?،,\s]+/g, " ").trim();
 
 const THANKS = new Set([

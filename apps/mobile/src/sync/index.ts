@@ -4,6 +4,7 @@ import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutb
 import { listMessagesAfter, postMessage } from "@/lib/api";
 import { createEmitter } from "@/lib/emitter";
 import { kvGet } from "@/db/kv";
+import { listScheduled } from "@/db/items";
 import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications } from "@/notifications";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
@@ -79,6 +80,8 @@ export function startSync() {
   const refresh = () => {
     void syncQueue.wake();
     void pullMessages();
+    // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
+    void listScheduled().then(scheduleItems).catch(() => {});
   };
   refresh();
   addNetworkStateListener(({ isConnected, isInternetReachable }) => {

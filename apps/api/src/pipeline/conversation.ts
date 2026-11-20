@@ -5,7 +5,7 @@ import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } fr
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
-import { loadContext, mustReplyInArabic, renderContext } from "./context";
+import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import type { MessagePipeline } from "./types";
@@ -63,7 +63,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
     try {
-      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(ctx.recent.at(-1)?.text ?? ""), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) });
+      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) });
       usage = result.usage;
       if (result.ok) {
         replies = result.output.reply;
