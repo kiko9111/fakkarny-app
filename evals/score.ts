@@ -39,6 +39,7 @@ export const EvalCase = z.object({
     .default([]),
   message: z.string(),
   expect: z.object({
+    /** How the USER writes. The friend answers arabic and franco in Arabic letters, english in English. */
     script: z.enum(["arabic", "franco", "english"]),
     items: z.array(ExpectedItem),
     updates: z.array(z.object({ id: z.uuid(), status: z.enum(["open", "done", "cancelled"]).optional(), due: LocalMinute.optional() })).optional(),
@@ -46,6 +47,10 @@ export const EvalCase = z.object({
     crisis: z.boolean().optional(),
     list_ok: z.boolean().optional(),
     reply_any: z.array(z.string()).optional(),
+    /** Substrings the reply must NOT contain (e.g. "بكرة" when it already asked about tomorrow). */
+    reply_none: z.array(z.string()).optional(),
+    /** True when the message is small talk that should save no memory. */
+    no_memories: z.boolean().optional(),
     note: z.string().optional(),
   }),
 });
@@ -111,6 +116,8 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
     if (!anyIn(text, c.expect.memories_any)) problems.push(`no memory about ${c.expect.memories_any.join("/")}`);
   }
 
+  if (c.expect.no_memories && out.save_memories.length) problems.push(`saved a memory for small talk: ${JSON.stringify(out.save_memories)}`);
+
   const wantCrisis = c.expect.crisis ?? false;
   if (out.crisis !== wantCrisis) problems.push(`crisis ${out.crisis} ≠ ${wantCrisis}`);
   const extraction = problems.length === 0;
@@ -119,8 +126,17 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
   const styleProblems: string[] = [];
   const reply = out.reply.join("\n");
   const hasArabic = /[؀-ۿ]/.test(reply);
-  if (c.expect.script === "arabic" && !hasArabic) styleProblems.push("should reply in Arabic script");
-  if (c.expect.script !== "arabic" && hasArabic) styleProblems.push("should reply in Latin script");
+  // The friend reads Franco but never writes it: every message of an Arabic/Franco reply needs Arabic letters.
+  if (c.expect.script !== "english") {
+    if (!out.reply.every((r) => /[؀-ۿ]/.test(r))) styleProblems.push("should reply in Arabic script");
+    const franco = reply.match(/\b[a-z]*[a-z][2357][a-z]+\b|\b[2357][a-z]{2,}\b/gi);
+    if (franco) styleProblems.push(`Franco in the reply: ${franco.slice(0, 3).join(", ")}`);
+  }
+  if (c.expect.script === "english" && hasArabic) styleProblems.push("should reply in English");
+  if (c.expect.reply_none) {
+    const hit = c.expect.reply_none.filter((w) => lc(reply).includes(lc(w)));
+    if (hit.length) styleProblems.push(`reply should not mention ${hit.join("/")}`);
+  }
   if (out.reply.some((r) => r.length > 300)) styleProblems.push("a message is over 300 chars");
   if (!c.expect.list_ok && /^\s*([-•*]|\d+[.)])\s+/m.test(reply)) styleProblems.push("checklist-style reply");
   if (c.expect.reply_any && !anyIn(reply, c.expect.reply_any)) styleProblems.push(`reply should mention ${c.expect.reply_any.join("/")}`);

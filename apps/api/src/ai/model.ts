@@ -4,7 +4,14 @@ import { z } from "zod";
 import { FriendResponse } from "@fakkarni/shared";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
-export const FRIEND_MODEL = "claude-haiku-5-5";
+export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
+/**
+ * Medium, measured on the evals (2026-11-21): at "low" the model invented details when
+ * reading Franco ("eggplant and pepper" became "chicken with shrimp"); medium did not,
+ * for about 40% more cost per message and roughly half a second. FAKKARNI_FRIEND_EFFORT
+ * and FAKKARNI_FRIEND_MODEL override these for experiments.
+ */
+const FRIEND_EFFORT = (process.env["FAKKARNI_FRIEND_EFFORT"] || "medium") as "low" | "medium" | "high";
 
 /** USD per million tokens for FRIEND_MODEL (prompts ≤100K tokens). Used for cost tracking (FR-15). */
 export const PRICING = { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 } as const;
@@ -35,8 +42,8 @@ export interface FriendModelInput {
   system: string;
   context: string;
   history: ChatTurn[];
-  /** The user wrote in Latin letters (Franco/English): a reply with Arabic letters gets one retry. */
-  latinOnly?: boolean;
+  /** The user wrote Arabic or Franco: a reply without Arabic letters gets one retry. */
+  requireArabic?: boolean;
 }
 
 export type FriendModelResult =
@@ -151,8 +158,7 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
           max_tokens: 2000,
           system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
           messages: buildMessages(input),
-          // Short chat replies: low effort keeps latency and cost down (PRD §7 latency target).
-          output_config: { effort: "low", format: zodOutputFormat(ModelOutput) },
+          output_config: { effort: FRIEND_EFFORT, format: zodOutputFormat(ModelOutput) },
         });
         usage = addUsage(usage, toUsage(res.usage));
         if (res.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
@@ -160,8 +166,8 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
         if (!res.parsed_output) continue;
         try {
           const output = toFriendResponse(res.parsed_output);
-          // Wrong script on a Franco/English message: try once more, then take what we get.
-          if (input.latinOnly && attempt === 0 && /[\u0600-\u06FF]/.test(output.reply.join(" "))) continue;
+          // Franco or English back to an Arabic/Franco message: try once more, then take what we get.
+          if (input.requireArabic && attempt === 0 && !output.reply.every((r) => /[\u0600-\u06FF]/.test(r))) continue;
           return { ok: true, output, usage };
         } catch {
           continue;

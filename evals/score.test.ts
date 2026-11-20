@@ -40,4 +40,19 @@ describe("scoreCase", () => {
     expect(scoreCase(base({ crisis: true }), out({})).extraction).toBe(false);
     expect(scoreCase(base({ list_ok: true }), out({ reply: ["- dentist Sunday"] })).style).toBe(true);
   });
+
+  it("expects Arabic letters for Franco messages, with no Franco in the reply", () => {
+    const franco = base({ script: "franco" });
+    expect(scoreCase(franco, out({ reply: ["تمام، هفكرك بكرة."] })).style).toBe(true);
+    expect(scoreCase(franco, out({ reply: ["Tamam, hafakkarak bokra."] })).style).toBe(false);
+    expect(scoreCase(franco, out({ reply: ["تمام", "hafakkarak el sa3a 5"] })).style).toBe(false);
+    expect(scoreCase(base({ script: "english" }), out({ reply: ["تمام"] })).style).toBe(false);
+  });
+
+  it("checks forbidden words and unwanted memories", () => {
+    const c = base({ script: "arabic", reply_none: ["بكرة"], no_memories: true });
+    expect(scoreCase(c, out({ reply: ["حلو أوي!"] }))).toMatchObject({ extraction: true, style: true });
+    expect(scoreCase(c, out({ reply: ["حلو! في حاجة بكرة؟"] })).style).toBe(false);
+    expect(scoreCase(c, out({ reply: ["حلو أوي!"], save_memories: [{ kind: "person", subject: "mama", content: "x" }] })).extraction).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 import type { FriendModel, Usage } from "../ai/model";
-import type { Script } from "../pipeline/rules";
+import type { ReplyLang } from "../pipeline/rules";
 import type { ProactivePlan } from "./plan";
 
 /**
@@ -14,13 +14,12 @@ Write 1 or 2 very short chat messages (one sentence each), separated by a newlin
 - Write in the requested language and script exactly. Use their name if given.
 - Output only the message text.`;
 
-const LANG: Record<Script, string> = {
-  arabic: "Egyptian Arabic in Arabic script",
-  franco: "Egyptian Arabic in Franco (Latin letters and numbers, e.g. '3amel eh')",
+const LANG: Record<ReplyLang, string> = {
+  arabic: "Egyptian Arabic (everyday Cairo dialect, never Modern Standard) in Arabic script",
   english: "English",
 };
 
-export function buildProactivePrompt(plan: ProactivePlan, opts: { name: string | null; script: Script; tone: string }): string {
+export function buildProactivePrompt(plan: ProactivePlan, opts: { name: string | null; script: ReplyLang; tone: string }): string {
   return [
     `Kind: ${plan.kind} message.`,
     `Language: ${LANG[opts.script]}.`,
@@ -31,17 +30,17 @@ export function buildProactivePrompt(plan: ProactivePlan, opts: { name: string |
 }
 
 /** Used when the AI is unavailable, so scheduled messages still go out (FR-5 reliability). */
-const TEMPLATES: Record<ProactivePlan["kind"], Record<Script, string>> = {
-  morning: { arabic: "صباح الخير ☀️ إيه الخطة النهارده؟", franco: "Sabah el kheir ☀️ eh el plan enharda?", english: "Good morning ☀️ What's the plan today?" },
-  night: { arabic: "يومك كان عامل إزاي النهارده؟", franco: "Yomak kan 3amel ezay enharda?", english: "How did today go?" },
-  checkin: { arabic: "عامل إيه؟ في حاجة جاية عايزني أفتكرها؟", franco: "3amel eh? Fi 7aga gaya 3ayezni aftekerha?", english: "How's it going? Anything coming up you'd like me to remember?" },
-  followup: { arabic: "كانت عاملة إزاي؟ 🙂", franco: "Kanet 3amla ezay? 🙂", english: "How did it go? 🙂" },
+const TEMPLATES: Record<ProactivePlan["kind"], Record<ReplyLang, string>> = {
+  morning: { arabic: "صباح الخير ☀️ إيه الخطة النهارده؟", english: "Good morning ☀️ What's the plan today?" },
+  night: { arabic: "يومك كان عامل إزاي النهارده؟", english: "How did today go?" },
+  checkin: { arabic: "عامل إيه؟ في حاجة جاية عايزني أفتكرها؟", english: "How's it going? Anything coming up you'd like me to remember?" },
+  followup: { arabic: "كانت عاملة إزاي؟ 🙂", english: "How did it go? 🙂" },
 };
 
 export async function writeProactive(
   model: FriendModel | undefined,
   plan: ProactivePlan,
-  opts: { name: string | null; script: Script; tone: string },
+  opts: { name: string | null; script: ReplyLang; tone: string },
 ): Promise<{ messages: string[]; usage: Usage | null }> {
   if (model) {
     try {
