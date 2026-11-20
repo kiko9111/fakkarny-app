@@ -34,6 +34,12 @@ Rules:
   with no policies: the API connects as the table owner (bypasses RLS), and Supabase's
   public Data API gets nothing. Enable RLS in the migration of any new table. Connect
   with the session pooler (port 5432), not the transaction pooler: pg-boss needs it.
+- Production API: Railway project `mellow-reverence`, service `@fakkarni/api`, built
+  from the root Dockerfile and deployed from branch `claude/new-session-60jlqv` on
+  every push: https://fakkarniapi-production.up.railway.app (health check /health).
+  It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
+  RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
+  API because the container starts the server with it.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
