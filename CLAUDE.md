@@ -45,6 +45,13 @@ Rules:
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
   the development, preview and production environments, not in the repo. Android test
   build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
+- EAS Update is configured (updates.url, runtimeVersion policy appVersion; channels
+  development / preview / production). Builds made after 2026-11-21 can take
+  JavaScript-only fixes over the air: `npx eas-cli@latest update --branch preview
+  --environment preview`. iPhone without an Apple Developer account: the app is
+  published for Expo Go on branch `expo-go` with runtime `exposdk:58.0.0` (temporarily
+  set runtimeVersion policy to sdkVersion for that publish, do not commit it); open it
+  from Expo Go signed in to the Expo account. Purchases, Sentry and push do not work there.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
