@@ -66,7 +66,9 @@ Rules:
   (override with FAKKARNI_ANTHROPIC_BASE_URL). The server needs ANTHROPIC_API_KEY or
   the friend won't reply (messages are still stored).
 - Evals: evals/cases/*.jsonl (one case per line; default NOW is Thu 2026-11-19 10:00
-  Cairo). `npm run eval` validates cases and, with ANTHROPIC_API_KEY, scores
+  Cairo). `npm run eval` validates cases and, with ANTHROPIC_API_KEY (or
+  FAKKARNI_ANTHROPIC_API_KEY: Claude Code cloud sessions drop ANTHROPIC_API_KEY from
+  the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
 - Helpline numbers in apps/api/src/persona/prompt.ts must be verified before launch.

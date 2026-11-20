@@ -1,7 +1,8 @@
 /**
  * npm run eval — score the friend on evals/cases/*.jsonl (PRD §8 M3).
  *
- *   npm run eval              validate cases; run the model if ANTHROPIC_API_KEY is set
+ *   npm run eval              validate cases; run the model if ANTHROPIC_API_KEY
+ *                             (or FAKKARNI_ANTHROPIC_API_KEY) is set
  *   npm run eval -- --strict  exit 1 if extraction accuracy < 90%
  *   npm run eval -- --only ar-   run cases whose id starts with "ar-"
  *
@@ -10,7 +11,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAnthropicModel, costUsd, type Usage } from "../apps/api/src/ai/model";
+import { anthropicApiKey, createAnthropicModel, costUsd, type Usage } from "../apps/api/src/ai/model";
 import type { Item, Message, User } from "../apps/api/src/generated/prisma/client";
 import { renderContext } from "../apps/api/src/pipeline/context";
 import { localToUtc } from "../apps/api/src/lib/time";
@@ -82,8 +83,8 @@ async function main() {
   if (only) cases = cases.filter((c) => c.id.startsWith(only));
   console.log(`Loaded ${cases.length} valid eval cases (persona ${PERSONA_VERSION}).`);
 
-  if (!process.env["ANTHROPIC_API_KEY"]) {
-    console.log("SKIPPED model run: ANTHROPIC_API_KEY is not set. No accuracy measured.");
+  if (!anthropicApiKey()) {
+    console.log("SKIPPED model run: neither FAKKARNI_ANTHROPIC_API_KEY nor ANTHROPIC_API_KEY is set. No accuracy measured.");
     return;
   }
 

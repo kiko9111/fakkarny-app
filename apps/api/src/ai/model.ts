@@ -115,9 +115,17 @@ export function buildMessages(input: FriendModelInput): Anthropic.MessageParam[]
   ];
 }
 
+/**
+ * The app's API key. FAKKARNI_ANTHROPIC_API_KEY wins, for shells where the tooling
+ * removes or owns ANTHROPIC_API_KEY (e.g. Claude Code cloud sessions).
+ */
+export function anthropicApiKey(): string | undefined {
+  return process.env["FAKKARNI_ANTHROPIC_API_KEY"] || process.env["ANTHROPIC_API_KEY"] || undefined;
+}
+
 export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string } = {}): FriendModel {
   const client = new Anthropic({
-    apiKey: opts.apiKey ?? process.env["ANTHROPIC_API_KEY"],
+    apiKey: opts.apiKey ?? anthropicApiKey(),
     // Explicit, so a tooling-level ANTHROPIC_BASE_URL in the shell never redirects app traffic.
     baseURL: opts.baseURL ?? process.env["FAKKARNI_ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com",
     maxRetries: 2,
