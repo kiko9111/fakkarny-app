@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { appleAvailable, authAvailable, sendCode, signInWithApple, signInWithGoogle, verifyPhoneCode } from "@/auth";
+import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCode, signInWithApple, signInWithGoogle, verifyPhoneCode } from "@/auth";
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
@@ -15,7 +15,8 @@ import { colors } from "@/lib/theme";
 export default function OnboardingScreen() {
   const [step, setStep] = useState<"language" | "signin">(prefs.get("language") ? "signin" : "language");
   const [contactText, setContactText] = useState("");
-  const contact = parseContact(contactText);
+  const parsed = parseContact(contactText);
+  const contact = parsed?.kind === "phone" && !phoneAvailable ? null : parsed;
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,7 +73,7 @@ export default function OnboardingScreen() {
               setContactText(v);
               setCodeSent(false);
             }}
-            placeholder={t.onboarding.contact}
+            placeholder={phoneAvailable ? t.onboarding.contact : t.onboarding.email}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -97,9 +98,11 @@ export default function OnboardingScreen() {
               <Text style={styles.secondaryText}>{t.onboarding.apple}</Text>
             </Pressable>
           ) : null}
-          <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithGoogle)}>
-            <Text style={styles.secondaryText}>{t.onboarding.google}</Text>
-          </Pressable>
+          {googleAvailable ? (
+            <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithGoogle)}>
+              <Text style={styles.secondaryText}>{t.onboarding.google}</Text>
+            </Pressable>
+          ) : null}
         </>
       ) : null}
       {busy ? <ActivityIndicator color={colors.accent} /> : null}

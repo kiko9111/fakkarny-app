@@ -52,6 +52,16 @@ Rules:
   (`@@unique([userId, clientId])`).
 - packages/shared is consumed as TypeScript source (no build step). The API runs
   under tsx in both dev and start.
+- Chat SQL lives in apps/mobile/src/db/sql.ts and is tested against a real SQLite
+  (node:sqlite) with the migrations (sql.test.ts): the first device build showed an
+  empty chat because the list query ordered a subquery by `rowid`, which no unit test
+  ran. Put any new non-trivial query there and test it the same way.
+- Chat layout on Android: the app is edge-to-edge, so KeyboardAvoidingView needs
+  `behavior="padding"` on both platforms with the header height as offset, and a
+  horizontal ScrollView (QuickReplies) needs `flexGrow: 0` or it takes half the screen.
+- Sign-in buttons are shown only for providers switched on in Supabase:
+  EXPO_PUBLIC_SIGNIN_GOOGLE / _PHONE / _APPLE = 1 (EAS environment variables). Email
+  links are always offered.
 - Mobile unit tests (vitest) cover pure modules only; don't import react-native in them.
   Keep logic pure and inject storage/transport (see apps/mobile/src/sync/queue.ts).
 - Identity (apps/api/src/plugins/auth.ts): Supabase JWT in `Authorization: Bearer`

@@ -3,6 +3,7 @@ import type { Item, MessageKind, MessageRole, PostMessageResponse } from "@fakka
 import type { OutboxMessage, OutboxStore } from "@/sync/queue";
 import { getDb } from "./database";
 import { parseSaved, summarizeSaved, type SavedSummary } from "./saved";
+import { LIST_MESSAGES_SQL, PENDING_MESSAGES_SQL } from "./sql";
 
 export type SyncStatus = "pending" | "synced" | "failed";
 
@@ -60,10 +61,7 @@ export async function addUserMessage(text: string): Promise<LocalMessage> {
 /** Latest messages, oldest first. */
 export async function listMessages(limit = 200): Promise<LocalMessage[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<Row>(
-    "SELECT * FROM (SELECT * FROM messages ORDER BY created_at DESC, rowid DESC LIMIT ?) ORDER BY created_at ASC, rowid ASC",
-    limit,
-  );
+  const rows = await db.getAllAsync<Row>(LIST_MESSAGES_SQL, limit);
   return rows.map(toLocal);
 }
 
@@ -98,9 +96,7 @@ export async function insertServerMessages(messages: PostMessageResponse["replie
 export const sqliteOutbox: OutboxStore = {
   async pending(): Promise<OutboxMessage[]> {
     const db = await getDb();
-    const rows = await db.getAllAsync<Row>(
-      "SELECT * FROM messages WHERE sync_status = 'pending' AND role = 'user' ORDER BY created_at ASC, rowid ASC",
-    );
+    const rows = await db.getAllAsync<Row>(PENDING_MESSAGES_SQL);
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return rows.map((r) => ({ client_id: r.client_id, text: r.text, created_at: r.created_at, timezone, attempts: r.attempts }));
   },
