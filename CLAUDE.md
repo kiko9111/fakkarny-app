@@ -40,6 +40,11 @@ Rules:
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
+- Expo: project `@kiki91111/fakkarni` (projectId in apps/mobile/app.json). The build
+  variables (EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SUPABASE_URL,
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
+  the development, preview and production environments, not in the repo. Android test
+  build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
