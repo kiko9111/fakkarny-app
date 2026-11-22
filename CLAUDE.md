@@ -217,6 +217,14 @@ Rules:
   one returns 402 tracker_limit (app opens the paywall). Logging is never limited.
 - GET /me/export must include every new kind of user data (circles, Daftar, tasks,
   trackers are in). Add to it whenever a table holding user data is added.
+- Check-ins and family roles (Zaki M7): circles.family_type and circle_members.family_role
+  (plain text, validated by shared FamilyType / FamilyRole). A check-in is a circle_posts
+  row with event `checkin:<kind>` and the optional note in `title`; it is pushed to the
+  other members (no chat message) and shown as each member's `last_checkin`. Check-ins are
+  words the member chose, never a location: do not add location to them. "Ask to check
+  in" writes one chat line + push to the target, at most once per 3 hours per pair (the
+  message client_id carries the time bucket). `checkinOrder` in shared decides button
+  order per family type.
   Records only: never hold or move money (Central Bank rules).
 - InstaPay: there is no public deep link that pre-fills an amount. Users paste their own
   InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in

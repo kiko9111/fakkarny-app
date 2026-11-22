@@ -283,6 +283,8 @@ model Circle {
   kind        CircleKind
   name        String
   createdById String     @map("created_by_id") @db.Uuid
+  // Family circles: parents_teens | adults_elders | spouses | mixed (see shared FamilyType).
+  familyType  String?    @map("family_type")
   createdAt   DateTime   @default(now()) @map("created_at")
 
   members CircleMember[]
@@ -298,6 +300,8 @@ model CircleMember {
   circleId String     @map("circle_id") @db.Uuid
   userId   String     @map("user_id") @db.Uuid
   role     CircleRole @default(member)
+  // The member's own place in a family circle (shared FamilyRole). Optional.
+  familyRole String?  @map("family_role")
   joinedAt DateTime   @default(now()) @map("joined_at")
 
   circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)

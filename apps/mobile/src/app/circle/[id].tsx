@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import type { CircleDetail, CircleFeedResponse, CircleMember } from "@fakkarni/shared";
+import { checkinOrder, FamilyRole, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember } from "@fakkarni/shared";
 import { ItemRow, SectionTitle } from "@/components/ItemRow";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t } from "@/i18n";
-import { createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember } from "@/lib/api";
+import { askCheckin, checkIn, createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { HttpError } from "@/sync/queue";
 import { colors } from "@/lib/theme";
 import { sortTasks } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
@@ -67,6 +68,32 @@ export default function CircleScreen() {
     }
   };
 
+  const sendCheckin = async (kind: CheckinKind) => {
+    try {
+      setCircle(await checkIn(id, kind));
+      Alert.alert(t.family.checkedIn);
+      void load();
+    } catch {
+      Alert.alert(t.circles.failed);
+    }
+  };
+  const ask = async (userId: string) => {
+    try {
+      await askCheckin(id, userId);
+      Alert.alert(t.family.asked);
+    } catch (err) {
+      Alert.alert(err instanceof HttpError && err.status === 409 ? t.family.askedTooSoon : t.circles.failed);
+    }
+  };
+  const pickRole = async (userId: string, role: FamilyRole | null) => {
+    try {
+      setCircle(await setFamilyRole(id, userId, role));
+    } catch {
+      Alert.alert(t.circles.failed);
+    }
+  };
+  const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+
   if (!circle) {
     return (
       <View style={styles.center}>
@@ -101,6 +128,15 @@ export default function CircleScreen() {
       <Text style={styles.reward}>{t.circles.inviteReward}</Text>
       {joined > 0 ? <Text style={styles.muted}>{fill(t.circles.joinedCount, { n: joined })}</Text> : null}
 
+      <SectionTitle>{t.family.checkinTitle}</SectionTitle>
+      <View style={styles.chips}>
+        {checkinOrder(circle.family_type).map((kind) => (
+          <Pressable key={kind} style={styles.chip} onPress={() => void sendCheckin(kind)} accessibilityRole="button">
+            <Text style={styles.chipText}>{t.family.checkins[kind]}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       <SectionTitle>{t.tasks.title}</SectionTitle>
       {circle.members.length > 1 ? (
         <Pressable style={styles.ask} onPress={() => router.push({ pathname: "/task/new", params: { circle: id } })} accessibilityRole="button">
@@ -122,14 +158,37 @@ export default function CircleScreen() {
 
       <SectionTitle>{t.circles.membersTitle}</SectionTitle>
       {circle.members.map((m) => (
-        <ItemRow
-          key={m.user_id}
-          title={label(m)}
-          meta={m.role === "owner" ? t.circles.owner : undefined}
-          action={owner && !m.is_me ? t.circles.remove : undefined}
-          onAction={owner && !m.is_me ? () => confirm(fill(t.circles.removeConfirm, { name: label(m) }), () => void act(() => removeCircleMember(id, m.user_id), false)) : undefined}
-        />
+        <View key={m.user_id} style={styles.member}>
+          <ItemRow
+            title={label(m)}
+            meta={
+              [m.role === "owner" ? t.circles.owner : null, m.family_role ? t.family.roles[m.family_role] : null, m.last_checkin ? `${t.family.checkins[m.last_checkin.kind]} · ${when(m.last_checkin.at)}` : null]
+                .filter(Boolean)
+                .join(" · ") || undefined
+            }
+            action={m.is_me ? undefined : t.family.ask}
+            onAction={m.is_me ? undefined : () => void ask(m.user_id)}
+          />
+          {owner && !m.is_me ? (
+            <Pressable onPress={() => confirm(fill(t.circles.removeConfirm, { name: label(m) }), () => void act(() => removeCircleMember(id, m.user_id), false))} accessibilityRole="button">
+              <Text style={styles.removeText}>{t.circles.remove}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ))}
+
+      {circle.kind === "family" && me ? (
+        <>
+          <SectionTitle>{t.family.roleTitle}</SectionTitle>
+          <View style={styles.chips}>
+            {FamilyRole.options.map((role) => (
+              <Pressable key={role} style={[styles.chip, me.family_role === role && styles.chipOn]} onPress={() => void pickRole(me.user_id, me.family_role === role ? null : role)} accessibilityRole="button">
+                <Text style={[styles.chipText, me.family_role === role && styles.chipTextOn]}>{t.family.roles[role]}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       {me ? (
         <Pressable style={styles.quiet} onPress={() => confirm(t.circles.leaveConfirm, () => void act(() => removeCircleMember(id, me.user_id), true))}>
@@ -160,6 +219,13 @@ const styles = StyleSheet.create({
   post: { backgroundColor: "#fff", borderRadius: 14, padding: 12, gap: 2 },
   postBy: { color: colors.accent, fontSize: 12, fontWeight: "700", textAlign: "left" },
   postText: { color: colors.text, fontSize: 15, lineHeight: 22, textAlign: "left" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { borderWidth: 1, borderColor: colors.accent, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
+  chipOn: { backgroundColor: colors.accent },
+  chipText: { color: colors.accent, fontWeight: "600" },
+  chipTextOn: { color: "#fff" },
+  member: { gap: 2 },
+  removeText: { color: colors.error, fontSize: 12, textAlign: "right", paddingHorizontal: 8 },
   quiet: { alignItems: "center", paddingVertical: 10 },
   danger: { color: colors.error, fontSize: 14 },
 });

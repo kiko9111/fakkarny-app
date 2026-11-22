@@ -22,6 +22,9 @@ import {
   type Circle,
   type CircleDetail,
   type CircleKind,
+  type CheckinKind,
+  type FamilyRole,
+  type FamilyType,
   HealthResponse,
   INSTALL_ID_HEADER,
   ExportResponse,
@@ -148,8 +151,23 @@ export async function listCircles(): Promise<Circle[]> {
   return ListCirclesResponse.parse(await request("/circles")).circles;
 }
 
-export async function createCircle(kind: CircleKind, name: string): Promise<CircleDetail> {
-  return CircleResponse.parse(await request("/circles", { method: "POST", body: JSON.stringify({ kind, name }) })).circle;
+export async function createCircle(kind: CircleKind, name: string, familyType?: FamilyType | null): Promise<CircleDetail> {
+  return CircleResponse.parse(await request("/circles", { method: "POST", body: JSON.stringify({ kind, name, ...(familyType ? { family_type: familyType } : {}) }) })).circle;
+}
+
+/** A member's place in the family (your own, or anyone's when you own the circle). */
+export async function setFamilyRole(circleId: string, userId: string, role: FamilyRole | null): Promise<CircleDetail> {
+  return CircleResponse.parse(await request(`/circles/${circleId}/members/${userId}`, { method: "PATCH", body: JSON.stringify({ family_role: role }) })).circle;
+}
+
+/** One-tap check-in, shared with the circle. */
+export async function checkIn(circleId: string, kind: CheckinKind): Promise<CircleDetail> {
+  return CircleResponse.parse(await request(`/circles/${circleId}/checkins`, { method: "POST", body: JSON.stringify({ kind }) })).circle;
+}
+
+/** Zaki asks a member to check in. Throws HttpError 409 when asked too recently. */
+export async function askCheckin(circleId: string, userId: string): Promise<void> {
+  await request(`/circles/${circleId}/members/${userId}/ask-checkin`, { method: "POST" });
 }
 
 export async function getCircle(id: string): Promise<CircleDetail> {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Circle } from "@fakkarni/shared";
 import { groupCircles, joinFailure, whatsappShareUrl } from "./logic";
 
-const circle = (id: string, kind: Circle["kind"], created_at: string): Circle => ({ id, kind, name: id, role: "member", member_count: 2, created_at });
+const circle = (id: string, kind: Circle["kind"], created_at: string): Circle => ({ id, kind, name: id, role: "member", member_count: 2, family_type: null, created_at });
 
 describe("circles logic", () => {
   it("builds a WhatsApp share link with Arabic text and the invite URL encoded", () => {
