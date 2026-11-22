@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import type { CircleMember } from "@fakkarni/shared";
+import type { CircleMember, FamilyType } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
 import { colors } from "@/lib/theme";
@@ -15,6 +15,7 @@ export default function NewTaskScreen() {
   const { circle } = useLocalSearchParams<{ circle: string }>();
   const [members, setMembers] = useState<CircleMember[] | null>(null);
   const [who, setWho] = useState<string | null>(null);
+  const [familyType, setFamilyType] = useState<FamilyType | null>(null);
   const [title, setTitle] = useState("");
   const [due, setDue] = useState<DueChoice>("none");
   const [busy, setBusy] = useState(false);
@@ -25,6 +26,7 @@ export default function NewTaskScreen() {
       .then((c) => {
         const others = c.members.filter((m) => !m.is_me);
         setMembers(others);
+        setFamilyType(c.kind === "family" ? c.family_type ?? "mixed" : null);
         if (others.length === 1) setWho(others[0]!.user_id);
       })
       .catch(() => setMembers([]));
@@ -59,6 +61,12 @@ export default function NewTaskScreen() {
           <Text style={styles.label}>{t.tasks.who}</Text>
           <View style={styles.row}>{members.map((m) => chip(m.user_id, m.name ?? t.circles.noName, who === m.user_id, () => setWho(m.user_id)))}</View>
           <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder={t.tasks.what} maxLength={120} />
+          {familyType && !title.trim() ? (
+            <>
+              <Text style={styles.label}>{t.family.ideasTitle}</Text>
+              <View style={styles.row}>{t.family.ideas[familyType].split("|").map((idea) => chip(idea, idea, false, () => setTitle(idea)))}</View>
+            </>
+          ) : null}
           <Text style={styles.label}>{t.tasks.when}</Text>
           <View style={styles.row}>{choices.map((c) => chip(c, t.tasks.due[c], due === c, () => setDue(c)))}</View>
           <Pressable style={[styles.primary, (!ready || busy) && styles.dim]} disabled={!ready || busy} onPress={() => void submit()} accessibilityRole="button">

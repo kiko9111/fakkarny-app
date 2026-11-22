@@ -130,6 +130,7 @@ export const ExportResponse = z.object({
   /** Shared side, from this person's point of view. Other people's private data is never included. */
   circles: z.array(z.object({ name: z.string(), kind: z.string(), role: z.string(), joined_at: z.string() })).default([]),
   daftar: z.array(z.object({ other_name: z.string(), direction: z.string(), amount: z.number(), currency: z.string(), note: z.string().nullable(), status: z.string(), created_at: z.string() })).default([]),
+  checkins: z.array(z.object({ kind: z.string(), note: z.string().nullable(), at: z.string() })).default([]),
   tasks: z.array(z.object({ title: z.string(), role: z.string(), status: z.string(), due_at: z.string().nullable(), created_at: z.string() })).default([]),
   trackers: z.array(z.object({ kind: z.string(), name: z.string().nullable(), goal: z.number().nullable(), entries: z.array(z.object({ amount: z.number(), source: z.string(), at: z.string() })) })).default([]),
 });

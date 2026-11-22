@@ -90,7 +90,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription });
     app.register(billingRoutes, { prisma, authenticate, ...billing });
     app.register(referralRoutes, { prisma, authenticate, now: deps.now });
-    app.register(circleRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
+    app.register(circleRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl, push: deps.push });
     app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });

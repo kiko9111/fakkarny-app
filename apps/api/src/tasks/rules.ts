@@ -71,5 +71,28 @@ export function postLine(lang: Lang, event: string, actor: string | null | undef
   const what = title ?? "";
   if (event === "task_accepted") return lang === "en" ? `${a} will take care of: ${what} (asked by ${b}) 🙌` : `${what}: في إيد ${a} دلوقتي (طلب ${b}) 🙌`;
   if (event === "task_done") return lang === "en" ? `${a} finished: ${what} ✅ Thank you, ${a}!` : `تمّت: ${what} ✅ تسلم الإيد يا ${a}!`;
+  if (event.startsWith("checkin:")) {
+    const said = CHECKIN_SAID[event.slice(8)]?.[lang];
+    // A check-in is the member's own words, passed on: first person, so it fits anyone.
+    return said ? `${a}: ${said}${title ? ` (${title})` : ""}` : null;
+  }
   return null; // An event this version does not know: skip it rather than show a raw code.
+}
+
+/** What a one-tap check-in says, in the member's own voice. */
+const CHECKIN_SAID: Record<string, Record<Lang, string>> = {
+  arrived: { ar: "وصلت بالسلامة ✅", en: "I've arrived safely ✅" },
+  home: { ar: "أنا في البيت 🏡", en: "I'm home 🏡" },
+  on_way: { ar: "أنا في الطريق 🚗", en: "I'm on my way 🚗" },
+  medicine: { ar: "خدت الدوا 💊", en: "I took my medicine 💊" },
+  ok: { ar: "أنا تمام 💛", en: "I'm okay 💛" },
+};
+
+/** One member may ask another to check in at most this often. */
+export const CHECKIN_ASK_GAP_HOURS = 3;
+
+/** Zaki passes on "let me know you're okay", only because a member asked him to. */
+export function checkinAskLine(lang: Lang, name: string | null | undefined, circle: string): string {
+  const n = nameOr(name, lang);
+  return lang === "en" ? `${n} would love to know you're okay. One tap in «${circle}» is enough 💛` : `طمّن ${n} عليك. دوسة واحدة في «${circle}» كفاية 💛`;
 }
