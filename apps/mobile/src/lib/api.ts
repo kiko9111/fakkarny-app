@@ -50,6 +50,8 @@ import { getInstallId } from "@/db/kv";
 import { HttpError } from "@/sync/queue";
 import { resolveApiUrl } from "./api-url";
 import { accessToken } from "./supabase";
+import { isDemo } from "./demo";
+import { demoRequest } from "@/demo/server";
 
 export const API_URL = resolveApiUrl({
   envUrl: process.env.EXPO_PUBLIC_API_URL,
@@ -59,6 +61,13 @@ export const API_URL = resolveApiUrl({
 const TIMEOUT_MS = 20_000;
 
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
+  if (isDemo) {
+    try {
+      return await demoRequest(path, init);
+    } catch (err) {
+      throw new HttpError((err as { status?: number }).status ?? 500);
+    }
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {

@@ -334,6 +334,20 @@ Rules:
   then `npx prisma migrate deploy` (in apps/api, DATABASE_URL set). Interactive:
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
+- Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
+  parts, TextField, feedback). Screens use it, not src/lib/theme (kept only as an alias).
+  Warm sand ground, apricot primary, Nile green family, saffron friends, dusk violet for
+  Session. Fonts Alexandria (display) + IBM Plex Sans Arabic (body) via expo-font; Ionicons
+  for icons; no emoji on buttons/chips (`plain()` strips them). Use `notify`/`confirm`/`ask`
+  from src/ui/feedback instead of Alert (Alert does nothing on web). Dates use `dateLocale`
+  from src/i18n. Tabs: Zaki, Today, People, Daftar, Me (trackers/upcoming routes hidden).
+- Native modules: existing builds take JS over the air (runtimeVersion appVersion), so
+  a new native module must be optional: check `requireOptionalNativeModule` and require it
+  lazily (see src/lib/contacts.ts, expo-contacts for "Pick from contacts" in Daftar, which
+  asks permission only on tap and reads only the picked name).
+- Browser preview: `node scripts/build-web-preview.mjs out.html` in apps/mobile builds a
+  single-file web app on sample data (EXPO_PUBLIC_DEMO=1, fake API in src/demo/server.web.ts,
+  SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect, router, Stack, useLocalSearchParams } from "expo-router";
 import type { InvitePreview } from "@fakkarni/shared";
 import { fill, joinFailure } from "@/circles/logic";
 import { t } from "@/i18n";
 import { acceptInvite, previewInvite } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
-import { colors } from "@/lib/theme";
 import { HttpError } from "@/sync/queue";
+import { Button, EmptyState, IconTile, palette, plain, space, Text } from "@/ui";
 
 const FAILURE = { gone: t.circles.inviteGone, notFound: t.circles.inviteNotFound, offline: t.circles.offline } as const;
 const statusOf = (err: unknown) => (err instanceof HttpError ? err.status : null);
@@ -49,22 +49,29 @@ export default function InviteScreen() {
   };
 
   const unusable = preview && (preview.state === "expired" || preview.state === "full");
+  const family = preview?.circle_kind === "family";
   return (
     <View style={styles.page}>
       <Stack.Screen options={{ title: "" }} />
-      {!preview && !error ? <ActivityIndicator color={colors.accent} /> : null}
-      {error || unusable ? <Text style={styles.body}>{FAILURE[error ?? "gone"]}</Text> : null}
+      {!preview && !error ? <ActivityIndicator color={palette.primary} /> : null}
+      {error || unusable ? <EmptyState title={plain(FAILURE[error ?? "gone"])} /> : null}
       {preview && !error && !unusable ? (
         <>
-          <Text style={styles.emoji}>{preview.circle_kind === "family" ? "🏡" : "🤝"}</Text>
-          <Text style={styles.title}>
-            {preview.inviter_name ? fill(t.circles.invitedBy, { name: preview.inviter_name, circle: preview.circle_name }) : fill(t.circles.invitedAnon, { circle: preview.circle_name })}
+          <View style={styles.hero}>
+            <IconTile name={family ? "home" : "people"} size={80} color={family ? palette.family : palette.friends} bg={family ? palette.familySoft : palette.friendsSoft} />
+          </View>
+          <Text variant="title" align="center">
+            {plain(preview.inviter_name ? fill(t.circles.invitedBy, { name: preview.inviter_name, circle: preview.circle_name }) : fill(t.circles.invitedAnon, { circle: preview.circle_name }))}
           </Text>
-          <Text style={styles.body}>{fill(t.circles.members, { n: preview.member_count })}</Text>
-          {preview.state === "already_member" ? <Text style={styles.body}>{t.circles.alreadyMember}</Text> : null}
-          <Pressable style={[styles.primary, busy && styles.dim]} disabled={busy} onPress={() => void join()} accessibilityRole="button">
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{preview.state === "already_member" ? t.circles.open : t.circles.join}</Text>}
-          </Pressable>
+          <Text variant="body" color={palette.inkSoft} align="center">
+            {fill(t.circles.members, { n: preview.member_count })}
+          </Text>
+          {preview.state === "already_member" ? (
+            <Text variant="body" color={palette.inkSoft} align="center">
+              {plain(t.circles.alreadyMember)}
+            </Text>
+          ) : null}
+          <Button label={preview.state === "already_member" ? t.circles.open : t.circles.join} size="lg" block busy={busy} onPress={() => void join()} />
         </>
       ) : null}
     </View>
@@ -72,11 +79,6 @@ export default function InviteScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg, padding: 24, gap: 14, justifyContent: "center" },
-  emoji: { fontSize: 56, textAlign: "center" },
-  title: { fontSize: 22, fontWeight: "700", color: colors.text, textAlign: "center" },
-  body: { fontSize: 15, color: colors.muted, textAlign: "center" },
-  primary: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14, alignItems: "center", marginTop: 8 },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  dim: { opacity: 0.6 },
+  page: { flex: 1, backgroundColor: palette.bg, padding: space.xl, gap: space.md, justifyContent: "center" },
+  hero: { alignItems: "center", marginBottom: space.sm },
 });

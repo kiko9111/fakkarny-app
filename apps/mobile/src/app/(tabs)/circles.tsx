@@ -1,14 +1,13 @@
 import { useCallback, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import type { Circle } from "@fakkarni/shared";
-import { SectionTitle } from "@/components/ItemRow";
 import { fill, groupCircles } from "@/circles/logic";
 import { t } from "@/i18n";
 import { listCircles } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { Button, IconTile, ListRow, Note, palette, Screen, SectionHeader, space, Text } from "@/ui";
 
-/** The Friends and Family spaces: the user's circles, and the way into creating or joining one. */
+/** The Family and Friends spaces: the user's circles, and the way into creating or joining one. */
 export default function CirclesScreen() {
   const [circles, setCircles] = useState<Circle[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -30,68 +29,52 @@ export default function CirclesScreen() {
     }, [load]),
   );
 
-  const refresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
-
   const { family, friends } = groupCircles(circles ?? []);
   const row = (c: Circle) => (
-    <Pressable key={c.id} style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={() => router.push({ pathname: "/circle/[id]", params: { id: c.id } })} accessibilityRole="button">
-      <Text style={styles.emoji}>{c.kind === "family" ? "🏡" : "🤝"}</Text>
-      <View style={styles.flex}>
-        <Text style={styles.name}>{c.name}</Text>
-        <Text style={styles.meta}>{fill(t.circles.members, { n: c.member_count })}</Text>
-      </View>
-    </Pressable>
+    <ListRow
+      key={c.id}
+      leading={<IconTile name={c.kind === "family" ? "home" : "people"} color={c.kind === "family" ? palette.family : palette.friends} bg={c.kind === "family" ? palette.familySoft : palette.friendsSoft} />}
+      title={c.name}
+      meta={fill(t.ui.members, { n: c.member_count })}
+      onPress={() => router.push({ pathname: "/circle/[id]", params: { id: c.id } })}
+    />
   );
-  const add = (label: string, kind: "family" | "friends") => (
-    <Pressable style={({ pressed }) => [styles.add, pressed && styles.pressed]} onPress={() => router.push({ pathname: "/circle/new", params: { kind } })} accessibilityRole="button">
-      <Text style={styles.addText}>{label}</Text>
-    </Pressable>
+
+  const section = (kind: "family" | "friends", list: Circle[]) => (
+    <>
+      <SectionHeader title={kind === "family" ? t.ui.family : t.ui.friends} action={t.ui.newCircle} onAction={() => router.push({ pathname: "/circle/new", params: { kind } })} />
+      {list.map(row)}
+      {circles !== null && list.length === 0 ? (
+        <Button label={kind === "family" ? t.circles.newFamily : t.circles.newFriends} kind="outline" icon="add" block onPress={() => router.push({ pathname: "/circle/new", params: { kind } })} />
+      ) : null}
+    </>
   );
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-      <Text style={styles.intro}>{t.circles.intro}</Text>
+    <Screen
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
+      <Text variant="small" color={palette.inkSoft}>
+        {t.ui.peopleLine}
+      </Text>
       {failed && circles === null ? (
         <View style={styles.offline}>
-          <Text style={styles.meta}>{t.circles.offline}</Text>
-          <Pressable onPress={() => void load()}>
-            <Text style={styles.link}>{t.circles.retry}</Text>
-          </Pressable>
+          <Note icon="cloud-offline-outline">{t.circles.offline}</Note>
+          <Button label={t.circles.retry} kind="text" size="sm" onPress={() => void load()} />
         </View>
       ) : null}
-
-      <SectionTitle>{t.circles.family}</SectionTitle>
-      {family.map(row)}
-      {add(t.circles.newFamily, "family")}
-
-      <SectionTitle>{t.circles.friends}</SectionTitle>
-      {friends.map(row)}
-      {add(t.circles.newFriends, "friends")}
-
-      <Pressable style={styles.invite} onPress={() => router.push("/invite")} accessibilityRole="button">
-        <Text style={styles.link}>{t.circles.haveInvite}</Text>
-      </Pressable>
-    </ScrollView>
+      {section("family", family)}
+      {section("friends", friends)}
+      <Button label={t.ui.haveCode} kind="text" icon="key-outline" onPress={() => router.push("/invite")} style={styles.code} />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 8 },
-  intro: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: "left", marginBottom: 4 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
-  pressed: { opacity: 0.6 },
-  emoji: { fontSize: 24 },
-  flex: { flex: 1, gap: 2 },
-  name: { fontSize: 16, fontWeight: "600", color: colors.text, textAlign: "left" },
-  meta: { fontSize: 13, color: colors.muted, textAlign: "left" },
-  add: { borderWidth: 1, borderColor: colors.accent, borderStyle: "dashed", borderRadius: 14, paddingVertical: 12, alignItems: "center" },
-  addText: { color: colors.accent, fontWeight: "600", fontSize: 15 },
-  offline: { backgroundColor: "#fff", borderRadius: 14, padding: 14, gap: 6 },
-  invite: { alignItems: "center", paddingVertical: 16 },
-  link: { color: colors.accent, fontWeight: "600", fontSize: 15 },
+  offline: { gap: space.xs },
+  code: { alignSelf: "center", marginTop: space.md },
 });

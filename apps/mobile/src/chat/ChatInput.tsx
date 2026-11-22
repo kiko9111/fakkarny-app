@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { t } from "@/i18n";
-import { colors } from "@/lib/theme";
+import { fonts, IconButton, palette, radius, shadow, space, textStart } from "@/ui";
 
 /** Text only (CLAUDE.md). Users can dictate with the keyboard microphone. */
 export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
@@ -15,53 +15,38 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
 
   return (
     <View style={styles.bar}>
-      <TextInput
-        style={styles.input}
-        value={text}
-        onChangeText={setText}
-        placeholder={t.chat.placeholder}
-        placeholderTextColor={colors.muted}
-        multiline
-        maxLength={4000}
-        textAlign="start"
-      />
-      <Pressable
-        onPress={submit}
-        disabled={!canSend}
-        style={[styles.send, !canSend && styles.sendDisabled]}
-        accessibilityRole="button"
-        accessibilityLabel={t.chat.send}
-      >
-        <Text style={styles.sendText}>{t.chat.send}</Text>
-      </Pressable>
+      <View style={styles.field}>
+        <TextInput
+          style={styles.input}
+          value={text}
+          onChangeText={setText}
+          placeholder={t.chat.placeholder}
+          placeholderTextColor={palette.inkFaint}
+          multiline
+          maxLength={4000}
+          textAlign={textStart}
+          accessibilityLabel={t.chat.placeholder}
+          // The browser preview: Enter sends, Shift+Enter makes a new line.
+          onKeyPress={
+            Platform.OS === "web"
+              ? (e) => {
+                  const ev = e.nativeEvent as unknown as { key: string; shiftKey?: boolean };
+                  if (ev.key === "Enter" && !ev.shiftKey) {
+                    (e as unknown as { preventDefault: () => void }).preventDefault();
+                    submit();
+                  }
+                }
+              : undefined
+          }
+        />
+        <IconButton name="arrow-up" label={t.chat.send} onPress={submit} disabled={!canSend} color={palette.onPrimary} bg={canSend ? palette.primary : palette.lineStrong} size={40} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#E5DDD5",
-    backgroundColor: colors.bg,
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 120,
-    borderRadius: 20,
-    backgroundColor: "#fff",
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 16,
-    color: colors.text,
-  },
-  send: { backgroundColor: colors.accent, borderRadius: 20, paddingHorizontal: 16, height: 40, justifyContent: "center" },
-  sendDisabled: { opacity: 0.4 },
-  sendText: { color: "#fff", fontWeight: "600" },
+  bar: { paddingHorizontal: space.md, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: palette.bg },
+  field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, backgroundColor: palette.surface, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2, borderWidth: 1, borderColor: palette.line, ...shadow.card },
+  input: { flex: 1, minHeight: 40, maxHeight: 140, paddingTop: 9, paddingBottom: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, outlineStyle: "none" } as object,
 });

@@ -1,19 +1,19 @@
 import { useEffect, useRef } from "react";
-import { Animated, StyleSheet, View } from "react-native";
-import { colors } from "@/lib/theme";
+import { Animated, Platform, StyleSheet, View } from "react-native";
+import { palette, radius, shadow, space, ZakiAvatar } from "@/ui";
 
-/** Three bouncing dots in a friend bubble while the reply is being written. */
+/** Zaki's face and three soft dots while the reply is being written. */
 export function TypingIndicator() {
   const dots = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
     const anim = Animated.loop(
       Animated.stagger(
-        150,
+        160,
         dots.map((v) =>
           Animated.sequence([
-            Animated.timing(v, { toValue: 1, duration: 300, useNativeDriver: true }),
-            Animated.timing(v, { toValue: 0, duration: 300, useNativeDriver: true }),
+            Animated.timing(v, { toValue: 1, duration: 320, useNativeDriver: Platform.OS !== "web" }),
+            Animated.timing(v, { toValue: 0, duration: 320, useNativeDriver: Platform.OS !== "web" }),
           ]),
         ),
       ),
@@ -23,27 +23,19 @@ export function TypingIndicator() {
   }, [dots]);
 
   return (
-    <View style={styles.bubble} accessibilityLabel="typing">
-      {dots.map((v, i) => (
-        <Animated.View
-          key={i}
-          style={[styles.dot, { transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) }] }]}
-        />
-      ))}
+    <View style={styles.row} accessibilityLabel="typing">
+      <ZakiAvatar size={28} />
+      <View style={styles.bubble}>
+        {dots.map((v, i) => (
+          <Animated.View key={i} style={[styles.dot, { opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) }] }]} />
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bubble: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    gap: 4,
-    backgroundColor: colors.friendBubble,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginVertical: 3,
-  },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.muted },
+  row: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, alignSelf: "flex-start", marginVertical: space.xs },
+  bubble: { flexDirection: "row", gap: 5, backgroundColor: palette.surface, borderRadius: radius.lg, borderBottomStartRadius: 6, paddingHorizontal: space.lg, paddingVertical: 14, ...shadow.card },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: palette.primary },
 });

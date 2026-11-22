@@ -1,4 +1,4 @@
-import "expo-sqlite/localStorage/install";
+import "./storage";
 
 /**
  * Small synchronous preferences (backed by expo-sqlite's localStorage), readable at startup

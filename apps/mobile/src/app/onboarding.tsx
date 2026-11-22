@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCode, signInWithApple, signInWithGoogle, verifyCode } from "@/auth";
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
-import { colors } from "@/lib/theme";
+import { Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 /**
- * F1 (under 2 minutes): pick a language, sign in with a code sent by email or SMS, Apple or Google.
- * No tutorial screens — afterwards the friend opens the chat and asks your name.
+ * F1 (under 2 minutes): meet Zaki and pick a language, then sign in with a code sent by email
+ * or SMS, Apple or Google. Afterwards the friend opens the chat and asks your name.
  */
 export default function OnboardingScreen() {
   const [step, setStep] = useState<"language" | "signin">(prefs.get("language") ? "signin" : "language");
@@ -37,7 +37,7 @@ export default function OnboardingScreen() {
       // a small hourly total on the built-in mailer). That is "wait", not "something broke".
       const e = err as { status?: number; code?: string };
       const limited = e?.status === 429 || (typeof e?.code === "string" && e.code.includes("rate_limit"));
-      Alert.alert(limited ? t.onboarding.tooSoon : t.onboarding.failed);
+      notify(limited ? t.onboarding.tooSoon : t.onboarding.failed, "error");
     } finally {
       setBusy(false);
     }
@@ -51,26 +51,59 @@ export default function OnboardingScreen() {
   };
 
   if (step === "language") {
-    return (
-      <View style={styles.page}>
-        <Text style={styles.title}>{t.onboarding.pickLanguage}</Text>
-        <Pressable style={styles.primary} onPress={() => pickLanguage("ar-EG")}>
-          <Text style={styles.primaryText}>{t.onboarding.arabic}</Text>
-        </Pressable>
-        <Pressable style={styles.primary} onPress={() => pickLanguage("en")}>
-          <Text style={styles.primaryText}>{t.onboarding.english}</Text>
-        </Pressable>
-        <Text style={styles.disclosure}>{t.settings.aiDisclosure}</Text>
+    const point = (icon: IconName, text: string) => (
+      <View style={styles.point}>
+        <View style={styles.pointIcon}>
+          <Icon name={icon} size={20} color={palette.primaryInk} />
+        </View>
+        <Text variant="body" style={styles.flex}>
+          {text}
+        </Text>
       </View>
+    );
+    return (
+      <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        <View style={styles.hero}>
+          <ZakiAvatar size={104} glow />
+          <Text variant="display" align="center">
+            {t.ui.welcomeTitle}
+          </Text>
+          <Text variant="body" color={palette.inkSoft} align="center" style={styles.lead}>
+            {t.ui.welcomeBody}
+          </Text>
+        </View>
+        <View style={styles.points}>
+          {point("chatbubble-ellipses-outline", t.ui.welcomePoint1)}
+          {point("alarm-outline", t.ui.welcomePoint2)}
+          {point("people-outline", t.ui.welcomePoint3)}
+        </View>
+        <Text variant="smallStrong" color={palette.inkSoft} align="center">
+          {t.onboarding.pickLanguage}
+        </Text>
+        <View style={styles.langs}>
+          <Button label={t.onboarding.arabic} size="lg" block kind={language === "ar-EG" ? "filled" : "outline"} onPress={() => pickLanguage("ar-EG")} />
+          <Button label={t.onboarding.english} size="lg" block kind={language === "en" ? "filled" : "outline"} onPress={() => pickLanguage("en")} />
+        </View>
+        <Text variant="caption" color={palette.inkSoft} align="center">
+          {t.settings.aiDisclosure}
+        </Text>
+      </ScrollView>
     );
   }
 
   return (
-    <View style={styles.page}>
-      <Text style={styles.title}>{t.onboarding.signInTitle}</Text>
-      {!authAvailable ? <Text style={styles.note}>{t.onboarding.notConfigured}</Text> : null}
+    <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <View style={styles.hero}>
+        <ZakiAvatar size={72} glow />
+        <Text variant="title" align="center">
+          {t.onboarding.signInTitle}
+        </Text>
+        <Text variant="small" color={palette.inkSoft} align="center">
+          {authAvailable ? t.ui.signInLine : t.onboarding.notConfigured}
+        </Text>
+      </View>
       {authAvailable ? (
-        <>
+        <View style={styles.form}>
           <TextInput
             style={styles.input}
             value={contactText}
@@ -79,6 +112,7 @@ export default function OnboardingScreen() {
               setCodeSent(false);
             }}
             placeholder={phoneAvailable ? t.onboarding.contact : t.onboarding.email}
+            placeholderTextColor={palette.inkFaint}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -86,49 +120,38 @@ export default function OnboardingScreen() {
           />
           {codeSent && contact ? (
             <>
-              {contact.kind === "email" ? <Text style={styles.note}>{t.onboarding.codeSentEmail}</Text> : null}
-              <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder={t.onboarding.code} keyboardType="number-pad" autoComplete="one-time-code" maxLength={8} textAlign="center" />
-              <Pressable style={[styles.primary, code.trim().length < 6 && styles.dim]} disabled={busy || code.trim().length < 6} onPress={() => void run(() => verifyCode(contact, code.trim()))}>
-                <Text style={styles.primaryText}>{t.onboarding.verify}</Text>
-              </Pressable>
+              {contact.kind === "email" ? (
+                <Text variant="small" color={palette.inkSoft} align="center">
+                  {t.onboarding.codeSentEmail}
+                </Text>
+              ) : null}
+              <TextInput style={[styles.input, styles.code]} value={code} onChangeText={setCode} placeholder={t.onboarding.code} placeholderTextColor={palette.inkFaint} keyboardType="number-pad" autoComplete="one-time-code" maxLength={8} textAlign="center" />
+              <Button label={t.onboarding.verify} size="lg" block disabled={busy || code.trim().length < 6} onPress={() => void run(() => verifyCode(contact, code.trim()))} />
             </>
-          ) : null}
-          {!codeSent ? (
-            <Pressable style={[styles.primary, !contact && styles.dim]} disabled={busy || !contact} onPress={() => contact && void run(() => sendCode(contact), () => setCodeSent(true))}>
-              <Text style={styles.primaryText}>{t.onboarding.sendCode}</Text>
-            </Pressable>
-          ) : null}
-          {appleAvailable ? (
-            <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithApple)}>
-              <Text style={styles.secondaryText}>{t.onboarding.apple}</Text>
-            </Pressable>
-          ) : null}
-          {googleAvailable ? (
-            <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithGoogle)}>
-              <Text style={styles.secondaryText}>{t.onboarding.google}</Text>
-            </Pressable>
-          ) : null}
-        </>
+          ) : (
+            <Button label={t.onboarding.sendCode} size="lg" block disabled={busy || !contact} onPress={() => contact && void run(() => sendCode(contact), () => setCodeSent(true))} />
+          )}
+          {googleAvailable ? <Button label={t.onboarding.google} kind="outline" icon="logo-google" size="lg" block disabled={busy} onPress={() => void run(signInWithGoogle)} /> : null}
+          {appleAvailable ? <Button label={t.onboarding.apple} kind="outline" icon="logo-apple" size="lg" block disabled={busy} onPress={() => void run(signInWithApple)} /> : null}
+        </View>
       ) : null}
-      {busy ? <ActivityIndicator color={colors.accent} /> : null}
-      <Pressable onPress={finish} style={styles.skip}>
-        <Text style={styles.skipText}>{authAvailable ? t.onboarding.skip : t.onboarding.start}</Text>
-      </Pressable>
-    </View>
+      {busy ? <ActivityIndicator color={palette.primary} /> : null}
+      <Button label={authAvailable ? t.onboarding.skip : t.onboarding.start} kind={authAvailable ? "text" : "filled"} size="lg" block={!authAvailable} icon={authAvailable ? undefined : "arrow-forward"} onPress={finish} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg, padding: 24, gap: 14, justifyContent: "center" },
-  title: { fontSize: 22, fontWeight: "700", color: colors.text, textAlign: "center", marginBottom: 8 },
-  note: { color: colors.muted, textAlign: "center" },
-  disclosure: { color: colors.muted, textAlign: "center", marginTop: 12 },
-  input: { backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17, color: colors.text },
-  primary: { backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 14, alignItems: "center" },
-  dim: { opacity: 0.5 },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "600" },
-  secondary: { borderWidth: 1, borderColor: colors.text, borderRadius: 14, paddingVertical: 13, alignItems: "center" },
-  secondaryText: { color: colors.text, fontSize: 16, fontWeight: "600" },
-  skip: { alignItems: "center", paddingVertical: 8 },
-  skipText: { color: colors.muted, fontSize: 15 },
+  flex: { flex: 1 },
+  page: { flex: 1, backgroundColor: palette.bg },
+  content: { flexGrow: 1, justifyContent: "center", padding: space.xl, gap: space.xl, maxWidth: 520, width: "100%", alignSelf: "center" },
+  hero: { alignItems: "center", gap: space.md },
+  lead: { maxWidth: 360 },
+  points: { gap: space.md, backgroundColor: palette.surface, borderRadius: radius.lg, padding: space.lg },
+  point: { flexDirection: "row", alignItems: "center", gap: space.md },
+  pointIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" },
+  langs: { gap: space.sm },
+  form: { gap: space.md },
+  input: { minHeight: 54, backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: palette.line, paddingHorizontal: space.lg, fontSize: 17, fontFamily: fonts.body, color: palette.ink },
+  code: { fontSize: 24, fontFamily: fonts.display },
 });

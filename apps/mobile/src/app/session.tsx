@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { router, Stack } from "expo-router";
 import { Mood, SessionMode, type Session, type SessionMessage, type SessionState } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
-import { t } from "@/i18n";
+import { t, dateLocale } from "@/i18n";
 import { acceptSessionStep, consentToSession, deleteSessionData, endSession, getSessionState, sendSessionMessage, startSession } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { Button, Card, Chip, confirm, fonts, Icon, IconButton, notify, palette, radius, shadow, space, Text, textStart, ZakiAvatar, type IconName } from "@/ui";
 import { pullItems } from "@/sync/items";
 import { HttpError } from "@/sync/queue";
 
-const FACES = ["😞", "😕", "😐", "🙂", "😄"];
+/** The five moods, low to great, drawn as one icon family. */
+const FACES: { icon: IconName; color: string }[] = [
+  { icon: "rainy-outline", color: "#5B6B8C" },
+  { icon: "cloudy-outline", color: "#7A7F99" },
+  { icon: "partly-sunny-outline", color: "#8F7A3A" },
+  { icon: "sunny-outline", color: "#B7791F" },
+  { icon: "happy-outline", color: "#C2552C" },
+];
 
 /**
  * Session: a private space to reflect with Zaki. Not therapy. Adults only, its own consent,
@@ -48,7 +55,7 @@ export default function SessionScreen() {
       await fn();
     } catch (err) {
       if (err instanceof HttpError && err.status === 402) router.push("/paywall");
-      else Alert.alert(t.session.failed);
+      else notify(t.session.failed, "error");
     } finally {
       setBusy(false);
     }
@@ -71,25 +78,22 @@ export default function SessionScreen() {
       if (session) setSession({ ...session, messages: session.messages.map((x) => (x.id === m.id && x.step ? { ...x, step: { ...x.step, accepted: true } } : x)) });
     });
 
-  const removeAll = () =>
-    Alert.alert(t.session.deleteConfirm, undefined, [
-      { text: t.session.no, style: "cancel" },
-      { text: t.session.yes, style: "destructive", onPress: () => void run(async () => (await deleteSessionData(), setSession(null), await load())) },
-    ]);
+  const removeAll = () => confirm(t.session.deleteConfirm, t.session.yes, () => void run(async () => (await deleteSessionData(), setSession(null), await load())), t.session.no);
 
-  const helpline = state ? <Text style={styles.helpline}>{fill(t.session.helpline, { line: state.helpline })}</Text> : null;
+  const helpline = state ? (
+    <View style={styles.helpline}>
+      <Icon name="call-outline" size={16} color={palette.calm} />
+      <Text variant="small" color={palette.inkSoft} style={styles.flex}>
+        {fill(t.session.helpline, { line: state.helpline })}
+      </Text>
+    </View>
+  ) : null;
 
   if (!state) {
     return (
       <View style={styles.center}>
         <Stack.Screen options={{ title: t.session.title }} />
-        {failed ? (
-          <Pressable onPress={() => void load()}>
-            <Text style={styles.link}>{t.session.offline}</Text>
-          </Pressable>
-        ) : (
-          <ActivityIndicator color={colors.accent} />
-        )}
+        {failed ? <Button label={t.session.offline} kind="tonal" onPress={() => void load()} /> : <ActivityIndicator color={palette.calm} />}
       </View>
     );
   }
@@ -98,8 +102,10 @@ export default function SessionScreen() {
     return (
       <View style={styles.center}>
         <Stack.Screen options={{ title: t.session.title }} />
-        <Text style={styles.big}>🌙</Text>
-        <Text style={styles.body}>{state.available ? t.session.adultsOnly : t.session.comingSoon}</Text>
+        <ZakiAvatar size={72} mood="calm" glow />
+        <Text variant="body" align="center">
+          {state.available ? t.session.adultsOnly : t.session.comingSoon}
+        </Text>
         {helpline}
       </View>
     );
@@ -108,22 +114,31 @@ export default function SessionScreen() {
   if (!state.consented) {
     const tick = (on: boolean, set: (v: boolean) => void, label: string) => (
       <Pressable style={styles.tickRow} onPress={() => set(!on)} accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
-        <Text style={styles.tick}>{on ? "☑" : "☐"}</Text>
-        <Text style={styles.tickText}>{label}</Text>
+        <View style={[styles.tick, on && styles.tickOn]}>{on ? <Icon name="checkmark" size={16} color="#fff" /> : null}</View>
+        <Text variant="body" style={styles.flex}>
+          {label}
+        </Text>
       </Pressable>
     );
     return (
       <ScrollView style={styles.page} contentContainerStyle={styles.content}>
         <Stack.Screen options={{ title: t.session.title }} />
-        <Text style={styles.heading}>{t.session.consentTitle}</Text>
-        <Text style={styles.body}>{t.session.what}</Text>
-        <Text style={styles.body}>{t.session.notDoctor}</Text>
-        <Text style={styles.body}>{t.session.privacy}</Text>
+        <View style={styles.hero}>
+          <ZakiAvatar size={72} mood="calm" glow />
+          <Text variant="title" align="center">
+            {t.session.consentTitle}
+          </Text>
+        </View>
+        <Card style={styles.soft}>
+          <Text variant="body">{t.session.what}</Text>
+          <Text variant="body">{t.session.notDoctor}</Text>
+          <Text variant="body" color={palette.inkSoft}>
+            {t.session.privacy}
+          </Text>
+        </Card>
         {tick(adult, setAdult, t.session.tickAdult)}
         {tick(agree, setAgree, t.session.tickAgree)}
-        <Pressable style={[styles.primary, (!adult || !agree || busy) && styles.dim]} disabled={!adult || !agree || busy} onPress={() => void run(async () => (await consentToSession(), await load()))} accessibilityRole="button">
-          <Text style={styles.primaryText}>{t.session.agree}</Text>
-        </Pressable>
+        <Button label={t.session.agree} size="lg" block disabled={!adult || !agree || busy} style={styles.calmBtn} onPress={() => void run(async () => (await consentToSession(), await load()))} />
         {helpline}
       </ScrollView>
     );
@@ -134,81 +149,116 @@ export default function SessionScreen() {
     return (
       <ScrollView style={styles.page} contentContainerStyle={styles.content}>
         <Stack.Screen options={{ title: t.session.title }} />
-        <Text style={styles.heading}>{t.session.howAreYou}</Text>
-        <View style={styles.faces}>
-          {FACES.map((face, i) => (
-            <Pressable key={face} style={[styles.face, mood === i + 1 && styles.faceOn]} onPress={() => setMood(i + 1)} accessibilityRole="button" accessibilityLabel={t.session.moods[Mood.parse(i + 1) as 1 | 2 | 3 | 4 | 5]}>
-              <Text style={styles.faceText}>{face}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.hero}>
+          <ZakiAvatar size={64} mood="calm" glow />
+          <Text variant="title" align="center">
+            {t.session.howAreYou}
+          </Text>
+          <Text variant="small" color={palette.inkSoft} align="center">
+            {t.ui.sessionSafe}
+          </Text>
         </View>
+        <View style={styles.faces}>
+          {FACES.map((face, i) => {
+            const on = mood === i + 1;
+            return (
+              <Pressable key={face.icon} style={[styles.face, on && styles.faceOn]} onPress={() => setMood(i + 1)} accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={t.session.moods[Mood.parse(i + 1) as 1 | 2 | 3 | 4 | 5]}>
+                <Icon name={face.icon} size={30} color={on ? "#fff" : face.color} />
+              </Pressable>
+            );
+          })}
+        </View>
+        {mood !== null ? (
+          <Text variant="smallStrong" color={palette.calm} align="center">
+            {t.session.moods[Mood.parse(mood) as 1 | 2 | 3 | 4 | 5]}
+          </Text>
+        ) : null}
         <View style={styles.row}>
           {SessionMode.options.map((m) => (
-            <Pressable key={m} style={[styles.chip, mode === m && styles.chipOn]} onPress={() => setMode(m)} accessibilityRole="button">
-              <Text style={[styles.chipText, mode === m && styles.chipTextOn]}>{t.session.modes[m]}</Text>
-            </Pressable>
+            <Chip key={m} label={t.session.modes[m]} tone="calm" selected={mode === m} onPress={() => setMode(m)} />
           ))}
         </View>
-        <Text style={styles.muted}>{t.session.modeHints[mode]}</Text>
+        <Text variant="small" color={palette.inkSoft} align="center">
+          {t.session.modeHints[mode]}
+        </Text>
         {blocked ? (
           <>
-            <Text style={styles.body}>{fill(t.session.nextFree, { day: state.next_free_at ? new Date(state.next_free_at).toLocaleDateString([], { weekday: "long" }) : "" })}</Text>
-            <Pressable style={styles.primary} onPress={() => router.push("/paywall")} accessibilityRole="button">
-              <Text style={styles.primaryText}>{t.session.goPro}</Text>
-            </Pressable>
+            <Text variant="body" align="center">
+              {fill(t.session.nextFree, { day: state.next_free_at ? new Date(state.next_free_at).toLocaleDateString(dateLocale, { weekday: "long" }) : "" })}
+            </Text>
+            <Button label={t.session.goPro} icon="sparkles" size="lg" block onPress={() => router.push("/paywall")} />
           </>
         ) : (
-          <Pressable style={[styles.primary, (mood === null || busy) && styles.dim]} disabled={mood === null || busy} onPress={() => void run(async () => setSession(await startSession({ mode, mood: mood ?? 3 })))} accessibilityRole="button">
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t.session.start}</Text>}
-          </Pressable>
+          <Button label={t.session.start} size="lg" block busy={busy} disabled={mood === null} style={styles.calmBtn} onPress={() => void run(async () => setSession(await startSession({ mode, mood: mood ?? 3 })))} />
         )}
-        {state.free_left !== null && !blocked ? <Text style={styles.muted}>{t.session.freeNote}</Text> : null}
-        {state.moods.length ? (
-          <>
-            <Text style={styles.muted}>{t.session.moodHistory}</Text>
-            <Text style={styles.strip}>{state.moods.slice(-14).map((m) => FACES[m.mood - 1]).join(" ")}</Text>
-          </>
+        {state.free_left !== null && !blocked ? (
+          <Text variant="caption" color={palette.inkSoft} align="center">
+            {t.session.freeNote}
+          </Text>
         ) : null}
-        <Text style={styles.muted}>{t.session.notDoctor}</Text>
+        {state.moods.length ? (
+          <Card style={styles.soft}>
+            <Text variant="smallStrong" color={palette.inkSoft}>
+              {t.session.moodHistory}
+            </Text>
+            <View style={styles.strip}>
+              {state.moods.slice(-14).map((m, i) => (
+                <Icon key={i} name={FACES[m.mood - 1]!.icon} size={20} color={FACES[m.mood - 1]!.color} />
+              ))}
+            </View>
+          </Card>
+        ) : null}
+        <Text variant="caption" color={palette.inkSoft} align="center">
+          {t.session.notDoctor}
+        </Text>
         {helpline}
-        <Pressable onPress={removeAll} accessibilityRole="button">
-          <Text style={styles.danger}>{t.session.deleteAll}</Text>
-        </Pressable>
+        <Button label={t.session.deleteAll} kind="danger" size="sm" icon="trash-outline" onPress={removeAll} style={styles.selfCenter} />
       </ScrollView>
     );
   }
 
   const ended = Boolean(session.ended_at);
   return (
-    <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={styles.page} behavior="padding" keyboardVerticalOffset={90}>
       <Stack.Screen options={{ title: t.session.title }} />
       <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {session.messages.map((m) => (
-          <View key={m.id} style={[styles.bubble, m.role === "user" ? styles.mine : styles.zaki]}>
-            <Text style={[styles.bubbleText, m.role === "user" && styles.mineText]}>{m.text}</Text>
-            {m.step ? (
-              <Pressable style={[styles.step, m.step.accepted && styles.dim]} disabled={m.step.accepted || busy} onPress={() => void remind(m)} accessibilityRole="button">
-                <Text style={styles.stepText}>{m.step.accepted ? t.session.stepSaved : fill(t.session.stepRemind, { title: m.step.title })}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ))}
-        {busy ? <ActivityIndicator color={colors.accent} /> : null}
+        {session.messages.map((m) => {
+          const mine = m.role === "user";
+          return (
+            <View key={m.id} style={[styles.msgRow, mine ? styles.msgMine : styles.msgZaki]}>
+              {!mine ? <ZakiAvatar size={26} mood="calm" /> : null}
+              <View style={[styles.bubble, mine ? styles.mine : styles.zaki]}>
+                <Text variant="body" color={mine ? "#fff" : palette.ink}>
+                  {m.text}
+                </Text>
+                {m.step ? (
+                  <Button
+                    label={m.step.accepted ? t.session.stepSaved : fill(t.session.stepRemind, { title: m.step.title })}
+                    icon={m.step.accepted ? "checkmark" : "alarm-outline"}
+                    kind="tonal"
+                    size="sm"
+                    disabled={m.step.accepted || busy}
+                    onPress={() => void remind(m)}
+                  />
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+        {busy ? <ActivityIndicator color={palette.calm} /> : null}
         {helpline}
       </ScrollView>
       {ended ? (
-        <Pressable style={[styles.primary, styles.bar]} onPress={() => void (setSession(null), load())} accessibilityRole="button">
-          <Text style={styles.primaryText}>{t.session.done}</Text>
-        </Pressable>
+        <View style={styles.bar}>
+          <Button label={t.session.done} size="lg" block style={styles.calmBtn} onPress={() => void (setSession(null), load())} />
+        </View>
       ) : (
-        <View style={styles.inputRow}>
-          <TextInput style={styles.input} value={text} onChangeText={setText} placeholder={t.session.placeholder} multiline maxLength={2000} />
-          <Pressable style={[styles.sendBtn, (!text.trim() || busy) && styles.dim]} disabled={!text.trim() || busy} onPress={() => void send()} accessibilityRole="button">
-            <Text style={styles.primaryText}>{t.session.send}</Text>
-          </Pressable>
-          <Pressable style={styles.endBtn} disabled={busy} onPress={() => void run(async () => setSession(await endSession(session.id)))} accessibilityRole="button">
-            <Text style={styles.endText}>{t.session.end}</Text>
-          </Pressable>
+        <View style={styles.bar}>
+          <View style={styles.field}>
+            <TextInput style={styles.input} value={text} onChangeText={setText} placeholder={t.session.placeholder} placeholderTextColor={palette.inkFaint} multiline maxLength={2000} textAlign={textStart} />
+            <IconButton name="arrow-up" label={t.session.send} onPress={() => void send()} disabled={!text.trim() || busy} color="#fff" bg={text.trim() ? palette.calm : palette.lineStrong} size={40} />
+          </View>
+          <Button label={t.session.end} kind="text" size="sm" disabled={busy} onPress={() => void run(async () => setSession(await endSession(session.id)))} style={styles.selfCenter} />
         </View>
       )}
     </KeyboardAvoidingView>
@@ -216,43 +266,30 @@ export default function SessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 12 },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
-  big: { fontSize: 48 },
-  heading: { fontSize: 20, fontWeight: "700", color: colors.text, textAlign: "center" },
-  body: { fontSize: 15, lineHeight: 23, color: colors.text, textAlign: "left" },
-  muted: { fontSize: 13, lineHeight: 20, color: colors.muted, textAlign: "center" },
-  helpline: { fontSize: 13, lineHeight: 20, color: colors.muted, textAlign: "center", marginTop: 8 },
-  link: { color: colors.accent, fontWeight: "600", fontSize: 15 },
-  tickRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
-  tick: { fontSize: 22, color: colors.accent },
-  tickText: { flex: 1, fontSize: 15, lineHeight: 22, color: colors.text, textAlign: "left" },
-  primary: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14, alignItems: "center" },
-  primaryText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  dim: { opacity: 0.5 },
-  faces: { flexDirection: "row", justifyContent: "center", gap: 8 },
-  face: { borderRadius: 14, padding: 8, borderWidth: 2, borderColor: "transparent" },
-  faceOn: { borderColor: colors.accent, backgroundColor: "#fff" },
-  faceText: { fontSize: 30 },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
-  chip: { borderWidth: 1, borderColor: colors.accent, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
-  chipOn: { backgroundColor: colors.accent },
-  chipText: { color: colors.accent, fontWeight: "600" },
-  chipTextOn: { color: "#fff" },
-  strip: { fontSize: 18, textAlign: "center" },
-  danger: { color: colors.error, fontSize: 13, textAlign: "center", paddingVertical: 8 },
-  bubble: { maxWidth: "86%", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
-  zaki: { alignSelf: "flex-start", backgroundColor: "#fff" },
-  mine: { alignSelf: "flex-end", backgroundColor: colors.accent },
-  bubbleText: { fontSize: 16, lineHeight: 23, color: colors.text, textAlign: "left" },
-  mineText: { color: "#fff" },
-  step: { borderWidth: 1, borderColor: colors.accent, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
-  stepText: { color: colors.accent, fontWeight: "600", fontSize: 14 },
-  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12 },
-  input: { flex: 1, maxHeight: 120, backgroundColor: "#fff", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, color: colors.text, writingDirection: "auto" },
-  sendBtn: { backgroundColor: colors.accent, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 },
-  endBtn: { paddingHorizontal: 6, paddingVertical: 12 },
-  endText: { color: colors.muted, fontSize: 14 },
-  bar: { margin: 12 },
+  flex: { flex: 1, minWidth: 0 },
+  page: { flex: 1, backgroundColor: palette.calmSoft },
+  content: { padding: space.xl, gap: space.md, maxWidth: 560, width: "100%", alignSelf: "center" },
+  center: { flex: 1, backgroundColor: palette.calmSoft, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
+  hero: { alignItems: "center", gap: space.sm, marginBottom: space.xs },
+  soft: { boxShadow: "none" },
+  helpline: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: "rgba(255,255,255,0.6)", borderRadius: radius.md, padding: space.md, marginTop: space.xs },
+  tickRow: { flexDirection: "row", gap: space.md, alignItems: "center", minHeight: 48 },
+  tick: { width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: palette.calm, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface },
+  tickOn: { backgroundColor: palette.calm },
+  calmBtn: { backgroundColor: palette.calm },
+  faces: { flexDirection: "row", justifyContent: "center", gap: space.sm },
+  face: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface },
+  faceOn: { backgroundColor: palette.calm, transform: [{ scale: 1.08 }] },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, justifyContent: "center" },
+  strip: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  selfCenter: { alignSelf: "center" },
+  msgRow: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, maxWidth: "88%" },
+  msgMine: { alignSelf: "flex-end" },
+  msgZaki: { alignSelf: "flex-start" },
+  bubble: { flexShrink: 1, borderRadius: radius.lg, paddingHorizontal: space.lg - 2, paddingVertical: space.sm + 2, gap: space.sm },
+  zaki: { backgroundColor: palette.surface, borderBottomStartRadius: 6, ...shadow.card },
+  mine: { backgroundColor: palette.calm, borderBottomEndRadius: 6 },
+  bar: { paddingHorizontal: space.md, paddingBottom: space.md, gap: space.xs },
+  field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, backgroundColor: palette.surface, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: 6, paddingVertical: 6, ...shadow.card },
+  input: { flex: 1, minHeight: 40, maxHeight: 140, paddingVertical: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, outlineStyle: "none" } as object,
 });

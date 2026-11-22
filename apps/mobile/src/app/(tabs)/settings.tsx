@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { useCallback, useState, type ReactNode } from "react";
+import { Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -11,32 +11,63 @@ import { API_URL, deleteAccount, exportData, getMe, patchMe } from "@/lib/api";
 import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
-import { colors } from "@/lib/theme";
+import { ask, Button, Card, confirm, fonts, Icon, notify, palette, PersonAvatar, radius, Screen, space, Text, textStart, type IconName } from "@/ui";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
-    <View style={styles.segmented}>
-      {options.map((o) => (
-        <Pressable key={o.value} onPress={() => onChange(o.value)} style={[styles.segment, value === o.value && styles.segmentOn]}>
-          <Text style={[styles.segmentText, value === o.value && styles.segmentTextOn]}>{o.label}</Text>
-        </Pressable>
-      ))}
+    <View style={styles.segmented} accessibilityRole="radiogroup">
+      {options.map((o) => {
+        const on = value === o.value;
+        return (
+          <Pressable key={o.value} onPress={() => onChange(o.value)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={[styles.segment, on && styles.segmentOn]}>
+            <Text variant="smallStrong" color={on ? palette.ink : palette.inkSoft} align="center">
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
+    <View style={styles.group}>
+      <Text variant="smallStrong" color={palette.inkSoft} style={styles.groupTitle}>
+        {title}
+      </Text>
+      <Card style={styles.groupCard}>{children}</Card>
+    </View>
+  );
+}
+
+function Field({ label, children, first }: { label: string; children: ReactNode; first?: boolean }) {
+  return (
+    <View style={[styles.field, !first && styles.fieldLine]}>
+      <Text variant="small" color={palette.inkSoft}>
+        {label}
+      </Text>
       {children}
     </View>
   );
 }
 
-/** F10 / FR-13: wake/sleep, check-ins, tone, language, memories, export, delete account. */
+function LinkRow({ icon, label, onPress, danger, first }: { icon: IconName; label: string; onPress: () => void; danger?: boolean; first?: boolean }) {
+  const color = danger ? palette.danger : palette.ink;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.linkRow, !first && styles.fieldLine, pressed && { opacity: 0.6 }]}>
+      <Icon name={icon} size={20} color={danger ? palette.danger : palette.inkSoft} />
+      <Text variant="body" color={color} style={styles.flex}>
+        {label}
+      </Text>
+      {!danger ? <Icon name="chevron-forward" size={18} color={palette.inkFaint} /> : null}
+    </Pressable>
+  );
+}
+
+/** F10 / FR-13: you, your day's rhythm, how Zaki talks, your data. */
 export default function SettingsScreen() {
   const [user, setUser] = useState<User | null>(null);
   const [account, setAccount] = useState<string | null>(null);
@@ -65,7 +96,7 @@ export default function SettingsScreen() {
     try {
       setUser(await patchMe(patch));
     } catch {
-      Alert.alert(t.saved.offline);
+      notify(t.saved.offline, "error");
     }
   };
 
@@ -73,13 +104,13 @@ export default function SettingsScreen() {
     const text = instapay.trim();
     if (text === (user?.instapay_link ?? "")) return;
     const link = text ? parseInstapayLink(text) : null;
-    if (text && !link) return Alert.alert(t.daftar.instapayInvalid);
+    if (text && !link) return notify(t.daftar.instapayInvalid, "error");
     setInstapay(link ?? "");
     void save({ instapay_link: link });
   };
 
   const saveTimes = () => {
-    if (!TIME_RE.test(wake) || !TIME_RE.test(sleep)) return Alert.alert(t.settings.invalidTime);
+    if (!TIME_RE.test(wake) || !TIME_RE.test(sleep)) return notify(t.settings.invalidTime, "error");
     void save({ wake_time: wake, sleep_time: sleep });
   };
 
@@ -87,149 +118,149 @@ export default function SettingsScreen() {
     if (lang === language) return;
     prefs.set("language", lang);
     void save({ language: lang });
-    Alert.alert(t.settings.restart, undefined, [{ text: "OK", onPress: () => void reloadApp() }]);
+    ask(t.settings.restart, undefined, [{ label: t.ui.ok, onPress: () => void reloadApp() }]);
   };
 
   const doExport = async () => {
     try {
       const data = await exportData();
-      const file = new File(Paths.cache, `fakkarni-export-${data.exported_at.slice(0, 10)}.json`);
+      if (Platform.OS === "web") return notify(t.ui.exportPhone, "info");
+      const file = new File(Paths.cache, `zaki-export-${data.exported_at.slice(0, 10)}.json`);
       file.create({ overwrite: true });
       file.write(JSON.stringify(data, null, 2));
       await Sharing.shareAsync(file.uri, { mimeType: "application/json" });
     } catch {
-      Alert.alert(t.saved.offline);
+      notify(t.saved.offline, "error");
     }
   };
 
   const doDelete = () =>
-    Alert.alert(t.settings.delete, t.settings.deleteConfirm, [
-      { text: t.settings.cancel, style: "cancel" },
-      {
-        text: t.settings.confirm,
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteAccount();
-            await signOut();
-            await resetLocalData();
-            router.replace("/onboarding");
-          } catch {
-            Alert.alert(t.saved.offline);
-          }
-        },
+    confirm(
+      t.settings.delete,
+      t.settings.confirm,
+      async () => {
+        try {
+          await deleteAccount();
+          await signOut();
+          await resetLocalData();
+          router.replace("/onboarding");
+        } catch {
+          notify(t.saved.offline, "error");
+        }
       },
-    ]);
+      t.settings.cancel,
+      t.settings.deleteConfirm,
+    );
+
+  const input = (value: string, set: (v: string) => void, onEnd: () => void, extra: object = {}) => (
+    <TextInput style={styles.input} value={value} onChangeText={set} onEndEditing={onEnd} onBlur={onEnd} placeholderTextColor={palette.inkFaint} textAlign={textStart} {...extra} />
+  );
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.section}>{t.settings.account}</Text>
-      <View style={styles.card}>
-        <Text style={styles.value}>{account ? `${t.settings.signedInAs} ${account}` : t.settings.notSignedIn}</Text>
-        {authAvailable ? (
-          account ? (
-            <Pressable onPress={() => void signOut().then(() => setAccount(null))}>
-              <Text style={styles.link}>{t.settings.signOut}</Text>
-            </Pressable>
-          ) : (
-            <Pressable onPress={() => router.push("/onboarding")}>
-              <Text style={styles.link}>{t.settings.signIn}</Text>
-            </Pressable>
-          )
-        ) : null}
-      </View>
+    <Screen keyboard>
+      <Card style={styles.profile}>
+        <PersonAvatar name={name || "Z"} size={56} color={palette.primaryInk} bg={palette.primarySoft} />
+        <View style={styles.flex}>
+          <Text variant="title">{name || t.ui.tabMe}</Text>
+          <Text variant="small" color={palette.inkSoft}>
+            {account ? `${t.settings.signedInAs} ${account}` : t.settings.notSignedIn}
+          </Text>
+        </View>
+        {authAvailable ? account ? <Button label={t.settings.signOut} kind="text" size="sm" onPress={() => void signOut().then(() => setAccount(null))} /> : <Button label={t.settings.signIn} kind="tonal" size="sm" onPress={() => router.push("/onboarding")} /> : null}
+      </Card>
 
-      <View style={styles.card}>
-        <Row label={t.settings.name}>
-          <TextInput style={styles.input} value={name} onChangeText={setName} onEndEditing={() => void save({ name: name.trim() || null })} textAlign="start" />
-        </Row>
-        <Row label={t.settings.language}>
+      <Group title={t.ui.profile}>
+        <Field label={t.settings.name} first>
+          {input(name, setName, () => void save({ name: name.trim() || null }))}
+        </Field>
+        <Field label={t.settings.language}>
           <Segmented value={language} onChange={changeLanguage} options={[{ value: "ar-EG", label: t.onboarding.arabic }, { value: "en", label: t.onboarding.english }]} />
-        </Row>
-        <Row label={t.settings.wake}>
-          <TextInput style={styles.time} value={wake} onChangeText={setWake} onEndEditing={saveTimes} keyboardType="numbers-and-punctuation" maxLength={5} />
-        </Row>
-        <Row label={t.settings.sleep}>
-          <TextInput style={styles.time} value={sleep} onChangeText={setSleep} onEndEditing={saveTimes} keyboardType="numbers-and-punctuation" maxLength={5} />
-        </Row>
-      </View>
+        </Field>
+      </Group>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>{t.daftar.instapayLabel}</Text>
-        <TextInput style={styles.input} value={instapay} onChangeText={setInstapay} onEndEditing={saveInstapay} placeholder={t.daftar.instapayPlaceholder} autoCapitalize="none" autoCorrect={false} keyboardType="url" textAlign="left" />
-        <Text style={styles.label}>{t.daftar.instapayHint}</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Row label={t.settings.checkins}>
+      <Group title={t.ui.rhythm}>
+        <View style={styles.times}>
+          <Field label={t.settings.wake} first>
+            {input(wake, setWake, saveTimes, { keyboardType: "numbers-and-punctuation", maxLength: 5, style: [styles.input, styles.time] })}
+          </Field>
+          <Field label={t.settings.sleep} first>
+            {input(sleep, setSleep, saveTimes, { keyboardType: "numbers-and-punctuation", maxLength: 5, style: [styles.input, styles.time] })}
+          </Field>
+        </View>
+        <Field label={t.settings.checkins}>
           <Segmented
             value={user?.checkin_interval_h ?? "2"}
             onChange={(v) => void save({ checkin_interval_h: v })}
             options={[{ value: "2", label: t.settings.every2 }, { value: "4", label: t.settings.every4 }, { value: "off", label: t.settings.off }]}
           />
-        </Row>
-        <Row label={t.settings.tone}>
+        </Field>
+      </Group>
+
+      <Group title={t.ui.zakiStyle}>
+        <Field label={t.settings.tone} first>
           <Segmented
             value={user?.tone ?? "balanced"}
             onChange={(v) => void save({ tone: v })}
             options={[{ value: "playful", label: t.settings.playful }, { value: "balanced", label: t.settings.balanced }, { value: "calm", label: t.settings.calm }]}
           />
-        </Row>
-        <View style={styles.switchRow}>
-          <Text style={[styles.label, styles.flex]}>{t.settings.alwaysDirect}</Text>
+        </Field>
+        <View style={[styles.switchRow, styles.fieldLine]}>
+          <Text variant="body" style={styles.flex}>
+            {t.settings.alwaysDirect}
+          </Text>
           <Switch
             value={user?.always_direct ?? false}
+            trackColor={{ true: palette.primary, false: palette.lineStrong }}
+            thumbColor={palette.surface}
             onValueChange={(v) => {
               prefs.set("always_direct", v ? "1" : "0");
               void save({ always_direct: v });
             }}
           />
         </View>
-      </View>
+      </Group>
 
-      <View style={styles.card}>
-        <Pressable onPress={() => router.push("/memories")}>
-          <Text style={styles.link}>{t.settings.memories}</Text>
-        </Pressable>
-        <Pressable onPress={() => void doExport()}>
-          <Text style={styles.link}>{t.settings.export}</Text>
-        </Pressable>
-        <Pressable onPress={doDelete}>
-          <Text style={[styles.link, styles.danger]}>{t.settings.delete}</Text>
-        </Pressable>
-      </View>
+      <Group title={t.daftar.instapayLabel}>
+        <View style={styles.field}>
+          {input(instapay, setInstapay, saveInstapay, { placeholder: t.daftar.instapayPlaceholder, autoCapitalize: "none", autoCorrect: false, keyboardType: "url", textAlign: "left" })}
+          <Text variant="caption" color={palette.inkSoft}>
+            {t.daftar.instapayHint}
+          </Text>
+        </View>
+      </Group>
 
-      <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))}>
-        <Text style={styles.link}>{t.paywall.termsLink}</Text>
-      </Pressable>
-      <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))}>
-        <Text style={styles.link}>{t.paywall.privacyLink}</Text>
-      </Pressable>
-      <Text style={styles.footer}>{t.settings.aiDisclosure}</Text>
-      <Text style={styles.footerSmall}>{API_URL}</Text>
-    </ScrollView>
+      <Group title={t.ui.yourData}>
+        <LinkRow first icon="bulb-outline" label={t.settings.memories} onPress={() => router.push("/memories")} />
+        <LinkRow icon="download-outline" label={t.settings.export} onPress={() => void doExport()} />
+        <LinkRow icon="trash-outline" label={t.settings.delete} danger onPress={doDelete} />
+      </Group>
+
+      <Group title={t.ui.legal}>
+        <LinkRow first icon="document-text-outline" label={t.paywall.termsLink} onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))} />
+        <LinkRow icon="shield-checkmark-outline" label={t.paywall.privacyLink} onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))} />
+      </Group>
+
+      <Text variant="caption" color={palette.inkSoft} align="center">
+        {t.settings.aiDisclosure}
+      </Text>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 12 },
-  section: { fontSize: 14, fontWeight: "700", color: colors.muted, textAlign: "left" },
-  card: { backgroundColor: "#fff", borderRadius: 14, padding: 14, gap: 14 },
-  row: { gap: 6 },
-  switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  flex: { flex: 1 },
-  label: { fontSize: 14, color: colors.muted, textAlign: "left" },
-  value: { fontSize: 15, color: colors.text, textAlign: "left" },
-  input: { borderWidth: 1, borderColor: "#E5DDD5", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, color: colors.text },
-  time: { borderWidth: 1, borderColor: "#E5DDD5", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16, width: 90, color: colors.text, textAlign: "center" },
-  segmented: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  segment: { borderWidth: 1, borderColor: "#E5DDD5", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  segmentOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  segmentText: { color: colors.text },
-  segmentTextOn: { color: "#fff", fontWeight: "600" },
-  link: { color: colors.accent, fontSize: 16, fontWeight: "600", textAlign: "left" },
-  danger: { color: colors.error },
-  footer: { textAlign: "center", color: colors.muted, marginTop: 8 },
-  footerSmall: { textAlign: "center", color: colors.muted, fontSize: 11 },
+  flex: { flex: 1, minWidth: 0 },
+  profile: { flexDirection: "row", alignItems: "center", gap: space.md },
+  group: { gap: space.xs, marginTop: space.sm },
+  groupTitle: { paddingHorizontal: space.xs },
+  groupCard: { paddingVertical: space.xs, gap: 0 },
+  field: { gap: space.xs + 2, paddingVertical: space.md },
+  fieldLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
+  times: { flexDirection: "row", gap: space.lg },
+  input: { minHeight: 46, backgroundColor: palette.surfaceAlt, borderRadius: radius.md, paddingHorizontal: space.md, fontSize: 16, fontFamily: fonts.body, color: palette.ink },
+  time: { width: 110, textAlign: "center" },
+  segmented: { flexDirection: "row", backgroundColor: palette.surfaceAlt, borderRadius: radius.pill, padding: 4, gap: 4 },
+  segment: { flex: 1, minHeight: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", paddingHorizontal: space.sm },
+  segmentOn: { backgroundColor: palette.surface, boxShadow: "0px 1px 4px rgba(92, 60, 34, 0.15)" },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md },
+  linkRow: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 52 },
 });
