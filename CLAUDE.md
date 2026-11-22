@@ -66,6 +66,9 @@ Rules:
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
   the development, preview and production environments, not in the repo. Android test
   build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
+  The cloud session can't reach expo.dev, so .github/workflows/android-build.yml starts that
+  build from GitHub (secret EXPO_TOKEN) whenever a pushed commit message contains
+  "[android-build]"; the EAS build page link is the install link for testers.
 - EAS Update is configured (updates.url, runtimeVersion policy appVersion; channels
   development / preview / production). Builds made after 2026-11-21 can take
   JavaScript-only fixes over the air: `npx eas-cli@latest update --branch preview
