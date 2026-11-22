@@ -135,4 +135,19 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
     await makeUser({ lastActiveAt: at("2026-09-01T10:00") });
     expect(await runTick({ prisma, model, push }, at("2026-11-19T07:00"))).toBe(0);
   });
+  it("asks for the status of a passed reminder with a template, once, and pushes it", async () => {
+    const user = await makeUser({ lastUserMessageAt: at("2026-11-19T09:00"), checkinIntervalH: "off" });
+    await prisma.device.create({ data: { userId: user.id, platform: "android", pushToken: "ExponentPushToken[abc]" } });
+    const item = await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "call mum", remindAt: at("2026-11-19T12:00"), dueAt: at("2026-11-19T12:00") } });
+
+    expect(await runTick({ prisma, model, push }, at("2026-11-19T13:00"))).toBe(1);
+    const msg = await prisma.message.findFirstOrThrow({ where: { userId: user.id, kind: "followup" } });
+    expect(msg.text).toBe("عملت «call mum»؟ 🙂");
+    expect(msg.clientId).toBe(`status:item:${item.id}:${at("2026-11-19T13:00").toISOString()}`);
+    expect(prompts).toHaveLength(0); // no AI call
+    expect(pushed.at(-1)![0]).toMatchObject({ body: "عملت «call mum»؟ 🙂", data: { kind: "followup" } });
+
+    // Not again for the same item, even hours later.
+    expect(await runTick({ prisma, model, push }, at("2026-11-19T17:00"))).toBe(0);
+  });
 });

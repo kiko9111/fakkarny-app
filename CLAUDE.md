@@ -306,6 +306,17 @@ Rules:
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
   template fallback) → stored as a friend Message + Expo push. The phone pulls them
   with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Status checks (owner ask, 2026-11-22: "ask the status of everything, not just remind"):
+  apps/api/src/proactive/status.ts (pure, tested) picks one subject per tick, in order: a
+  reminder/task whose time passed 45 min to 3 days ago and is still open, a debt open 7+ days,
+  an untimed task 3+ days old, and from 18:00 a tracker with nothing logged today. Template
+  words only (no AI call), stored as kind "followup" with client_id
+  `status:<item|tracker>:<id>:<iso>`, pushed like other proactive messages, and they take the
+  place of a plain check-in. Not nagging: waking hours away from the morning/night windows,
+  never within 30 min of the user's last message, max 2 a day, 3 h apart, per-subject
+  cool-downs, and a 48 h pause after 2 unanswered in a row. In the chat pipeline a plain yes
+  (`isPlainYes`) to the latest status check marks the item done or logs one tracker step by
+  rules; any other answer goes to the model as free reminder work.
 - Everything shows in the chat (owner decision, 2026-11-21). The local notification
   still fires on the phone, and `postDueReminders` (proactive tick) writes the same
   nudge into the chat as a friend Message of kind "reminder" (client_id

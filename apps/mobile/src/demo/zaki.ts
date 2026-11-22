@@ -80,3 +80,10 @@ export function zakiReply(text: string, ctx: { name: string | null; upcoming: It
     items: [],
   };
 }
+
+/** A short plain "yes" (demo copy of the server's rule in apps/api/src/proactive/status.ts). */
+export function isPlainYes(text: string): boolean {
+  const ok = new Set(["اه", "آه", "أه", "ايوه", "أيوه", "اكيد", "أكيد", "تمام", "خلصت", "خلصتها", "عملت", "عملتها", "تم", "خلاص", "رجعهم", "رجعلي", "دفع", "الحمد", "لله", "الحمدلله", "يا", "زكي", "yes", "yeah", "yep", "yup", "done", "did", "it", "i", "sure", "paid", "he", "she"]);
+  const words = text.toLowerCase().replace(/[^\p{L}\s]/gu, " ").split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= 5 && words.every((w) => ok.has(w));
+}

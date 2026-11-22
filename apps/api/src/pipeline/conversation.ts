@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { FriendResponse } from "@fakkarni/shared";
+import { TRACKER_TEMPLATES, type FriendResponse, type TrackerKind } from "@fakkarni/shared";
 import type { Prisma } from "../generated/prisma/client";
 import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
@@ -8,7 +8,8 @@ import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
-import { trackerFastPath } from "../trackers/store";
+import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
+import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 
 const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "save_memories"> = {
@@ -64,6 +65,12 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       }
     }
 
+    // 0a. A plain "yes" to Zaki's status check ("did you get to …?") closes it by rules.
+    const status = crisisKeyword ? null : await answerStatusCheck(prisma, user, message, script, now);
+    if (status?.result) return status.result;
+    // Any other answer to a status check ("not yet, tomorrow") is reminder work: free past the allowance.
+    const answersStatus = status?.pending === true;
+
     // 1. Rules fast path: no AI for messages that carry nothing to remember.
     const canned = crisisKeyword ? null : fastReply(message.text, script);
     if (canned) {
@@ -91,7 +98,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       });
       if (used >= limit) {
         if (crisisKeyword || looksDistressed(message.text)) freeCall = "distress";
-        else if (closesReminder || looksLikeReminderWork(message.text)) {
+        else if (closesReminder || answersStatus || looksLikeReminderWork(message.text)) {
           const freeToday = await prisma.event.count({
             where: { userId: user.id, name: "ai_call", createdAt: { gte: dayStart }, propsJson: { path: ["free"], equals: "reminder" } },
           });
@@ -163,6 +170,32 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     return { ...applied, aiAllowance: { limit, used: used + (usage && !freeCall ? 1 : 0) } };
   };
+}
+
+/**
+ * Zaki's status checks (proactive/status.ts) store the subject in the message client_id. When
+ * the user's message answers the latest one with a plain yes, mark the item done or log the
+ * tracker, with a template reply and no AI call. Otherwise say whether a check is pending.
+ */
+async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"], user: Parameters<MessagePipeline>[0]["user"], message: Parameters<MessagePipeline>[0]["message"], lang: ReplyLang, now: Date): Promise<{ pending: boolean; result?: Awaited<ReturnType<MessagePipeline>> } | null> {
+  const lastFriend = await prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" }, select: { clientId: true, createdAt: true } });
+  const pending = pendingStatus(lastFriend, now);
+  if (!pending) return null;
+  if (!isPlainYes(message.text)) return { pending: true };
+  if (pending.kind === "item") {
+    const item = await prisma.item.findFirst({ where: { id: pending.id, userId: user.id, status: "open" } });
+    if (!item) return { pending: true };
+    await event(prisma, user.id, "status_answered", { subject: "item", via: "rules" });
+    const result = await applyActions(prisma, { user, message, replies: [statusDoneReply(lang, item)], response: { ...EMPTY_ACTIONS, update_items: [{ id: item.id, status: "done" }] }, now });
+    return { pending: true, result };
+  }
+  const tracker = await prisma.tracker.findFirst({ where: { id: pending.id, userId: user.id } });
+  const step = tracker ? TRACKER_TEMPLATES[tracker.kind as TrackerKind]?.step : 0;
+  if (!tracker || !step) return { pending: true };
+  await logEntry(prisma, tracker.id, step, "chat", now);
+  await event(prisma, user.id, "status_answered", { subject: "tracker", via: "rules" });
+  const line = loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), step);
+  return { pending: true, result: await applyActions(prisma, { user, message, replies: [line], response: EMPTY_ACTIONS, now }) };
 }
 
 async function event(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: string, name: string, props: Prisma.InputJsonObject) {
