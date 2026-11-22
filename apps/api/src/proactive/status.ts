@@ -1,4 +1,4 @@
-import { TRACKER_TEMPLATES, type TrackerKind } from "@fakkarni/shared";
+import { TRACKER_TEMPLATES, TrackerKind } from "@fakkarni/shared";
 import { isAwake, localParts, minutesOf, toLocalIso } from "../lib/time";
 import type { ReplyLang } from "../pipeline/rules";
 
@@ -164,6 +164,53 @@ export function planStatusCheck(input: StatusInput): StatusCheck | null {
   if (localParts(now, tz).hour >= TRACKER_FROM_HOUR) {
     const tracker = input.trackers.find((t) => t.loggedToday === 0 && ASKABLE_TRACKERS[t.kind as TrackerKind] && TRACKER_TEMPLATES[t.kind as TrackerKind]?.step && !askedWithin(`tracker:${t.id}`, COOLDOWN_DAYS.tracker));
     if (tracker) return { subject: `tracker:${tracker.id}`, text: ASKABLE_TRACKERS[tracker.kind as TrackerKind]! };
+  }
+  return null;
+}
+
+/** A tracker with times the user picked for Zaki to ask about it. */
+export interface AskTracker {
+  id: string;
+  kind: string;
+  name: string | null;
+  askTimes: string[];
+  goal: number | null;
+  today: number;
+}
+
+/** How long after a picked time the question may still go out (the tick runs every minute). */
+export const ASK_WINDOW_MIN = 30;
+
+const MONEY_ASK: Record<ReplyLang, string> = { arabic: "صرفت كام النهارده؟ قولّي وأنا أسجّل 🧾", english: "How much did you spend today? Tell me and I'll log it 🧾" };
+
+/** The question for a tracker: the template's, or the user's own name for a builder tracker. */
+export function trackerQuestion(t: Pick<AskTracker, "kind" | "name">): Record<ReplyLang, string> {
+  const kind = TrackerKind.catch("custom").parse(t.kind);
+  if (TRACKER_TEMPLATES[kind].unit === "money") return MONEY_ASK;
+  const own = ASKABLE_TRACKERS[kind];
+  if (own) return own;
+  const name = t.name ?? "";
+  return { arabic: `عملت «${name}» النهارده؟ 🌟`, english: `Did you do “${name}” today? 🌟` };
+}
+
+/**
+ * Questions at the times the user picked in the tracker builder. They asked for these, so the
+ * daily cap and spacing of unprompted status checks do not apply; waking hours still do, and a
+ * day whose goal is already met is not asked about.
+ */
+export function trackerAskDue(trackers: AskTracker[], now: Date, tz: string, wakeTime: string, sleepTime: string, history: Pick<PastCheck, "subject" | "at">[]): StatusCheck | null {
+  if (!isAwake(now, tz, wakeTime, sleepTime)) return null;
+  const nowMin = minutesNow(now, tz);
+  for (const t of trackers) {
+    const met = t.goal === null ? t.today > 0 : t.today >= t.goal;
+    if (met) continue;
+    for (const slot of t.askTimes) {
+      const since = forward(minutesOf(slot), nowMin);
+      if (since >= ASK_WINDOW_MIN) continue;
+      const slotStart = now.getTime() - (since + 1) * 60_000;
+      if (history.some((h) => h.subject === `tracker:${t.id}` && h.at.getTime() >= slotStart)) continue;
+      return { subject: `tracker:${t.id}`, text: trackerQuestion(t) };
+    }
   }
   return null;
 }

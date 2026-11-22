@@ -192,7 +192,7 @@ async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"
   const tracker = await prisma.tracker.findFirst({ where: { id: pending.id, userId: user.id } });
   const step = tracker ? TRACKER_TEMPLATES[tracker.kind as TrackerKind]?.step : 0;
   if (!tracker || !step) return { pending: true };
-  await logEntry(prisma, tracker.id, step, "chat", now);
+  await logEntry(prisma, tracker, step, "chat", now, user.timezone);
   await event(prisma, user.id, "status_answered", { subject: "tracker", via: "rules" });
   const line = loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), step);
   return { pending: true, result: await applyActions(prisma, { user, message, replies: [line], response: EMPTY_ACTIONS, now }) };

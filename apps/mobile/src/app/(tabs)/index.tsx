@@ -12,7 +12,9 @@ import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
 import { getMe } from "@/lib/api";
 import { unlock, useUnlocked } from "@/lib/unlock-store";
-import { Button, IconButton, Note, palette, space, Text, ZakiAvatar } from "@/ui";
+import { fill } from "@/circles/logic";
+import { suggestTracker } from "@/trackers/logic";
+import { Button, glass, IconButton, Note, palette, space, Text, ZakiAvatar } from "@/ui";
 
 const GREETING: LocalMessage = {
   client_id: "local:greeting",
@@ -44,8 +46,11 @@ function ZakiHeader({ typing }: { typing: boolean }) {
 export default function ChatScreen() {
   const { messages, loaded, typing, locked, send } = useChat();
   const unlocked = useUnlocked();
+  // "عايز أتعود على القراية كل يوم" → offer a tracker with one tap (rules on the phone, no AI call).
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const say = (text: string) => {
     unlock.onUserMessage(text);
+    setSuggestion(suggestTracker(text));
     void send(text);
   };
   const navigation = useNavigation();
@@ -103,6 +108,25 @@ export default function ChatScreen() {
         </View>
       ) : (
         <>
+          {suggestion ? (
+            <View style={styles.suggest}>
+              <ZakiAvatar size={28} />
+              <Text variant="small" style={styles.flexText}>
+                {fill(t.trackers.suggest, { name: suggestion })}
+              </Text>
+              <Button
+                label={t.trackers.suggestAction}
+                size="sm"
+                icon="add"
+                onPress={() => {
+                  const name = suggestion;
+                  setSuggestion(null);
+                  router.push({ pathname: "/tracker/new", params: { name } });
+                }}
+              />
+              <IconButton name="close" label={t.ui.cancel} onPress={() => setSuggestion(null)} size={32} />
+            </View>
+          ) : null}
           <QuickReplies options={t.chat.quickReplies} onPick={say} />
           <ChatInput onSend={say} />
         </>
@@ -116,6 +140,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.sm + 2 },
   headerName: { lineHeight: 22 },
   list: { paddingHorizontal: space.md, paddingVertical: space.sm },
+  suggest: { flexDirection: "row", alignItems: "center", gap: space.sm, marginHorizontal: space.md, marginBottom: space.xs, padding: space.sm, borderRadius: 18, ...glass },
+  flexText: { flex: 1 },
   offline: { paddingHorizontal: space.md, paddingTop: space.xs },
   lock: { padding: space.lg, gap: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line, backgroundColor: palette.surface },
 });

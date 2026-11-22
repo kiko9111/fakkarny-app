@@ -8,6 +8,9 @@ import {
   type StartSessionRequest,
   ListTrackersResponse,
   TrackerResponse,
+  SharedTrackersResponse,
+  type SharedTracker,
+  type UpdateTrackerRequest,
   type CreateTrackerRequest,
   type Tracker,
   CircleFeedResponse,
@@ -282,6 +285,14 @@ export async function createTracker(body: CreateTrackerRequest): Promise<Tracker
 }
 
 /** One tap (no amount) adds the template's step; money trackers send the amount. */
+export async function updateTracker(id: string, body: UpdateTrackerRequest): Promise<Tracker> {
+  return TrackerResponse.parse(await request(`/trackers/${id}`, { method: "PATCH", body: JSON.stringify(body) })).tracker;
+}
+
+export async function getCircleTrackers(circleId: string): Promise<SharedTracker[]> {
+  return SharedTrackersResponse.parse(await request(`/circles/${circleId}/trackers`)).trackers;
+}
+
 export async function logTracker(id: string, amount?: number): Promise<Tracker> {
   return TrackerResponse.parse(await request(`/trackers/${id}/entries`, { method: "POST", body: JSON.stringify(amount === undefined ? {} : { amount }) })).tracker;
 }

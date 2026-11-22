@@ -66,7 +66,12 @@ interface TrackerRow {
   pack: "ramadan" | null;
   /** Last 7 local days, oldest first; index 6 is today. */
   week: number[];
+  /** Days 1..23 before the week, oldest first (the month graph is these plus `week`). */
+  earlier?: number[];
   total: number;
+  ask_times?: string[];
+  unit_label?: string | null;
+  circle_id?: string | null;
   created_at: string;
 }
 interface SessionData {
@@ -230,7 +235,7 @@ function seed(): State {
       }),
     ],
     trackers: [
-      { id: id(), kind: "water", name: null, goal: 8, pack: null, week: week([6, 8, 7, 8, 5, 8, 5]), total: 47, created_at: inHours(-24 * 6) },
+      { id: id(), kind: "water", name: null, goal: 8, pack: null, week: week([6, 8, 7, 8, 5, 8, 5]), earlier: [4, 6, 8, 8, 5, 7, 8, 3, 6, 8, 8, 8, 7, 6, 5, 8, 8, 4, 6, 7, 8, 8, 6], total: 47, ask_times: ["13:00", "18:00"], created_at: inHours(-24 * 6) },
     ],
     session: { consented: false, open: null, moods: [{ at: inHours(-24 * 5), mood: 3 }, { at: inHours(-24 * 2), mood: 4 }] },
     messages: [],
@@ -317,6 +322,11 @@ function toTracker(r: TrackerRow): Tracker {
     total: r.total,
     streak,
     pack: r.pack,
+    month: [...(r.earlier ?? Array<number>(23).fill(0)), ...r.week],
+    ask_times: r.ask_times ?? [],
+    unit_label: r.unit_label ?? null,
+    circle_id: r.circle_id ?? null,
+    circle_name: state.circles.find((c) => c.id === r.circle_id)?.name ?? null,
     created_at: r.created_at,
   };
 }
@@ -669,7 +679,19 @@ on("POST", "/trackers", (_m, b) => {
   if (!state.user.pro && own >= 1) throw new DemoHttpError(402);
   const kind = b.kind as TrackerKind;
   const tpl = TRACKER_TEMPLATES[kind];
-  const row: TrackerRow = { id: id(), kind, name: (b.name as string) ?? null, goal: (b.goal as number) ?? tpl.goal, pack: null, week: [0, 0, 0, 0, 0, 0, 0], total: 0, created_at: iso(now()) };
+  const row: TrackerRow = {
+    id: id(),
+    kind,
+    name: (b.name as string) ?? null,
+    goal: (b.goal as number) ?? tpl.goal,
+    pack: null,
+    week: [0, 0, 0, 0, 0, 0, 0],
+    total: 0,
+    ask_times: (b.ask_times as string[]) ?? [],
+    unit_label: (b.unit_label as string) ?? null,
+    circle_id: (b.circle_id as string) ?? null,
+    created_at: iso(now()),
+  };
   state.trackers.push(row);
   return { tracker: toTracker(row) };
 });
@@ -686,6 +708,23 @@ on("POST", "/trackers/([^/]+)/undo", (m) => {
   r.week[6] = Math.max(0, r.week[6]! - step);
   r.total = Math.max(0, r.total - step);
   return { tracker: toTracker(r) };
+});
+on("PATCH", "/trackers/([^/]+)", (m, b) => {
+  const r = findTracker(m[1]!);
+  if (Array.isArray(b.ask_times)) r.ask_times = b.ask_times as string[];
+  if (b.circle_id !== undefined) r.circle_id = (b.circle_id as string | null) ?? null;
+  return { tracker: toTracker(r) };
+});
+on("GET", "/circles/([^/]+)/trackers", (m) => {
+  const c = findCircle(m[1]!);
+  const mine = state.trackers.filter((r) => r.circle_id === c.id).map((r) => {
+    const tr = toTracker(r);
+    return { id: tr.id, owner_name: null, is_mine: true, kind: tr.kind, name: tr.name, unit_label: tr.unit_label, goal: tr.goal, today: tr.today, streak: tr.streak, week: tr.week };
+  });
+  const theirs = c.kind === "friends" && c.members.length > 2
+    ? [{ id: "demo-shared-1", owner_name: c.members.find((x) => !x.is_me)?.name ?? null, is_mine: false, kind: "gym" as const, name: null, unit_label: null, goal: 1, today: 1, streak: 4, week: [1, 0, 1, 1, 1, 1, 1] }]
+    : [];
+  return { trackers: [...theirs, ...mine] };
 });
 on("DELETE", "/trackers/([^/]+)", (m) => {
   state.trackers = state.trackers.filter((t) => t.id !== m[1]);

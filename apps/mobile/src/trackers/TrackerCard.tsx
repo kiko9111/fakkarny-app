@@ -3,10 +3,10 @@ import { StyleSheet, TextInput, View } from "react-native";
 import type { Tracker, TrackerKind } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
-import { t } from "@/i18n";
-import { deleteTracker, logTracker, undoTracker } from "@/lib/api";
-import { Badge, Button, Card, confirm, fonts, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
-import { formatNumber, progress, weekBars } from "./logic";
+import { dateLocale, t } from "@/i18n";
+import { deleteTracker, logTracker, undoTracker, updateTracker } from "@/lib/api";
+import { ask, Badge, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
+import { askTimeLabel, formatNumber, monthBars, progress, weekBars } from "./logic";
 
 export const TRACKER_ICON: Record<TrackerKind, IconName> = {
   water: "water",
@@ -28,6 +28,7 @@ export const trackerName = (tr: Pick<Tracker, "kind" | "name">) => (tr.kind === 
 export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tracker; onChanged: (t: Tracker) => void; onRemoved: () => void }) {
   const [busy, setBusy] = useState(false);
   const [amountText, setAmountText] = useState("");
+  const [showMonth, setShowMonth] = useState(false);
   const money = tr.unit === "money";
   const amount = parseAmount(amountText);
 
@@ -43,6 +44,14 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
       setBusy(false);
     }
   };
+  const menu = () =>
+    tr.circle_id
+      ? ask(trackerName(tr), undefined, [
+          { label: t.trackers.unshare, onPress: () => void run(() => updateTracker(tr.id, { circle_id: null })) },
+          { label: t.trackers.remove, style: "destructive", onPress: remove },
+          { label: t.trackers.no, style: "cancel" },
+        ])
+      : remove();
   const remove = () =>
     confirm(t.trackers.removeConfirm, t.trackers.yes, () =>
       void deleteTracker(tr.id)
@@ -76,7 +85,7 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
           </Text>
         </View>
         {tr.streak >= 2 ? <Badge label={fill(t.ui.streakDays, { n: tr.streak })} tone="ok" /> : null}
-        <IconButton name="ellipsis-horizontal" label={t.trackers.remove} onPress={remove} size={36} />
+        <IconButton name="ellipsis-horizontal" label={t.trackers.remove} onPress={menu} size={36} />
       </View>
 
       <View style={styles.numberRow}>
@@ -103,6 +112,42 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
         </View>
       ) : null}
 
+      {tr.ask_times.length || tr.circle_name ? (
+        <View style={styles.metaRow}>
+          {tr.ask_times.length ? (
+            <View style={styles.meta}>
+              <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
+              <Text variant="small" color={palette.inkSoft}>
+                {fill(t.trackers.asksAt, { times: tr.ask_times.map((x) => askTimeLabel(x, dateLocale)).join("، ") })}
+              </Text>
+            </View>
+          ) : null}
+          {tr.circle_name ? (
+            <View style={styles.meta}>
+              <Icon name="people-outline" size={14} color={palette.inkSoft} />
+              <Text variant="small" color={palette.inkSoft}>
+                {fill(t.trackers.sharedWith, { name: tr.circle_name })}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {showMonth && tr.month.length ? (
+        <View style={styles.monthBox} accessibilityLabel={t.trackers.month}>
+          <Text variant="smallStrong" color={palette.inkSoft}>
+            {t.trackers.month}
+          </Text>
+          <View style={styles.month}>
+            {monthBars(tr).map((h, i, all) => (
+              <View key={i} style={styles.barSlot}>
+                <View style={[styles.bar, { height: 3 + Math.round(h * 53) }, i === all.length - 1 ? { backgroundColor: palette.primary } : h >= 1 ? { backgroundColor: palette.ok } : null]} />
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.actions}>
         {money ? (
           <>
@@ -121,6 +166,7 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
         ) : (
           <Button label={t.trackers.plusOne} icon="add" size="sm" disabled={busy} onPress={() => void run(() => logTracker(tr.id))} />
         )}
+        {tr.month.some((v) => v > 0) ? <Button label={showMonth ? t.trackers.hideMonth : t.trackers.showMonth} kind="text" size="sm" icon="stats-chart-outline" onPress={() => setShowMonth((v) => !v)} /> : null}
         {tr.total > 0 ? <Button label={t.trackers.undo} kind="text" size="sm" icon="arrow-undo-outline" disabled={busy} onPress={() => void run(() => undoTracker(tr.id))} /> : null}
       </View>
     </Card>
@@ -136,6 +182,10 @@ const styles = StyleSheet.create({
   week: { flexDirection: "row", gap: 4, height: 30, alignItems: "flex-end", width: 104 },
   barSlot: { flex: 1, justifyContent: "flex-end" },
   bar: { borderRadius: 3, backgroundColor: palette.lineStrong },
+  metaRow: { gap: 4 },
+  meta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  monthBox: { gap: space.xs },
+  month: { flexDirection: "row", gap: 2, height: 56, alignItems: "flex-end" },
   track: { height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, overflow: "hidden" },
   fill: { height: 6, borderRadius: 3 },
   actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },

@@ -268,6 +268,7 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
       const target = await tx.circleMember.findUnique({ where: { circleId_userId: { circleId, userId } } });
       if (!target) return;
       await tx.circleMember.delete({ where: { circleId_userId: { circleId, userId } } });
+      await tx.tracker.updateMany({ where: { userId, circleId }, data: { circleId: null } });
       await tx.invite.updateMany({ where: { circleId, inviterId: userId, revokedAt: null }, data: { revokedAt: now() } });
       const next = await tx.circleMember.findFirst({ where: { circleId }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
       if (!next) await tx.circle.delete({ where: { id: circleId } });

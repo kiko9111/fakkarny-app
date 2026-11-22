@@ -1,3 +1,5 @@
+import { TrackerKind } from "@fakkarni/shared";
+import { trackerLabel } from "../trackers/labels";
 import type { TaskRole, TaskStatus } from "@fakkarni/shared";
 
 /** Pure rules and wording for assigned tasks. No AI: every line here is a template. */
@@ -82,6 +84,14 @@ export function postLine(lang: Lang, event: string, actor: string | null | undef
   }
   if (event === "rsvp:yes") return lang === "en" ? `${a}: I'm coming, inshallah ✋` : `${a}: جاي إن شاء الله ✋`;
   if (event === "rsvp:no") return lang === "en" ? `${a}: I can't make it this time 💛` : `${a}: مش هقدر المرة دي 💛`;
+  if (event === "tracker_goal") {
+    // title = "kind|custom name|streak"
+    const [kind = "custom", name = "", streakText = "0"] = (title ?? "").split("|");
+    const label = trackerLabel(TrackerKind.catch("custom").parse(kind), name || null, lang === "en" ? "english" : "arabic");
+    const streak = Number(streakText);
+    const run = streak >= 2 ? (lang === "en" ? ` ${streak} days in a row 🔥` : ` ${streak} يوم ورا بعض 🔥`) : "";
+    return lang === "en" ? `${a} reached today's goal for ${label} 🎯${run}` : `${a}: هدف النهارده في ${label} اتقفل 🎯${run}`;
+  }
   if (event.startsWith("checkin:")) {
     const said = CHECKIN_SAID[event.slice(8)]?.[lang];
     // A check-in is the member's own words, passed on: first person, so it fits anyone.
