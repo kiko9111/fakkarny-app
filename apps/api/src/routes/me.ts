@@ -65,7 +65,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -75,6 +75,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.circleTask.findMany({ where: { OR: [{ assignerId: id }, { assigneeId: id }] }, orderBy: { createdAt: "asc" } }),
       prisma.tracker.findMany({ where, include: { entries: { orderBy: { at: "asc" } } }, orderBy: { createdAt: "asc" } }),
       prisma.circlePost.findMany({ where: { actorId: id, event: { startsWith: "checkin:" } }, orderBy: { createdAt: "asc" } }),
+      prisma.reflectSession.findMany({ where, include: { messages: { orderBy: { createdAt: "asc" } } }, orderBy: { startedAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -88,6 +89,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
         const w = toWireEntry(e, id, "");
         return { other_name: w.other_name, direction: w.direction, amount: w.amount, currency: w.currency, note: w.note, status: w.status, created_at: w.created_at };
       }),
+      sessions: sessions.map((x) => ({ mode: x.mode, mood: x.mood, started_at: x.startedAt.toISOString(), ended_at: x.endedAt?.toISOString() ?? null, messages: x.messages.map((m) => ({ role: m.role, text: m.text, created_at: m.createdAt.toISOString() })) })),
       checkins: checkins.map((c) => ({ kind: c.event.slice(8), note: c.title, at: c.createdAt.toISOString() })),
       tasks: tasks.map((t) => ({ title: t.title, role: t.assignerId === id ? "assigner" : "assignee", status: t.status, due_at: t.dueAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
       trackers: trackers.map((t) => ({ kind: t.kind, name: t.name, goal: t.goal === null ? null : Number(t.goal), entries: t.entries.map((e) => ({ amount: Number(e.amount), source: e.source, at: e.at.toISOString() })) })),
