@@ -65,7 +65,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -81,6 +81,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
         include: { entries: { where: { userId: id }, orderBy: { at: "asc" } } },
         orderBy: { createdAt: "asc" },
       }),
+      prisma.postComment.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -98,6 +99,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       checkins: checkins.map((c) => ({ kind: c.event.slice(8), note: c.title, at: c.createdAt.toISOString() })),
       tasks: tasks.map((t) => ({ title: t.title, role: t.assignerId === id ? "assigner" : "assignee", status: t.status, due_at: t.dueAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
       trackers: trackers.map((t) => ({ kind: t.kind, name: t.name, goal: t.goal === null ? null : Number(t.goal), entries: t.entries.map((e) => ({ amount: Number(e.amount), source: e.source, at: e.at.toISOString() })) })),
+      feed_comments: comments.map((c) => ({ text: c.text ?? "", at: c.createdAt.toISOString() })),
       money: money.map((s) => ({ name: s.name, kind: s.kind, budget: s.budget === null ? null : Number(s.budget), shared: Boolean(s.circleId), entries: s.entries.map((e) => ({ amount: Number(e.amount), note: e.note, at: e.at.toISOString() })) })),
     };
     return res;

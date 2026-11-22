@@ -30,7 +30,7 @@ import type { PushSender } from "../proactive/push";
 import { CHECKIN_ASK_GAP_HOURS, checkinAskLine, postLine } from "../tasks/rules";
 import { langOf } from "../tasks/store";
 import { hasProAccess } from "../billing/family";
-import { summaryLines } from "../circles/summary";
+import { summaryLines, weekData } from "../circles/summary";
 import { INVITE_VALID_DAYS, inviteShareText, inviteState, MAX_CIRCLE_MEMBERS, MAX_CIRCLES_PER_USER, newInviteCode } from "../circles/rules";
 
 export interface CircleRoutesOptions {
@@ -138,18 +138,11 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
   app.get("/circles/:id/summary", async (req, reply) => {
     const params = IdParam.safeParse(req.params);
     if (!params.success) return reply.code(400).send({ error: "invalid_request" });
-    const circle = await prisma.circle.findFirst({ where: { id: params.data.id, members: { some: { userId: req.user.id } } }, include: { members: { include: { user: { select: { id: true, name: true } } } } } });
+    const circle = await prisma.circle.findFirst({ where: { id: params.data.id, members: { some: { userId: req.user.id } } } });
     if (!circle) return reply.code(404).send({ error: "not_found" });
     if (!circleExtras(circle.createdAt, await proFor(req.user), now())) return reply.code(402).send({ error: "circle_extras" });
-    const since = new Date(now().getTime() - 7 * 86400_000);
-    // Daftar entries stay out: only the two people in an entry ever see it.
-    const [done, open, checkins] = await Promise.all([
-      prisma.circleTask.findMany({ where: { circleId: circle.id, status: "done", doneAt: { gte: since } }, select: { assigneeId: true } }),
-      prisma.circleTask.count({ where: { circleId: circle.id, status: { in: ["pending", "accepted"] } } }),
-      prisma.circlePost.count({ where: { circleId: circle.id, event: { startsWith: "checkin:" }, createdAt: { gte: since } } }),
-    ]);
-    const names = new Map(circle.members.map((m) => [m.userId, m.user.name]));
-    const lines = summaryLines(langOf(req.user), { done: done.map((d) => names.get(d.assigneeId) ?? null), open, checkins });
+    const { since, ...week } = await weekData(prisma, circle.id, now());
+    const lines = summaryLines(langOf(req.user), week);
     return { lines, since: since.toISOString() } satisfies CircleSummary;
   });
 

@@ -84,6 +84,7 @@ export function postLine(lang: Lang, event: string, actor: string | null | undef
   }
   if (event === "rsvp:yes") return lang === "en" ? `${a}: I'm coming, inshallah ✋` : `${a}: جاي إن شاء الله ✋`;
   if (event === "rsvp:no") return lang === "en" ? `${a}: I can't make it this time 💛` : `${a}: مش هقدر المرة دي 💛`;
+  if (event === "zaki_ask") return lang === "en" ? `${a} to Zaki: “${what}”` : `${a} لزكي: «${what}»`;
   if (event === "book_entry") {
     // title = "book name|amount"
     const [book = "", amount = "0"] = (title ?? "").split("|");

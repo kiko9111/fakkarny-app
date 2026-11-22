@@ -10,6 +10,9 @@ import {
   TrackerResponse,
   SharedTrackersResponse,
   MoneyOverview,
+  PostResponse,
+  type CirclePost,
+  type ReactionKey,
   SectionResponse,
   SectionDetail,
   MonthGift,
@@ -264,6 +267,20 @@ export async function listTasks(): Promise<CircleTask[]> {
 
 export async function getCircleFeed(circleId: string): Promise<CircleFeedResponse> {
   return CircleFeedResponse.parse(await request(`/circles/${circleId}/feed`));
+}
+
+// The circle feed: reactions, short comments, and asking Zaki in front of the circle.
+export async function reactPost(circleId: string, postId: string, key: ReactionKey | null): Promise<CirclePost> {
+  return PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/react`, { method: "POST", body: JSON.stringify({ key }) })).post;
+}
+export async function commentPost(circleId: string, postId: string, text: string): Promise<CirclePost> {
+  return PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/comments`, { method: "POST", body: JSON.stringify({ text }) })).post;
+}
+export async function deleteComment(circleId: string, commentId: string): Promise<void> {
+  await request(`/circles/${circleId}/comments/${commentId}`, { method: "DELETE" });
+}
+export async function askZakiInCircle(circleId: string, text: string): Promise<CirclePost> {
+  return PostResponse.parse(await request(`/circles/${circleId}/zaki`, { method: "POST", body: JSON.stringify({ text }) })).post;
 }
 
 export async function createTask(circleId: string, body: CreateTaskRequest): Promise<CircleTask> {

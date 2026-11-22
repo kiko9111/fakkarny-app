@@ -100,6 +100,19 @@ interface State {
   language: string;
 }
 
+const feedPost = (text: string, created_at: string, over: Partial<CirclePost> = {}): CirclePost => ({
+  id: id(),
+  text,
+  created_at,
+  kind: null,
+  my_rsvp: null,
+  reactions: [],
+  my_reaction: null,
+  comments: [],
+  comment_count: 0,
+  ...over,
+});
+
 interface SectionRow {
   id: string;
   name: string;
@@ -156,8 +169,12 @@ function seed(): State {
     ],
     invites: [],
     posts: [
-      { id: id(), text: L("ماما طلبت من سارة تحجز ميعاد الدكتور، وسارة وافقت 👍", "Mum asked Sara to book the doctor, and Sara said yes 👍"), created_at: inHours(-3), kind: null, my_rsvp: null },
-      { id: id(), text: L("بابا قال إنه تمام ✅", "Dad says he's fine ✅"), created_at: inHours(-5), kind: null, my_rsvp: null },
+      feedPost(L("ماما طلبت من سارة تحجز ميعاد الدكتور، وسارة وافقت 👍", "Mum asked Sara to book the doctor, and Sara said yes 👍"), inHours(-3), {
+        reactions: [{ key: "heart", count: 2 }, { key: "clap", count: 1 }],
+        comments: [{ id: id(), author_name: L("بابا", "Dad"), is_mine: false, is_zaki: false, text: L("تسلمي يا سارة 💛", "Thank you Sara 💛"), created_at: inHours(-2) }],
+        comment_count: 1,
+      }),
+      feedPost(L("بابا: أنا تمام 💛", "Dad: I'm okay 💛"), inHours(-5), { reactions: [{ key: "pray", count: 3 }] }),
     ],
   };
   const friends: CircleRow = {
@@ -168,7 +185,7 @@ function seed(): State {
     created_at: inHours(-24 * 12),
     members: [member(OMAR, L("عمر", "Omar"), { role: "owner" }), member(ME, null), member(MARIAM, L("مريم", "Mariam")), member(YOUSSEF, L("يوسف", "Youssef"))],
     invites: [],
-    posts: [{ id: id(), text: L("يوسف خلّص «يحجز الملعب يوم الجمعة» 🎉", "Youssef finished “book the pitch for Friday” 🎉"), created_at: inHours(-20), kind: null, my_rsvp: null }],
+    posts: [feedPost(L("تمّت: يحجز الملعب يوم الجمعة ✅ تسلم الإيد يا يوسف!", "Youssef finished: book the pitch for Friday ✅ Thank you, Youssef!"), inHours(-20), { reactions: [{ key: "strong", count: 2 }] })],
   };
 
   const task = (over: Partial<CircleTask> & Pick<CircleTask, "title" | "role">): CircleTask => ({
@@ -530,6 +547,64 @@ on("GET", "/circles/([^/]+)/feed", (m) => {
   const c = findCircle(m[1]!);
   return { posts: c.posts, tasks: state.tasks.filter((t) => t.circle_id === c.id) };
 });
+const findPost = (cid: string, pid: string) => {
+  const p = findCircle(cid).posts.find((x) => x.id === pid);
+  if (!p) throw new DemoHttpError(404);
+  // Posts saved by an older preview lack the feed fields.
+  p.reactions ??= [];
+  p.comments ??= [];
+  p.comment_count ??= p.comments.length;
+  return p;
+};
+on("POST", "/circles/([^/]+)/posts/([^/]+)/react", (m, b) => {
+  const p = findPost(m[1]!, m[2]!);
+  const key = (b.key as string | null) ?? null;
+  const bump = (k: string, by: number) => {
+    const r = p.reactions.find((x) => x.key === k);
+    if (r) r.count += by;
+    else if (by > 0) p.reactions.push({ key: k, count: by });
+    p.reactions = p.reactions.filter((x) => x.count > 0);
+  };
+  if (p.my_reaction) bump(p.my_reaction, -1);
+  if (key) bump(key, 1);
+  p.my_reaction = key;
+  return { post: p };
+});
+const ZAKI_HELP = L(
+  "أقدر هنا أفكّر الكل بحاجة («زكي فكّر الكل بغدا الجمعة»)، أو أعمل ملخّص الأسبوع، أو أطلب من الكل يطمّنوا 💛",
+  "Here I can remind everyone of something (“Zaki, remind everyone about Friday lunch”), give the week's summary, or ask everyone to check in 💛",
+);
+const zakiDemoAnswer = (c: CircleRow, text: string) => {
+  const others = c.members.filter((x) => !x.is_me).length;
+  if (/فكر|فكّر|ذكّر|remind/i.test(text)) return L(`تمام، فكّرت ${others} في الدايرة في الشات بتاعهم 💛`, `Done, I reminded ${others} people in their chats 💛`);
+  if (/ملخص|ملخّص|الأسبوع|summary|week/i.test(text)) return L("خلّصتوا 3 مهام الأسبوع ده 🎉\n4 طمّنوا بعض الأسبوع ده 🤍", "You finished 3 tasks together this week 🎉\n4 check-ins to put each other's minds at ease 🤍");
+  if (/طمن|طمّن|check/i.test(text)) return L(`سألت ${others} في الدايرة يطمّنوكم بدوسة 💛`, `I asked ${others} people to check in with one tap 💛`);
+  return ZAKI_HELP;
+};
+const zakiComment = (text: string) => ({ id: id(), author_name: null, is_mine: false, is_zaki: true, text, created_at: iso(new Date(now().getTime() + 1)) });
+on("POST", "/circles/([^/]+)/posts/([^/]+)/comments", (m, b) => {
+  const c = findCircle(m[1]!);
+  const p = findPost(m[1]!, m[2]!);
+  const text = String(b.text ?? "");
+  p.comments.push({ id: id(), author_name: state.user.name, is_mine: true, is_zaki: false, text, created_at: iso(now()) });
+  if (/^\s*@?\s*(زكي|zaki)/i.test(text)) p.comments.push(zakiComment(zakiDemoAnswer(c, text)));
+  p.comment_count = p.comments.length;
+  return { post: p };
+});
+on("DELETE", "/circles/([^/]+)/comments/([^/]+)", (m) => {
+  for (const p of findCircle(m[1]!).posts) {
+    p.comments = (p.comments ?? []).filter((x) => x.id !== m[2]);
+    p.comment_count = p.comments.length;
+  }
+  return null;
+});
+on("POST", "/circles/([^/]+)/zaki", (m, b) => {
+  const c = findCircle(m[1]!);
+  const text = String(b.text ?? "").replace(/^\s*@?\s*(زكي|zaki)\s*[،,:]?\s*/i, "");
+  const p = feedPost(L(`${state.user.name ?? "إنت"} لزكي: «${text}»`, `${state.user.name ?? "You"} to Zaki: “${text}”`), iso(now()), { comments: [zakiComment(zakiDemoAnswer(c, text))], comment_count: 1 });
+  c.posts.unshift(p);
+  return { post: p };
+});
 on("PATCH", "/circles/([^/]+)/members/([^/]+)", (m, b) => {
   const c = findCircle(m[1]!);
   const who = c.members.find((x) => x.user_id === m[2]);
@@ -606,7 +681,7 @@ on("POST", "/tasks/([^/]+)/remind", (m, b) => {
 });
 on("POST", "/circles/([^/]+)/iftar", (m) => {
   const c = findCircle(m[1]!);
-  c.posts.unshift({ id: id(), text: L("كريم عازمكم على الفطار 🌙", "Kareem invites you all to iftar 🌙"), created_at: iso(now()), kind: "iftar", my_rsvp: true });
+  c.posts.unshift(feedPost(L("كريم عازمكم على الفطار 🌙", "Kareem invites you all to iftar 🌙"), iso(now()), { kind: "iftar", my_rsvp: true }));
   return null;
 });
 on("POST", "/circles/([^/]+)/posts/([^/]+)/rsvp", (m, b) => {

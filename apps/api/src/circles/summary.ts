@@ -1,3 +1,4 @@
+import type { PrismaClient } from "../generated/prisma/client";
 import type { Lang } from "../tasks/rules";
 
 /**
@@ -17,4 +18,17 @@ export function summaryLines(lang: Lang, week: { done: (string | null)[]; open: 
   if (week.open > 0) lines.push(ar ? `فاضل ${week.open} ${week.open === 1 ? "مهمة مفتوحة" : "مهام مفتوحة"}، خطوة خطوة 💪` : `${week.open} still open. One step at a time 💪`);
   if (week.checkins > 0) lines.push(ar ? `${week.checkins} طمّنوا بعض الأسبوع ده 🤍` : `${week.checkins} check-ins to put each other's minds at ease 🤍`);
   return lines;
+}
+
+/** The week's numbers behind the summary. Daftar entries stay out: only the two people in one ever see it. */
+export async function weekData(prisma: PrismaClient, circleId: string, now: Date): Promise<{ since: Date; done: (string | null)[]; open: number; checkins: number }> {
+  const since = new Date(now.getTime() - 7 * 86400_000);
+  const [done, open, checkins, members] = await Promise.all([
+    prisma.circleTask.findMany({ where: { circleId, status: "done", doneAt: { gte: since } }, select: { assigneeId: true } }),
+    prisma.circleTask.count({ where: { circleId, status: { in: ["pending", "accepted"] } } }),
+    prisma.circlePost.count({ where: { circleId, event: { startsWith: "checkin:" }, createdAt: { gte: since } } }),
+    prisma.circleMember.findMany({ where: { circleId }, include: { user: { select: { name: true } } } }),
+  ]);
+  const names = new Map(members.map((m) => [m.userId, m.user.name]));
+  return { since, done: done.map((d) => names.get(d.assigneeId) ?? null), open, checkins };
 }

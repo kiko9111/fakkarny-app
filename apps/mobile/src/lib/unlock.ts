@@ -15,7 +15,7 @@ export interface UnlockState {
 /** Days with a message before Today (plans, trackers, A space to reflect) shows up. */
 export const TODAY_AFTER_DAYS = 3;
 
-const MONEY = /سلف|سلّف|فلوس|جنيه|ج\.م|دين|ديون|عليا\s*\d|ليا\s*عند|ليا\s*\d|حساب\b|اتحاسب|owe|owes|owed|lent|lend|borrow|money|debt|\begp\b|pounds?\b|paid me|pay (me|back)/i;
+const MONEY = /سلف|سلّف|فلوس|جنيه|ج\.م|دين|ديون|عليا\s*\d|ليا\s*عند|ليا\s*\d|حساب\b|اتحاسب|owe|owes|owed|lent|lend|borrow|money|debt|\begp\b|pounds?\b|paid me|pay (me|back)|دفعت\s*\d|صرفت\s*\d|قبضت|مرتب|مصاريف|ميزانية|\bspent\b|\bpaid \d|budget|expenses?|salary/i;
 const PEOPLE = /ماما|بابا|أمي|امي|ابويا|أبويا|اخويا|أخويا|اختي|أختي|مراتي|جوزي|ابني|بنتي|تيتة|جدو|جدتي|صاحبي|صاحبتي|صحابي|العيلة|العيله|الشلة|\bmom\b|\bmum\b|\bdad\b|mother|father|sister|brother|\bwife\b|husband|\bson\b|daughter|grandma|grandpa|family|friends?\b/i;
 
 export function parseUnlock(raw: string | null): UnlockState | null {

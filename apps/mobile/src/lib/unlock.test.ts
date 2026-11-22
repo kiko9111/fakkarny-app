@@ -13,6 +13,8 @@ describe("chat-first unlocking", () => {
   it("opens the Daftar on money talk and People on family or friends", () => {
     expect(featuresFromText("سلّفت عمر ٢٥٠ جنيه")).toEqual(["daftar"]);
     expect(featuresFromText("Omar owes me 200")).toEqual(["daftar"]);
+    expect(featuresFromText("دفعت 300 بنزين")).toEqual(["daftar"]);
+    expect(featuresFromText("spent 300 on fuel")).toEqual(["daftar"]);
     expect(featuresFromText("فكرني أكلم ماما بكرة")).toEqual(["people"]);
     expect(featuresFromText("dinner with my sister")).toEqual(["people"]);
     expect(featuresFromText("فكرني أشرب مية")).toEqual([]);

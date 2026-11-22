@@ -58,6 +58,25 @@ export type TaskResponse = z.infer<typeof TaskResponse>;
 export const ListTasksResponse = z.object({ tasks: z.array(CircleTask) });
 export type ListTasksResponse = z.infer<typeof ListTasksResponse>;
 
+/** Reactions a member can leave on a feed item (one each; tap again to take it back). */
+export const REACTION_KEYS = ["heart", "clap", "laugh", "pray", "strong"] as const;
+export const ReactionKey = z.enum(REACTION_KEYS);
+export type ReactionKey = z.infer<typeof ReactionKey>;
+
+export const PostComment = z.object({
+  id: z.string(),
+  author_name: z.string().nullable(),
+  is_mine: z.boolean(),
+  /** Zaki answering an @Zaki ask (template words, in the reader's language). */
+  is_zaki: z.boolean(),
+  text: z.string(),
+  created_at: Instant,
+});
+export type PostComment = z.infer<typeof PostComment>;
+
+/** Longest comment: a short line, so the feed never turns into a group chat. */
+export const MAX_COMMENT = 200;
+
 /** One line Zaki posted in a circle, already written in the reader's language. */
 export const CirclePost = z.object({
   id: z.string(),
@@ -67,8 +86,21 @@ export const CirclePost = z.object({
   kind: z.enum(["iftar"]).nullable().default(null),
   /** The reader's own answer to that invitation, if any. */
   my_rsvp: z.boolean().nullable().default(null),
+  /** Reaction counts (only keys someone used) and the reader's own. */
+  reactions: z.array(z.object({ key: z.string(), count: z.number().int().positive() })).default([]),
+  my_reaction: z.string().nullable().default(null),
+  /** The latest comments, oldest first, and how many there are in all. */
+  comments: z.array(PostComment).default([]),
+  comment_count: z.number().int().nonnegative().default(0),
 });
 export type CirclePost = z.infer<typeof CirclePost>;
+export const ReactRequest = z.object({ key: ReactionKey.nullable() });
+export type ReactRequest = z.infer<typeof ReactRequest>;
+export const CommentRequest = z.object({ text: z.string().trim().min(1).max(MAX_COMMENT) });
+export type CommentRequest = z.infer<typeof CommentRequest>;
+export const PostResponse = z.object({ post: CirclePost });
+export type PostResponse = z.infer<typeof PostResponse>;
+
 export const CircleFeedResponse = z.object({ posts: z.array(CirclePost), tasks: z.array(CircleTask) });
 export type CircleFeedResponse = z.infer<typeof CircleFeedResponse>;
 

@@ -377,6 +377,30 @@ Rules:
   single-file web app on sample data (EXPO_PUBLIC_DEMO=1, fake API in src/demo/server.web.ts,
   SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged. The script inlines
   fonts, PNG and JPG assets; add any new asset type to it.
+- Custom circles and extras (2026-11-22): any circle name; every circle gets every feature.
+  Extras (weekly summary, more than one nudge per task, @Zaki summary) are free for 14 days
+  from the circle's creation, then need Pro (`circleExtras` in packages/shared/src/circles.ts;
+  402 `circle_extras` opens the paywall). Off while REQUIRE_SUBSCRIPTION=0.
+- Task reminder time and homework: circle_tasks.remind_at / homework / note. The assigner sets
+  when Zaki reminds (while pending), the assignee can change it (POST /tasks/:id/remind,
+  `canSetRemind`); on accept the Item gets remind_at ?? due_at. Homework is a task flag with a
+  note/link the child opens and taps done on.
+- Tracker builder: trackers.ask_times (local "HH:MM", max 3), unit_label, circle_id (shared
+  with a circle; money trackers never shared; leaving a circle unshares). Zaki asks at those
+  times (`trackerAskDue`, proactive tick, status client_id so a plain yes logs a step). A
+  shared tracker reaching its goal posts `tracker_goal` in the circle. Chat suggests trackers
+  (`suggestTracker`, mobile, pure).
+- Wider Daftar (money): tables money_sections / money_entries, routes apps/api/src/routes/money.ts,
+  rules apps/api/src/money/rules.ts (pure). Sections start empty; budgets warn at 80% and
+  100% once per month in the chat (client_id `budget:<id>:<month>:<level>`). Circle shared
+  books split entries among chosen members; settle-up lines; others hear via chat + push and
+  a `book_entry` feed post. Chat logging by rules (`moneyFastPath`, conversation step 1a′),
+  strict: debts, plans and questions fall through. Month gift on the 1st, 10:00–13:00 local
+  (client_id `gift:<month>`). Records only.
+- Circle feed: post_reactions / post_comments. React, short comments (200 chars), delete own,
+  and @Zaki (in a comment or POST /circles/:id/zaki): remind everyone (once per 3 h),
+  ask check-ins, summary (extras), help. Zaki's comments store an event key
+  (`zaki:<kind>|data`) rendered per reader by `zakiCommentLine`; no AI call. Not a group chat.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

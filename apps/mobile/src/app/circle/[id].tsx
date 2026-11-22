@@ -4,10 +4,11 @@ import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
-import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
+import { AskZakiBox, FeedPost } from "@/circles/FeedPost";
 import { TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
 import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
@@ -187,6 +188,41 @@ export default function CircleScreen() {
         ))}
       </View>
 
+      <SectionHeader title={t.ui.feedTitle} />
+      <Card>
+        <AskZakiBox
+          onAsk={async (text) => {
+            try {
+              const post = await askZakiInCircle(id, text);
+              setFeed((f) => ({ ...f, posts: [post, ...f.posts] }));
+            } catch {
+              notify(t.tasks.failed, "error");
+            }
+          }}
+        />
+      </Card>
+      {feed.posts.length === 0 ? (
+        <Text variant="small" color={palette.inkSoft} align="center">
+          {t.ui.feedEmpty}
+        </Text>
+      ) : null}
+      {feed.posts.slice(0, 30).map((p) => (
+        <FeedPost
+          key={p.id}
+          circleId={id}
+          post={p}
+          onChange={(next) => setFeed((f) => ({ ...f, posts: f.posts.map((x) => (x.id === next.id ? next : x)) }))}
+          extra={
+            p.kind === "iftar" ? (
+              <View style={styles.chips}>
+                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => void act(() => answerInvite(id, p.id, true), false)} />
+                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => void act(() => answerInvite(id, p.id, false), false)} />
+              </View>
+            ) : undefined
+          }
+        />
+      ))}
+
       <SectionHeader title={t.ui.tasksTitle} action={others ? plain(t.tasks.ask) : undefined} onAction={() => router.push({ pathname: "/task/new", params: { circle: id } })} />
       {feed.tasks.length === 0 ? (
         <Card>
@@ -227,25 +263,6 @@ export default function CircleScreen() {
       <Button label={t.circles.bookAction} kind="outline" icon="receipt-outline" block onPress={() => router.push({ pathname: "/money/new", params: { circle: id } })} />
 
       {isRamadanSeason(new Date()) && others ? <Button label={plain(t.ramadan.iftar)} kind="outline" icon="moon-outline" block onPress={askIftarDay} /> : null}
-
-      {feed.posts.length ? <SectionHeader title={t.ui.zakiPosts} /> : null}
-      {feed.posts.slice(0, 20).map((p) => (
-        <View key={p.id} style={styles.post}>
-          <ZakiAvatar size={28} />
-          <View style={styles.postBody}>
-            <Text variant="body">{p.text}</Text>
-            <Text variant="caption" color={palette.inkFaint}>
-              {ago(p.created_at)}
-            </Text>
-            {p.kind === "iftar" ? (
-              <View style={styles.chips}>
-                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => void act(() => answerInvite(id, p.id, true), false)} />
-                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => void act(() => answerInvite(id, p.id, false), false)} />
-              </View>
-            ) : null}
-          </View>
-        </View>
-      ))}
 
       <SectionHeader title={t.ui.people} />
       <Card style={styles.members}>

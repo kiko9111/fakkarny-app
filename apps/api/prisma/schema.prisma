@@ -167,6 +167,8 @@ model User {
   trackers        Tracker[]
   moneySections   MoneySection[]
   moneyEntries    MoneyEntry[]
+  postReactions   PostReaction[]
+  postComments    PostComment[]
   sessionConsent  SessionConsent?
   reflectSessions ReflectSession[]
 
@@ -416,10 +418,43 @@ model CirclePost {
   title     String?
   createdAt DateTime @default(now()) @map("created_at")
 
-  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  circle    Circle         @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  reactions PostReaction[]
+  comments  PostComment[]
 
   @@index([circleId, createdAt])
   @@map("circle_posts")
+}
+
+/// One reaction per member per feed item (a fixed set of keys, see shared REACTION_KEYS).
+model PostReaction {
+  postId    String   @map("post_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  key       String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CirclePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@map("post_reactions")
+}
+
+/// A short comment on a feed item. userId null = Zaki answering an @Zaki ask: then `zakiEvent`
+/// holds a template key and the line is written per reader language (never model text).
+model PostComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  text      String?
+  zakiEvent String?  @map("zaki_event")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CirclePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("post_comments")
 }
 
 /// One thing the user follows (water, prayer, spending…). Kinds and their defaults live in
