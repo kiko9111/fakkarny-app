@@ -104,6 +104,8 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
     await tx.invite.updateMany({ where: { inviterId: install.id }, data: { inviterId: account.id } });
     await tx.circle.updateMany({ where: { createdById: install.id }, data: { createdById: account.id } });
     await tx.user.updateMany({ where: { referredById: install.id }, data: { referredById: account.id } });
+    await tx.daftarEntry.updateMany({ where: { creatorId: install.id }, data: { creatorId: account.id } });
+    await tx.daftarEntry.updateMany({ where: { otherUserId: install.id }, data: { otherUserId: account.id } });
     await tx.user.delete({ where: { id: install.id } });
     const bonus = [account.bonusProUntil, install.bonusProUntil].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
     return tx.user.update({
@@ -113,6 +115,7 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
         lastActiveAt: new Date(),
         bonusProUntil: bonus,
         referralCode: account.referralCode ?? install.referralCode,
+        instapayLink: account.instapayLink ?? install.instapayLink,
         referredById: account.referredById ?? (install.referredById === account.id ? null : install.referredById),
       },
     });

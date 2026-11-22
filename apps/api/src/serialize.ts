@@ -76,6 +76,7 @@ export function toWireUser(u: User): WireUser {
     bonus_pro_until: isoOrNull(u.bonusProUntil),
     pro: hasPro(u, new Date()),
     always_direct: u.alwaysDirect,
+    instapay_link: u.instapayLink,
     created_at: iso(u.createdAt),
     last_active_at: isoOrNull(u.lastActiveAt),
   };

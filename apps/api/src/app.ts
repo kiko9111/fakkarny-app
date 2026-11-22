@@ -18,6 +18,8 @@ import { messageRoutes } from "./routes/messages";
 import { referralRoutes } from "./routes/referrals";
 import { circleRoutes } from "./routes/circles";
 import { invitePageRoutes } from "./routes/invite-page";
+import { daftarRoutes } from "./routes/daftar";
+import { daftarPageRoutes } from "./routes/daftar-page";
 
 export interface AppDeps {
   /** Omit to run without a database (only /health is served). */
@@ -85,6 +87,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(referralRoutes, { prisma, authenticate, now: deps.now });
     app.register(circleRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
     app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
+    app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
+    app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(itemRoutes, { prisma, authenticate });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });

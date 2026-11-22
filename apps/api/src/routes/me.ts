@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
-import { INSTALL_ID_HEADER, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
+import { INSTALL_ID_HEADER, parseInstapayLink, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
@@ -50,6 +50,11 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       data.slowdownNoticed = false;
     }
     if (b.always_direct !== undefined) data.alwaysDirect = b.always_direct;
+    if (b.instapay_link !== undefined) {
+      const link = b.instapay_link ? parseInstapayLink(b.instapay_link) : null;
+      if (b.instapay_link && !link) return reply.code(400).send({ error: "invalid_instapay_link" });
+      data.instapayLink = link;
+    }
     const user = await prisma.user.update({ where: { id: req.user.id }, data });
     const res: MeResponse = { user: toWireUser(user) };
     return res;

@@ -4,3 +4,4 @@ export * from "./friend-response";
 export * from "./api";
 export * from "./repeat";
 export * from "./circles";
+export * from "./daftar";

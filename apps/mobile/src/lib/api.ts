@@ -1,6 +1,10 @@
 import Constants from "expo-constants";
 import {
   AcceptInviteResponse,
+  DaftarResponse,
+  ListDaftarResponse,
+  type CreateDaftarRequest,
+  type DaftarEntry,
   BillingOffersResponse,
   CircleResponse,
   CreateInviteResponse,
@@ -162,4 +166,34 @@ export async function previewInvite(code: string): Promise<InvitePreview> {
 
 export async function acceptInvite(code: string): Promise<CircleDetail> {
   return AcceptInviteResponse.parse(await request(`/invites/${encodeURIComponent(code)}/accept`, { method: "POST" })).circle;
+}
+
+// Shared Daftar: debts both people see. Needs a connection.
+export async function listDaftar(): Promise<DaftarEntry[]> {
+  return ListDaftarResponse.parse(await request("/daftar")).entries;
+}
+
+export async function createDaftar(body: CreateDaftarRequest): Promise<DaftarResponse> {
+  return DaftarResponse.parse(await request("/daftar", { method: "POST", body: JSON.stringify(body) }));
+}
+
+/** The WhatsApp message to send now: the confirm link, or a kind nudge once confirmed. */
+export async function daftarShareText(id: string): Promise<string | null> {
+  return DaftarResponse.parse(await request(`/daftar/${id}/share`, { method: "POST" })).share_text;
+}
+
+export async function openDaftar(code: string): Promise<DaftarEntry> {
+  return DaftarResponse.parse(await request(`/daftar/open/${encodeURIComponent(code)}`, { method: "POST" })).entry;
+}
+
+export async function respondDaftar(id: string, answer: "confirm" | "dispute"): Promise<DaftarEntry> {
+  return DaftarResponse.parse(await request(`/daftar/${id}/respond`, { method: "POST", body: JSON.stringify({ answer }) })).entry;
+}
+
+export async function settleDaftar(id: string): Promise<DaftarEntry> {
+  return DaftarResponse.parse(await request(`/daftar/${id}/settle`, { method: "POST" })).entry;
+}
+
+export async function cancelDaftar(id: string): Promise<void> {
+  await request(`/daftar/${id}/cancel`, { method: "POST" });
 }

@@ -3,7 +3,7 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextIn
 import { router, useFocusEffect } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import type { PatchMeRequest, User } from "@fakkarni/shared";
+import { parseInstapayLink, type PatchMeRequest, type User } from "@fakkarni/shared";
 import { authAvailable, currentAccountLabel, signOut } from "@/auth";
 import { resetLocalData } from "@/db/reset";
 import { language, t } from "@/i18n";
@@ -43,6 +43,7 @@ export default function SettingsScreen() {
   const [name, setName] = useState("");
   const [wake, setWake] = useState("");
   const [sleep, setSleep] = useState("");
+  const [instapay, setInstapay] = useState("");
 
   useFocusEffect(
     useCallback(() => {
@@ -53,6 +54,7 @@ export default function SettingsScreen() {
           setName(u.name ?? "");
           setWake(u.wake_time);
           setSleep(u.sleep_time);
+          setInstapay(u.instapay_link ?? "");
           prefs.set("always_direct", u.always_direct ? "1" : "0");
         })
         .catch(() => {});
@@ -65,6 +67,15 @@ export default function SettingsScreen() {
     } catch {
       Alert.alert(t.saved.offline);
     }
+  };
+
+  const saveInstapay = () => {
+    const text = instapay.trim();
+    if (text === (user?.instapay_link ?? "")) return;
+    const link = text ? parseInstapayLink(text) : null;
+    if (text && !link) return Alert.alert(t.daftar.instapayInvalid);
+    setInstapay(link ?? "");
+    void save({ instapay_link: link });
   };
 
   const saveTimes = () => {
@@ -141,6 +152,12 @@ export default function SettingsScreen() {
         <Row label={t.settings.sleep}>
           <TextInput style={styles.time} value={sleep} onChangeText={setSleep} onEndEditing={saveTimes} keyboardType="numbers-and-punctuation" maxLength={5} />
         </Row>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>{t.daftar.instapayLabel}</Text>
+        <TextInput style={styles.input} value={instapay} onChangeText={setInstapay} onEndEditing={saveInstapay} placeholder={t.daftar.instapayPlaceholder} autoCapitalize="none" autoCorrect={false} keyboardType="url" textAlign="left" />
+        <Text style={styles.label}>{t.daftar.instapayHint}</Text>
       </View>
 
       <View style={styles.card}>

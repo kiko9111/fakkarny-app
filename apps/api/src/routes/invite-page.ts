@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { normalizeInviteCode } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
 import { MAX_CIRCLE_MEMBERS } from "../circles/rules";
+import { esc, pickLang, renderShell, type Lang } from "../web/shell";
 
 /**
  * The web page behind an invite link (https://…/i/CODE). The person who gets the link on
@@ -17,10 +18,7 @@ export interface InvitePageOptions {
   appScheme?: string;
 }
 
-type Lang = "ar" | "en";
 type View = { kind: "invite" | "confirmed"; inviter: string | null; circle: string; family: boolean; code: string } | { kind: "gone" };
-
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const COPY = {
   ar: {
@@ -83,48 +81,8 @@ ${opts.storeUrl ? `<a class="btn" href="${esc(opts.storeUrl)}">${t.install}</a>`
 <p class="small">${t.codeLabel}</p>
 <p class="code" dir="ltr">${esc(view.code)}</p>`;
   }
-  return `<!doctype html>
-<html lang="${lang}" dir="${lang === "ar" ? "rtl" : "ltr"}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<meta property="og:title" content="${esc(t.pageTitle)}">
-<meta property="og:description" content="${esc(t.ogDescription)}">
-<title>${esc(t.pageTitle)}</title>
-<style>
-  body { font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; line-height: 1.7; color: #1f2430; background: #fff8ec; margin: 0; }
-  main { max-width: 440px; margin: 0 auto; padding: 32px 20px 48px; text-align: center; }
-  .face { font-size: 56px; line-height: 1; }
-  .brand { font-weight: 700; color: #e07a1f; margin: 4px 0 20px; }
-  .card { background: #fff; border-radius: 20px; padding: 24px 20px; box-shadow: 0 6px 24px rgba(224, 122, 31, 0.12); }
-  h1 { font-size: 1.35rem; margin: 0 0 12px; }
-  ul { text-align: start; padding-inline-start: 1.2em; margin: 12px 0 20px; }
-  .btn { display: block; background: #e07a1f; color: #fff; text-decoration: none; font-weight: 700; font-size: 1.1rem; border-radius: 16px; padding: 14px 16px; margin-top: 12px; }
-  .btn.ghost { background: #fff; color: #e07a1f; border: 2px solid #e07a1f; }
-  .small { color: #6b7280; font-size: 0.9rem; margin: 12px 0 0; }
-  .code { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.2em; margin: 4px 0 0; }
-  footer { color: #9aa0aa; font-size: 0.8rem; margin-top: 20px; }
-</style>
-</head>
-<body>
-<main>
-<div class="face">🌟</div>
-<div class="brand">${lang === "ar" ? "زكي" : "Zaki"}</div>
-<div class="card">
-${body}
-</div>
-<footer>${t.ai}</footer>
-</main>
-</body>
-</html>`;
+  return renderShell(lang, { title: t.pageTitle, description: t.ogDescription, footer: t.ai }, body);
 }
-
-const pickLang = (query: string | undefined, acceptLanguage: string | undefined): Lang => {
-  if (query === "en" || query === "ar") return query;
-  // Egyptian Arabic is the default; English only for browsers that don't list Arabic at all.
-  return acceptLanguage && /^en\b/i.test(acceptLanguage) && !/\bar\b/i.test(acceptLanguage) ? "en" : "ar";
-};
 
 export const invitePageRoutes: FastifyPluginAsync<InvitePageOptions> = async (app, opts) => {
   const { prisma } = opts;

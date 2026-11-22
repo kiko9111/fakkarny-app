@@ -36,6 +36,8 @@ export const MessageKind = z.enum([
   "followup",
   /** Zaki's note that today's free AI messages are used up, with a Pro button. */
   "upsell",
+  /** Zaki telling the user something happened with their people (a debt confirmed…). */
+  "update",
 ]);
 export type MessageKind = z.infer<typeof MessageKind>;
 

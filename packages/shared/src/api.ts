@@ -112,6 +112,8 @@ export const PatchMeRequest = z
     tone: Tone,
     checkin_interval_h: CheckinInterval,
     always_direct: z.boolean(),
+    /** An https://ipn.eg/… link from the InstaPay app, or null to remove it. */
+    instapay_link: z.string().trim().max(300).nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");

@@ -183,6 +183,25 @@ Rules:
   opened before onboarding is kept in prefs `pending_invite` and resumed after. Set
   PUBLIC_URL so links use the real domain. The server runs with trustProxy so the
   public page is rate-limited per visitor.
+- Shared Daftar (Zaki M4): table daftar_entries, routes apps/api/src/routes/daftar.ts,
+  wording and state rules in apps/api/src/daftar/rules.ts (pure). The creator records a
+  debt and sends a link from their own WhatsApp; the other person answers on the public
+  page GET /d/:code (apps/api/src/routes/daftar-page.ts) with POST forms, so a link
+  preview can never answer for them. Statuses: pending → confirmed | disputed →
+  settled, or cancelled by the creator. Only the two people ever see an entry, each
+  from their own side (`toWireEntry` flips the direction). Opening fakkarni://daftar/CODE
+  in the app (POST /daftar/open/:code) links the entry to that account. An entry can
+  also go straight to a circle member (`other_user_id`), with no link.
+  Zaki nudges the other person only after they confirmed: POST /daftar/:id/share
+  returns the confirm link while pending and the gentle reminder only once confirmed.
+  When something happens, Zaki tells the other side in their chat with a Message of
+  kind "update" (no AI call, client_id `daftar:<id>:<event>`).
+  Records only: never hold or move money (Central Bank rules).
+- InstaPay: there is no public deep link that pre-fills an amount. Users paste their own
+  InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in
+  Settings; whoever owes them gets a "Pay with InstaPay" button that opens it, and the
+  amount is shown to type there.
+- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`).
 - Family plan sharing: a member with an active plan of tier "family" covers the first 6
   people (payer included, by join time) of each family circle they are in
   (apps/api/src/billing/family.ts); used for the AI allowance and GET /me `pro`.

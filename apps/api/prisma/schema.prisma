@@ -53,6 +53,15 @@ enum CircleRole {
   member
 }
 
+// Shared Daftar: pending until the other person answers the link.
+enum DaftarStatus {
+  pending
+  confirmed
+  disputed
+  settled
+  cancelled
+}
+
 enum Platform {
   ios
   android
@@ -71,6 +80,7 @@ enum MessageKind {
   checkin
   followup
   upsell
+  update // Zaki telling the user something happened with their people (a debt confirmed…)
 }
 
 enum ItemType {
@@ -120,6 +130,8 @@ model User {
   referralCode     String?         @unique @map("referral_code")
   referredById     String?         @map("referred_by_id") @db.Uuid
   referralRewardedAt DateTime?     @map("referral_rewarded_at")
+  // The user's own InstaPay payment link (https://ipn.eg/…), shown to people who owe them.
+  instapayLink     String?         @map("instapay_link")
   // F5: skip the indirect hint and always send the clear reminder.
   alwaysDirect     Boolean         @default(false) @map("always_direct")
   // Proactive-message bookkeeping (M4).
@@ -139,6 +151,8 @@ model User {
   events    Event[]
   circles   CircleMember[]
   invitesSent Invite[] @relation("InviteInviter")
+  daftarCreated DaftarEntry[] @relation("DaftarCreator")
+  daftarOther   DaftarEntry[] @relation("DaftarOther")
 
   @@index([referredById])
   @@map("users")
@@ -261,6 +275,7 @@ model Circle {
 
   members CircleMember[]
   invites Invite[]
+  daftar  DaftarEntry[]
 
   @@map("circles")
 }
@@ -299,4 +314,35 @@ model Invite {
   @@index([circleId])
   @@index([inviterId])
   @@map("invites")
+}
+
+/// Shared Daftar: a debt between two people, recorded only. Zaki never holds or moves money.
+/// The creator sends a link; the other person confirms on the web with nothing to install.
+model DaftarEntry {
+  id          String        @id @default(uuid()) @db.Uuid
+  code        String        @unique
+  creatorId   String        @map("creator_id") @db.Uuid
+  // Optional: the circle this belongs to. Only the two people involved ever see the entry.
+  circleId    String?       @map("circle_id") @db.Uuid
+  // The other person: a name the creator typed, linked to an account once they open it in the app.
+  otherName   String        @map("other_name")
+  otherUserId String?       @map("other_user_id") @db.Uuid
+  // From the creator's side: owed_to_me = the other person owes the creator.
+  direction   DebtDirection
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String        @default("EGP")
+  note        String?
+  status      DaftarStatus  @default(pending)
+  respondedAt DateTime?     @map("responded_at")
+  respondedVia String?      @map("responded_via") // "web" | "app"
+  settledAt   DateTime?     @map("settled_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  creator User    @relation("DaftarCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  other   User?   @relation("DaftarOther", fields: [otherUserId], references: [id], onDelete: SetNull)
+  circle  Circle? @relation(fields: [circleId], references: [id], onDelete: SetNull)
+
+  @@index([creatorId, status])
+  @@index([otherUserId, status])
+  @@map("daftar_entries")
 }
