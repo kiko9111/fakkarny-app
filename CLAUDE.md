@@ -1,4 +1,4 @@
-# Fakkarni — paid AI friend that remembers and reminds in conversation
+# Zaki (formerly Fakkarni) — AI friend that remembers, reminds, and helps with family and friends
 Stack: Expo (React Native, expo-router), SQLite, Fastify, Prisma + Postgres (Supabase),
 pg-boss, zod, RevenueCat, vitest. Monorepo: apps/mobile, apps/api, packages/shared.
 Full product spec: docs/PRD.pdf (section numbers below refer to it).
@@ -17,6 +17,12 @@ Rules:
 - Run `npm test` and `npm run eval` before every commit.
 
 ## Repo notes (keep current)
+- Brand (owner decision, 2026-11-22): the app and its AI character are **Zaki** (زكي), super
+  positive and warm. User-visible text says Zaki/زكي. Internal IDs keep the old name
+  (Android package / bundle ID `com.fakkarni.app`, Expo slug and scheme `fakkarni`, npm
+  workspaces `@fakkarni/*`, DB names) unless the owner decides otherwise. The Arabic home
+  screen name comes from apps/mobile/locales/ar.json. "فكّرني" in strings is the verb
+  ("remind me"), not the brand: don't rename those.
 - Commands (from the repo root): `npm install`, `npm test`, `npm run typecheck`,
   `npm run dev:api`, `npm run dev:mobile`. Install Expo packages with
   `npx expo install <pkg>` inside apps/mobile (it picks SDK-compatible versions).

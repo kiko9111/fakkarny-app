@@ -177,7 +177,7 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
       const result = await deps.push(
         devices.map((d) => ({
           to: d.pushToken!,
-          title: "Fakkarni",
+          title: "Zaki",
           body: stored.map((m) => m.text).join("\n"),
           sound: "default" as const,
           data: { type: "message", kind },

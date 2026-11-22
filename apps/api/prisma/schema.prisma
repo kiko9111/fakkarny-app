@@ -1,4 +1,4 @@
-// Fakkarni data model — PRD §6.
+// Zaki data model — PRD §6.
 // All DateTime columns are UTC; convert with User.timezone at the edges.
 // Columns are snake_case in Postgres, camelCase in TypeScript.
 

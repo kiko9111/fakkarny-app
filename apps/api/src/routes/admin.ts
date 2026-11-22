@@ -73,9 +73,9 @@ function page(s: Stats): string {
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
   const row = (k: string, v: string | number, cls = "") => `<tr><th>${k}</th><td class="${cls}">${v}</td></tr>`;
   const c = s.ai_cost_30d;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fakkarni admin</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zaki admin</title>
 <style>body{font-family:system-ui,sans-serif;margin:24px auto;max-width:860px;padding:0 16px;color:#1f1a17;background:#fffbf5}h1{font-size:22px}h2{font-size:15px;color:#6b625b;margin-top:28px}table{border-collapse:collapse;width:100%;background:#fff}th,td{padding:8px 10px;border-bottom:1px solid #eee;text-align:left}th{font-weight:500;color:#6b625b;width:55%}.warn{color:#b3261e;font-weight:600}</style></head><body>
-<h1>Fakkarni admin</h1><p>No chat content is shown here. Generated ${s.generated_at}.</p>
+<h1>Zaki admin</h1><p>No chat content is shown here. Generated ${s.generated_at}.</p>
 <h2>Users</h2><table>${row("Total", s.users.total)}${row("New (7 days)", s.users.new_7d)}${row("Active (24 h)", s.users.active_1d)}${row("Active (7 days)", s.users.active_7d)}${row("User messages (24 h)", s.messages_1d)}</table>
 <h2>Subscriptions</h2><table>${row("No plan yet", s.plans.none)}${row("Trial", s.plans.trial)}${row("Monthly", s.plans.monthly)}${row("Yearly", s.plans.yearly)}${row("Expired", s.plans.expired)}${row("Paying share of ever-subscribed", pct(s.conversion.paid_share_of_subscribed))}</table>
 <h2>AI cost (30 days)</h2><table>${row("Total", usd(c.total_usd))}${row("Per active user", usd(c.per_active_user_usd))}${row("Per paying user (target under $1.50)", usd(c.per_paying_user_usd), c.per_paying_user_usd > c.target_per_paying_user_usd ? "warn" : "")}

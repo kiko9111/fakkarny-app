@@ -84,7 +84,7 @@ export async function scheduleItem(item: Item) {
     await Notifications.scheduleNotificationAsync({
       identifier: n.identifier,
       content: {
-        title: "Fakkarni",
+        title: "Zaki",
         body: n.body,
         // A follow-up is a question to answer in the chat, so it has no Done / Later buttons.
         ...(n.kind === "followup" ? {} : { categoryIdentifier: CATEGORY }),
@@ -135,7 +135,7 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
       if (data.title) say(fill(t.notifications.laterSay, { title: data.title }));
       await Notifications.scheduleNotificationAsync({
         identifier: hintId(data.itemId),
-        content: { title: "Fakkarni", body: res.notification.request.content.body ?? data.title ?? "", categoryIdentifier: CATEGORY, data, sound: true },
+        content: { title: "Zaki", body: res.notification.request.content.body ?? data.title ?? "", categoryIdentifier: CATEGORY, data, sound: true },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(Date.now() + 60 * 60_000), channelId: CHANNEL },
       });
     } else {

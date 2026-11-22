@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Fakkarni",
+    "name": "Zaki",
     "slug": "fakkarni",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -58,6 +58,10 @@
       "@sentry/react-native"
     ],
     "scheme": "fakkarni",
+    "locales": {
+      "ar": "./locales/ar.json",
+      "en": "./locales/en.json"
+    },
     "experiments": {
       "typedRoutes": true
     },

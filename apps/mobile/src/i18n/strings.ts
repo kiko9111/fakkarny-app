@@ -5,7 +5,7 @@
 const arEG = {
   tabs: { chat: "الدردشة", upcoming: "الجاي", money: "الفلوس", settings: "الإعدادات" },
   chat: {
-    greeting: "أهلاً! أنا فكّرني 👋 أناديك بإيه؟",
+    greeting: "أهلاً! أنا زكي 👋 أناديك بإيه؟",
     placeholder: "اكتب أي حاجة…",
     send: "ابعت",
     offline: "إنت أوفلاين — هبعت رسايلك أول ما النت يرجع.",
@@ -51,7 +51,7 @@ const arEG = {
   settings: {
     title: "الإعدادات",
     language: "اللغة",
-    aiDisclosure: "فكّرني ذكاء اصطناعي، مش إنسان.",
+    aiDisclosure: "زكي ذكاء اصطناعي، مش إنسان.",
     account: "الحساب",
     signedInAs: "داخل بـ",
     notSignedIn: "مش داخل بحساب — الشات محفوظ على الموبايل ده بس.",
@@ -133,7 +133,7 @@ type DeepStringShape<T> = {
 const en: DeepStringShape<Strings> = {
   tabs: { chat: "Chat", upcoming: "Upcoming", money: "Money", settings: "Settings" },
   chat: {
-    greeting: "Ahlan! I'm Fakkarni 👋 What should I call you?",
+    greeting: "Ahlan! I'm Zaki 👋 What should I call you?",
     placeholder: "Write anything…",
     send: "Send",
     offline: "You're offline — I'll send your messages when you're back.",
@@ -179,7 +179,7 @@ const en: DeepStringShape<Strings> = {
   settings: {
     title: "Settings",
     language: "Language",
-    aiDisclosure: "Fakkarni is an AI, not a person.",
+    aiDisclosure: "Zaki is an AI, not a person.",
     account: "Account",
     signedInAs: "Signed in as",
     notSignedIn: "Not signed in — your chat lives on this phone only.",

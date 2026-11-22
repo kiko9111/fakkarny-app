@@ -81,7 +81,7 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     expect(body.memories[0]).toMatchObject({ subject: "Ahmed", kind: "person" });
 
     // The model saw the persona, the local time, and the user's message as the last turn.
-    expect(calls[0]!.system).toContain("You are Fakkarni");
+    expect(calls[0]!.system).toContain("You are Zaki");
     expect(calls[0]!.context).toContain("NOW: Thursday 2026-11-19 12:00 (Africa/Cairo)");
     expect(calls[0]!.history.at(-1)).toMatchObject({ role: "user" });
 
