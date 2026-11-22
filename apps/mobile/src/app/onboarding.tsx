@@ -5,8 +5,9 @@ import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCod
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
+import { unlock } from "@/lib/unlock-store";
 import { reloadApp } from "@/lib/reload";
-import { Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker, type IconName } from "@/ui";
 
 /**
  * F1 (under 2 minutes): meet Zaki and pick a language, then sign in with a code sent by email
@@ -23,7 +24,8 @@ export default function OnboardingScreen() {
 
   const finish = () => {
     prefs.set("onboarded", "1");
-    prefs.set("offer_tracker", "1");
+    // Chat first: a new user starts with Zaki only; the rest opens as it's needed.
+    unlock.startFresh();
     router.replace("/");
   };
 
@@ -75,8 +77,12 @@ export default function OnboardingScreen() {
         <View style={styles.points}>
           {point("chatbubble-ellipses-outline", t.ui.welcomePoint1)}
           {point("alarm-outline", t.ui.welcomePoint2)}
-          {point("people-outline", t.ui.welcomePoint3)}
+          {point("sparkles-outline", t.ui.welcomePoint3)}
         </View>
+        <Text variant="smallStrong" color={palette.inkSoft} align="center">
+          {t.ui.themeTitle}
+        </Text>
+        <ThemePicker />
         <Text variant="smallStrong" color={palette.inkSoft} align="center">
           {t.onboarding.pickLanguage}
         </Text>

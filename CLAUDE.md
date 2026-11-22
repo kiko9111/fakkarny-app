@@ -338,12 +338,18 @@ Rules:
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 - Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
-  parts, TextField, feedback). Screens use it, not src/lib/theme (kept only as an alias).
-  Warm sand ground, apricot primary, Nile green family, saffron friends, dusk violet for
-  Session. Fonts Alexandria (display) + IBM Plex Sans Arabic (body) via expo-font; Ionicons
-  for icons; no emoji on buttons/chips (`plain()` strips them). Use `notify`/`confirm`/`ask`
-  from src/ui/feedback instead of Alert (Alert does nothing on web). Dates use `dateLocale`
-  from src/i18n. Tabs: Zaki, Today, People, Daftar, Me (trackers/upcoming routes hidden).
+  parts, TextField, feedback, ThemePicker). Screens use it, not src/lib/theme (kept only as
+  an alias). Clean Apple-like structure (white surfaces on a tinted grouped background,
+  hairlines, large titles, one accent) in a soft theme the user picks: Sunrise (default),
+  Mint or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads).
+  Family, friends and Session keep fixed colours in every theme. One font family, IBM Plex
+  Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use `notify`/`confirm`/`ask`
+  from src/ui/feedback instead of Alert (Alert does nothing on web). Dates use `dateLocale`.
+- Chat first (owner decision, 2026-11-22): a new user sees only Zaki's chat (no tab bar,
+  Settings in the header). Daftar opens on money talk, People on family/friends words or an
+  accepted invite, Today after 3 active days (src/lib/unlock.ts, pure + tested; state in
+  prefs "unlocked" via src/lib/unlock-store.ts). No saved state = a user from before this
+  change: everything stays open. Story: "Zaki remembers so you don't have to".
 - Native modules: existing builds take JS over the air (runtimeVersion appVersion), so
   a new native module must be optional: check `requireOptionalNativeModule` and require it
   lazily (see src/lib/contacts.ts, expo-contacts for "Pick from contacts" in Daftar, which

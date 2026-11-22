@@ -63,7 +63,7 @@ export function zakiReply(text: string, ctx: { name: string | null; upcoming: It
     return {
       texts: [
         L(`ألف سلامة عليك${name} 💛 الأيام دي بتعدّي. تحب تحكيلي حصل إيه؟`, `I'm sorry it's a hard day${name} 💛 Want to tell me what happened?`),
-        L("ولو محتاج مساحة هادية تفضفض فيها، جرّب «مساحة للتفكير» من صفحة المتابعة.", "And if you'd like a quiet space to talk it through, try “A space to reflect” in the Trackers tab."),
+        L("وأنا هنا، خد راحتك واحكي براحتك 💛", "I'm right here. Take your time 💛"),
       ],
       items: [],
     };

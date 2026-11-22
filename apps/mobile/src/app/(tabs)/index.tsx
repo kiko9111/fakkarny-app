@@ -11,7 +11,8 @@ import { useChat } from "@/chat/useChat";
 import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
 import { getMe } from "@/lib/api";
-import { Button, Note, palette, space, Text, ZakiAvatar } from "@/ui";
+import { unlock, useUnlocked } from "@/lib/unlock-store";
+import { Button, IconButton, Note, palette, space, Text, ZakiAvatar } from "@/ui";
 
 const GREETING: LocalMessage = {
   client_id: "local:greeting",
@@ -42,6 +43,11 @@ function ZakiHeader({ typing }: { typing: boolean }) {
 
 export default function ChatScreen() {
   const { messages, loaded, typing, locked, send } = useChat();
+  const unlocked = useUnlocked();
+  const say = (text: string) => {
+    unlock.onUserMessage(text);
+    void send(text);
+  };
   const navigation = useNavigation();
   // New users are asked to start the trial; lapsed subscribers see that everything is saved.
   const [neverSubscribed, setNeverSubscribed] = useState(true);
@@ -53,8 +59,12 @@ export default function ChatScreen() {
   const offline = network.isConnected === false || network.isInternetReachable === false;
 
   useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: () => <ZakiHeader typing={typing && !offline} /> });
-  }, [navigation, typing, offline]);
+    navigation.setOptions({
+      headerTitle: () => <ZakiHeader typing={typing && !offline} />,
+      // Chat only (nothing else open yet): Settings sits in the header instead of a tab bar.
+      headerRight: unlocked.length === 0 ? () => <IconButton name="settings-outline" label={t.ui.settingsShort} onPress={() => router.push("/settings")} /> : undefined,
+    });
+  }, [navigation, typing, offline, unlocked.length]);
 
   // Inverted list: newest at the bottom, keyboard-friendly.
   const data = useMemo(() => {
@@ -93,8 +103,8 @@ export default function ChatScreen() {
         </View>
       ) : (
         <>
-          <QuickReplies options={t.chat.quickReplies} onPick={(text) => void send(text)} />
-          <ChatInput onSend={(text) => void send(text)} />
+          <QuickReplies options={t.chat.quickReplies} onPick={say} />
+          <ChatInput onSend={say} />
         </>
       )}
     </KeyboardAvoidingView>

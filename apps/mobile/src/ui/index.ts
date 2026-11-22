@@ -7,3 +7,4 @@ export { Screen, Card, SectionHeader, IconTile, PersonAvatar, ListRow, Chip, Bad
 export { ask, confirm, notify, FeedbackHost } from "./feedback";
 export { plain } from "./plain";
 export { TextField } from "./TextField";
+export { ThemePicker } from "./ThemePicker";

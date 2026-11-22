@@ -11,7 +11,7 @@ import { API_URL, deleteAccount, exportData, getMe, patchMe } from "@/lib/api";
 import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
-import { ask, Button, Card, confirm, fonts, Icon, notify, palette, PersonAvatar, radius, Screen, space, Text, textStart, type IconName } from "@/ui";
+import { ask, Button, Card, confirm, fonts, Icon, notify, palette, PersonAvatar, radius, Screen, space, Text, textStart, ThemePicker, type IconName } from "@/ui";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -172,6 +172,9 @@ export default function SettingsScreen() {
       <Group title={t.ui.profile}>
         <Field label={t.settings.name} first>
           {input(name, setName, () => void save({ name: name.trim() || null }))}
+        </Field>
+        <Field label={t.ui.themeLabel}>
+          <ThemePicker />
         </Field>
         <Field label={t.settings.language}>
           <Segmented value={language} onChange={changeLanguage} options={[{ value: "ar-EG", label: t.onboarding.arabic }, { value: "en", label: t.onboarding.english }]} />

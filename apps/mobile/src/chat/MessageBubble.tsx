@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   colMine: { alignItems: "flex-end" },
   colFriend: { alignItems: "flex-start" },
   kind: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },
-  bubble: { borderRadius: radius.lg, paddingHorizontal: space.lg - 2, paddingVertical: space.sm + 1 },
+  bubble: { borderRadius: 20, paddingHorizontal: space.lg - 2, paddingVertical: space.sm + 1 },
   mine: { backgroundColor: palette.primary },
   friend: { backgroundColor: palette.surface, ...shadow.card },
   tailMine: { borderBottomEndRadius: 6 },
