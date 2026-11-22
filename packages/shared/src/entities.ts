@@ -43,6 +43,8 @@ export const User = z.object({
   /** True when Pro features are unlocked right now (paid plan or invite days). */
   pro: z.boolean(),
   always_direct: z.boolean(),
+  /** The user's own InstaPay payment link, shown to people who owe them. */
+  instapay_link: z.string().nullable(),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });
