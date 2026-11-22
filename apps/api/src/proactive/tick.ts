@@ -4,7 +4,6 @@ import { costUsd, FRIEND_MODEL, type FriendModel } from "../ai/model";
 import { isAwake, toLocalIso } from "../lib/time";
 
 const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, user.wakeTime, user.sleepTime);
-import { canChat, hasActivePlan } from "../billing/plan";
 import { nextOccurrences } from "@fakkarni/shared";
 import { detectScript, replyLang, type ReplyLang } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
@@ -107,11 +106,8 @@ export async function postDueReminders(prisma: PrismaClient, user: User, now: Da
 /** Plan + write + store + push for one user. Returns the plan that was sent, if any. */
 export async function runForUser(deps: TickDeps, user: User, now: Date): Promise<ProactivePlan | null> {
   const { prisma } = deps;
-  if (deps.requireSubscription) {
-    // Locked chats get no proactive messages; the free first exchange counts as unlocked.
-    const sent = hasActivePlan(user, now) ? 0 : await prisma.message.count({ where: { userId: user.id, role: "user" } });
-    if (!canChat(user, sent, now).ok) return null;
-  }
+  // Everyone gets Zaki's morning, evening and check-in messages, free users included: they
+  // are template-cheap and drive the daily habit (owner decision, 2026-11-22).
   if (isAwakeForNotice(user, now) && (await trialNotice(deps, user, now))) return null;
   const tz = user.timezone;
   const startOfDayLocal = toLocalIso(now, tz).slice(0, 10);

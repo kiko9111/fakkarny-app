@@ -143,14 +143,29 @@ Rules:
 - Helpline numbers in apps/api/src/persona/prompt.ts were checked against official
   sources on 2026-11-20 (Egypt now leads with 16328). Still to do before launch: one
   test call per number, and a re-check before each release.
-- Subscriptions (M6): RevenueCat app user id = our User.id. POST /webhooks/revenuecat
-  (Authorization = REVENUECAT_WEBHOOK_AUTH) mirrors the plan onto User; POST
-  /me/plan/refresh re-reads it with REVENUECAT_SECRET_KEY right after a purchase.
-  With REQUIRE_SUBSCRIPTION=1, POST /messages returns 402 after
-  FREE_MESSAGES_BEFORE_PAYWALL messages without an active plan (apps/api/src/billing).
-  The phone keeps 402'd messages queued and swaps the input for the paywall CTA.
-  Locked users get no proactive messages; trial users get one honest notice 2 days
-  before the trial ends. Local dev: REQUIRE_SUBSCRIPTION=0 in apps/api/.env.
+- Plans and AI allowance (Zaki M2, 2026-11-22; replaces the old chat lock). Chat is
+  never locked and POST /messages no longer returns 402. Shared features are free and
+  unlimited; AI depth is paid. With REQUIRE_SUBSCRIPTION=1 a free user gets 30 AI
+  messages a day in their first 7 days, then 5 a day (`dailyAiAllowance`,
+  apps/api/src/billing/plan.ts). The count is today's `ai_call` events with purpose
+  "chat", so messages answered by rules cost nothing; crisis messages are never
+  blocked. Over the allowance the pipeline stores a canned Zaki reply of kind "upsell"
+  (first of the day mentions Pro), which the phone shows with a "See Zaki Pro" button.
+  POST /messages returns `ai_allowance {limit, used}`. Proactive messages go to everyone.
+  Pro = active plan or `bonus_pro_until` in the future (`hasPro`; wire field `user.pro`).
+- Store products (to create in Play/App Store + RevenueCat, all granting entitlement
+  "pro"): zaki_pro_monthly (EGP 129), zaki_pro_yearly (EGP 999), zaki_family_monthly
+  (EGP 179), zaki_family_yearly (EGP 1,499), zaki_founders_yearly (EGP 499 first year,
+  first 1,000 buyers; GET /billing/offers returns founders_left). Tier and founders are
+  read from the product id ("family", "founder") on both server and phone
+  (apps/mobile/src/billing/options.ts). Sharing Family with up to 6 members comes with
+  circles (not built yet). RevenueCat app user id = our User.id; POST
+  /webhooks/revenuecat mirrors plan, plan_tier and plan_product_id onto User; POST
+  /me/plan/refresh re-reads it right after a purchase.
+- Invite rewards: GET /me/referral (code + days this month), POST /referrals/claim
+  {code}. A signed-in user in their first week names their inviter once; the inviter
+  gets 7 Pro days, at most 28 per calendar month (apps/api/src/billing/referral.ts).
+  The app UI for it arrives with invite links.
 - Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
   keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
   still saved, user told once), Sentry on API and app with all content collection off,

@@ -23,6 +23,8 @@ export interface ApplyInput {
   replies: string[];
   response: Pick<FriendResponse, "create_items" | "update_items" | "save_memories">;
   now: Date;
+  /** Message kind of the stored replies (default "chat"). */
+  replyKind?: "chat" | "upsell";
 }
 
 export interface ApplyResult {
@@ -116,7 +118,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
           data: {
             userId: user.id,
             role: "friend",
-            kind: "chat",
+            kind: input.replyKind ?? "chat",
             text,
             clientId: replyClientId(message.clientId, n),
             // Keep replies strictly after the user message and in order.

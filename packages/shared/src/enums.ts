@@ -17,6 +17,10 @@ export type CheckinInterval = z.infer<typeof CheckinInterval>;
 export const Plan = z.enum(["none", "trial", "monthly", "yearly", "expired"]);
 export type Plan = z.infer<typeof Plan>;
 
+/** Which paid plan: Pro (one person) or Family (Pro for up to 6 people, one payer). */
+export const PlanTier = z.enum(["pro", "family"]);
+export type PlanTier = z.infer<typeof PlanTier>;
+
 export const Platform = z.enum(["ios", "android"]);
 export type Platform = z.infer<typeof Platform>;
 
@@ -30,6 +34,8 @@ export const MessageKind = z.enum([
   "reminder",
   "checkin",
   "followup",
+  /** Zaki's note that today's free AI messages are used up, with a Pro button. */
+  "upsell",
 ]);
 export type MessageKind = z.infer<typeof MessageKind>;
 

@@ -1,3 +1,4 @@
+import { hasPro } from "./billing/plan";
 import type {
   Item as WireItem,
   Memory as WireMemory,
@@ -71,6 +72,9 @@ export function toWireUser(u: User): WireUser {
     ignored_checkins: u.ignoredCheckins,
     plan: u.plan,
     plan_expires_at: isoOrNull(u.planExpiresAt),
+    plan_tier: u.planTier,
+    bonus_pro_until: isoOrNull(u.bonusProUntil),
+    pro: hasPro(u, new Date()),
     always_direct: u.alwaysDirect,
     created_at: iso(u.createdAt),
     last_active_at: isoOrNull(u.lastActiveAt),

@@ -12,6 +12,11 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
       <View style={[styles.bubble, mine ? styles.mine : styles.friend]}>
         <Text style={[styles.text, mine && styles.textMine]}>{message.text}</Text>
       </View>
+      {message.kind === "upsell" ? (
+        <Pressable style={styles.proButton} onPress={() => router.push("/paywall")} accessibilityRole="button">
+          <Text style={styles.proText}>{t.paywall.upsellButton}</Text>
+        </Pressable>
+      ) : null}
       {mine && message.sync_status !== "synced" ? (
         <Text style={[styles.status, message.sync_status === "failed" && styles.failed]}>
           {message.sync_status === "pending" ? `⏱ ${t.chat.pending}` : `⚠ ${t.chat.failed}`}
@@ -44,6 +49,8 @@ const styles = StyleSheet.create({
   textMine: { color: "#fff" },
   status: { fontSize: 11, color: colors.muted, marginTop: 2 },
   failed: { color: colors.error },
+  proButton: { marginTop: 6, backgroundColor: colors.accent, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8 },
+  proText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   savedChip: { marginTop: 4, backgroundColor: "#EAF4EE", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   savedText: { fontSize: 12, color: colors.ok },
 });

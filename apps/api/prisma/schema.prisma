@@ -36,6 +36,12 @@ enum Plan {
   expired
 }
 
+// Zaki plans (2026-11-22): Pro for one person, Family = Pro for up to 6 people, one payer.
+enum PlanTier {
+  pro
+  family
+}
+
 enum Platform {
   ios
   android
@@ -53,6 +59,7 @@ enum MessageKind {
   reminder
   checkin
   followup
+  upsell
 }
 
 enum ItemType {
@@ -94,6 +101,14 @@ model User {
   ignoredCheckins  Int             @default(0) @map("ignored_checkins")
   plan             Plan            @default(none)
   planExpiresAt    DateTime?       @map("plan_expires_at")
+  planTier         PlanTier        @default(pro) @map("plan_tier")
+  // Store product id of the current plan (founders' offer is detected from it).
+  planProductId    String?         @map("plan_product_id")
+  // Pro days earned by inviting friends (7 per friend, at most 28 a calendar month).
+  bonusProUntil    DateTime?       @map("bonus_pro_until")
+  referralCode     String?         @unique @map("referral_code")
+  referredById     String?         @map("referred_by_id") @db.Uuid
+  referralRewardedAt DateTime?     @map("referral_rewarded_at")
   // F5: skip the indirect hint and always send the clear reminder.
   alwaysDirect     Boolean         @default(false) @map("always_direct")
   // Proactive-message bookkeeping (M4).
@@ -112,6 +127,7 @@ model User {
   summaries Summary[]
   events    Event[]
 
+  @@index([referredById])
   @@map("users")
 }
 

@@ -1,26 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { canChat, FREE_MESSAGES_BEFORE_PAYWALL, planFromEvent, planFromSubscriber } from "./plan";
+import { dailyAiAllowance, FREE_AI_FIRST_WEEK_PER_DAY, FREE_AI_PER_DAY, hasPro, isFoundersProduct, planFromEvent, planFromSubscriber, tierFromProduct } from "./plan";
 
 const now = new Date("2026-11-19T10:00:00Z");
 const later = new Date("2026-11-26T10:00:00Z");
 
-describe("canChat", () => {
-  it("lets new users have the first real exchange before the paywall", () => {
-    expect(canChat({ plan: "none", planExpiresAt: null }, 0, now).ok).toBe(true);
-    expect(canChat({ plan: "none", planExpiresAt: null }, FREE_MESSAGES_BEFORE_PAYWALL, now)).toEqual({ ok: false, reason: "trial_required" });
+const day = 86_400_000;
+describe("dailyAiAllowance", () => {
+  const free = { plan: "none" as const, planExpiresAt: null, bonusProUntil: null };
+  it("is generous in the first week, then 5 a day", () => {
+    expect(dailyAiAllowance({ ...free, createdAt: now }, now)).toBe(FREE_AI_FIRST_WEEK_PER_DAY);
+    expect(dailyAiAllowance({ ...free, createdAt: new Date(now.getTime() - 6 * day) }, now)).toBe(30);
+    expect(dailyAiAllowance({ ...free, createdAt: new Date(now.getTime() - 7 * day) }, now)).toBe(FREE_AI_PER_DAY);
+    expect(dailyAiAllowance({ ...free, plan: "expired", createdAt: new Date(now.getTime() - 90 * day) }, now)).toBe(5);
   });
-  it("allows trial and paid plans until they expire", () => {
-    expect(canChat({ plan: "trial", planExpiresAt: later }, 500, now).ok).toBe(true);
-    expect(canChat({ plan: "yearly", planExpiresAt: null }, 500, now).ok).toBe(true);
-    expect(canChat({ plan: "monthly", planExpiresAt: now }, 500, now)).toEqual({ ok: false, reason: "subscription_expired" });
-    expect(canChat({ plan: "expired", planExpiresAt: null }, 0, now)).toEqual({ ok: false, reason: "subscription_expired" });
+  it("is unlimited on a paid plan or on invite days", () => {
+    const old = new Date(now.getTime() - 90 * day);
+    expect(dailyAiAllowance({ ...free, plan: "monthly", planExpiresAt: later, createdAt: old }, now)).toBeNull();
+    expect(dailyAiAllowance({ ...free, plan: "trial", planExpiresAt: later, createdAt: old }, now)).toBeNull();
+    expect(dailyAiAllowance({ ...free, bonusProUntil: later, createdAt: old }, now)).toBeNull();
+    expect(dailyAiAllowance({ ...free, bonusProUntil: now, createdAt: old }, now)).toBe(5);
+    expect(dailyAiAllowance({ ...free, plan: "monthly", planExpiresAt: now, createdAt: old }, now)).toBe(5);
+  });
+  it("reads tier and founders' offer from the product id", () => {
+    expect(tierFromProduct("zaki_family_monthly")).toBe("family");
+    expect(tierFromProduct("zaki_pro_yearly")).toBe("pro");
+    expect(isFoundersProduct("zaki_founders_yearly")).toBe(true);
+    expect(isFoundersProduct("zaki_pro_yearly")).toBe(false);
+    expect(hasPro({ ...free, bonusProUntil: later }, now)).toBe(true);
   });
 });
 
 describe("planFromEvent", () => {
   const base = { app_user_id: "u1", expiration_at_ms: later.getTime(), entitlement_ids: ["pro"] };
   it("maps trial starts and purchases", () => {
-    expect(planFromEvent({ ...base, type: "INITIAL_PURCHASE", period_type: "TRIAL", product_id: "fakkarni_monthly" })).toEqual({ plan: "trial", expiresAt: later });
+    expect(planFromEvent({ ...base, type: "INITIAL_PURCHASE", period_type: "TRIAL", product_id: "fakkarni_monthly" })).toEqual({ plan: "trial", expiresAt: later, tier: "pro", productId: "fakkarni_monthly" });
+    expect(planFromEvent({ ...base, type: "RENEWAL", period_type: "NORMAL", product_id: "zaki_family_yearly" })?.tier).toBe("family");
     expect(planFromEvent({ ...base, type: "RENEWAL", period_type: "NORMAL", product_id: "fakkarni_yearly" })?.plan).toBe("yearly");
     expect(planFromEvent({ ...base, type: "RENEWAL", period_type: "NORMAL", product_id: "fakkarni_monthly" })?.plan).toBe("monthly");
   });
@@ -41,7 +55,7 @@ describe("planFromSubscriber", () => {
         subscriptions: { fakkarni_monthly: { period_type: "trial" } },
       },
     };
-    expect(planFromSubscriber(json, now)).toEqual({ plan: "trial", expiresAt: later });
+    expect(planFromSubscriber(json, now)).toEqual({ plan: "trial", expiresAt: later, tier: "pro", productId: "fakkarni_monthly" });
     expect(planFromSubscriber({ subscriber: { entitlements: {} } }, now).plan).toBe("none");
     expect(planFromSubscriber(json, new Date("2027-01-01")).plan).toBe("expired");
   });
