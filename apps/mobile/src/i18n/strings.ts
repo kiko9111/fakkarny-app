@@ -5,7 +5,7 @@
 const arEG = {
   tabs: { chat: "الدردشة", upcoming: "الجاي", money: "الفلوس", settings: "الإعدادات" },
   chat: {
-    greeting: "أهلاً! أنا فكّرني 👋 أناديك بإيه؟",
+    greeting: "أهلاً! أنا زكي 👋 أناديك بإيه؟",
     placeholder: "اكتب أي حاجة…",
     send: "ابعت",
     offline: "إنت أوفلاين — هبعت رسايلك أول ما النت يرجع.",
@@ -27,6 +27,9 @@ const arEG = {
     done: "خلصت ✅",
     later: "بعد ساعة ⏰",
     clear: "عشان متنساش: {title} الساعة {time}",
+    doneSay: "خلصت «{title}» ✅",
+    followup: "«{title}»… عملت إيه؟ طمّني",
+    laterSay: "فكرني بـ«{title}» كمان ساعة",
     channel: "التذكيرات",
   },
   upcoming: {
@@ -48,7 +51,7 @@ const arEG = {
   settings: {
     title: "الإعدادات",
     language: "اللغة",
-    aiDisclosure: "فكّرني ذكاء اصطناعي، مش إنسان.",
+    aiDisclosure: "زكي ذكاء اصطناعي، مش إنسان.",
     account: "الحساب",
     signedInAs: "داخل بـ",
     notSignedIn: "مش داخل بحساب — الشات محفوظ على الموبايل ده بس.",
@@ -85,9 +88,9 @@ const arEG = {
     english: "English",
     signInTitle: "ادخل عشان شاتك يتحفظ على كل أجهزتك",
     contact: "الإيميل أو رقم الموبايل (‎+2010…)",
+    email: "الإيميل بتاعك",
     sendCode: "ابعتلي كود",
-    sendLink: "ابعتلي لينك الدخول",
-    linkSent: "بعتنالك لينك على الإيميل. افتحه من الموبايل ده وهتدخل على طول. لو مش لاقيه، بص في الـ Spam.",
+    codeSentEmail: "بعتنالك كود من ٦ أرقام على الإيميل. اكتبه هنا. لو مش لاقيه، بص في الـ Spam.",
     signingIn: "بندخّلك…",
     linkFailed: "اللينك ده مش شغال أو انتهى. اطلب لينك جديد وافتحه من نفس الموبايل.",
     tryAgain: "جرّب تاني",
@@ -98,6 +101,7 @@ const arEG = {
     skip: "بعدين",
     notConfigured: "الدخول بالحساب لسه مش متفعّل في النسخة دي.",
     failed: "معرفناش ندخلك. جرّب تاني.",
+    tooSoon: "بعتنالك كود من شوية. بص في الإيميل (والـ Spam)، ولو ملقتوش استنى دقيقة وجرّب تاني. تقدر تكمّل دلوقتي من «بعدين».",
   },
   paywall: {
     title: "ابدأ تجربتك المجانية ٧ أيام",
@@ -129,7 +133,7 @@ type DeepStringShape<T> = {
 const en: DeepStringShape<Strings> = {
   tabs: { chat: "Chat", upcoming: "Upcoming", money: "Money", settings: "Settings" },
   chat: {
-    greeting: "Ahlan! I'm Fakkarni 👋 What should I call you?",
+    greeting: "Ahlan! I'm Zaki 👋 What should I call you?",
     placeholder: "Write anything…",
     send: "Send",
     offline: "You're offline — I'll send your messages when you're back.",
@@ -151,6 +155,9 @@ const en: DeepStringShape<Strings> = {
     done: "Done ✅",
     later: "In 1 hour ⏰",
     clear: "Just so you don't miss it: {title} at {time}",
+    doneSay: "Done: {title} ✅",
+    followup: "How did “{title}” go?",
+    laterSay: "Remind me about “{title}” in an hour",
     channel: "Reminders",
   },
   upcoming: {
@@ -172,7 +179,7 @@ const en: DeepStringShape<Strings> = {
   settings: {
     title: "Settings",
     language: "Language",
-    aiDisclosure: "Fakkarni is an AI, not a person.",
+    aiDisclosure: "Zaki is an AI, not a person.",
     account: "Account",
     signedInAs: "Signed in as",
     notSignedIn: "Not signed in — your chat lives on this phone only.",
@@ -209,9 +216,9 @@ const en: DeepStringShape<Strings> = {
     english: "English",
     signInTitle: "Sign in so your chat is saved on all your devices",
     contact: "Email or phone number (+2010…)",
+    email: "Your email",
     sendCode: "Send me a code",
-    sendLink: "Email me a sign-in link",
-    linkSent: "We emailed you a link. Open it on this phone and you're in. If you can't find it, check Spam.",
+    codeSentEmail: "We emailed you a 6-digit code. Enter it here. If you can't find it, check Spam.",
     signingIn: "Signing you in…",
     linkFailed: "That link didn't work or has expired. Ask for a new one and open it on the same phone.",
     tryAgain: "Try again",
@@ -222,6 +229,7 @@ const en: DeepStringShape<Strings> = {
     skip: "Later",
     notConfigured: "Sign-in isn't set up in this build yet.",
     failed: "Couldn't sign you in. Try again.",
+    tooSoon: "We just emailed you a code. Check your inbox (and Spam); if it isn't there, wait a minute and try again. You can carry on now with “Later”.",
   },
   paywall: {
     title: "Start your 7-day free trial",

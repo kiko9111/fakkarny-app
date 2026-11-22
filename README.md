@@ -1,6 +1,6 @@
-# Fakkarni (فكّرني)
+# Zaki (زكي)
 
-An AI friend that chats in Egyptian Arabic, Franco or English, remembers what you
+Formerly Fakkarni. An AI friend that chats in Egyptian Arabic, Franco or English, remembers what you
 mention, and reminds you the way a friend would. Paid iOS/Android app. The spec is in
 [docs/PRD.pdf](docs/PRD.pdf), and the working rules for Claude Code are in [CLAUDE.md](CLAUDE.md).
 

@@ -61,6 +61,54 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
     expect((await prisma.device.findFirstOrThrow()).pushToken).toBeNull();
   });
 
+  it("writes a due reminder into the chat once, without a push, and again only if it is moved", async () => {
+    // Mid-morning with nothing else due, so only the reminder is written.
+    const user = await makeUser({ lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T09:30") });
+    await prisma.device.create({ data: { userId: user.id, platform: "android", pushToken: "ExponentPushToken[ok]" } });
+    const item = await prisma.item.create({
+      data: { userId: user.id, type: "reminder", title: "أكلم محمد", nudge: "فاضي دلوقتي تكلم أخوك محمد؟", dueAt: at("2026-11-22T10:30"), remindAt: at("2026-11-22T10:30") },
+    });
+    await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "Later", remindAt: at("2026-11-22T15:00") } });
+    await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "Done", status: "done", remindAt: at("2026-11-22T10:00") } });
+
+    await runTick({ prisma, model, push }, at("2026-11-22T10:29"));
+    expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(0);
+
+    await runTick({ prisma, model, push }, at("2026-11-22T10:30"));
+    await runTick({ prisma, model, push }, at("2026-11-22T10:31"));
+    const posted = await prisma.message.findMany({ where: { kind: "reminder" } });
+    expect(posted.map((m) => m.text)).toEqual(["فاضي دلوقتي تكلم أخوك محمد؟"]);
+    expect(posted[0]!.role).toBe("friend");
+    expect(pushed).toHaveLength(0); // the phone's local notification already fired
+
+    await prisma.item.update({ where: { id: item.id }, data: { remindAt: at("2026-11-22T11:00") } });
+    await runTick({ prisma, model, push }, at("2026-11-22T11:00"));
+    expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(2);
+  });
+
+  it("keeps a repeating reminder going, skipping the night", async () => {
+    const user = await makeUser({ lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T21:30"), lastNightAt: at("2026-11-22T22:00") });
+    const item = await prisma.item.create({
+      data: { userId: user.id, type: "reminder", title: "اشرب مية", nudge: "شربت مية ولا لسه؟", remindAt: at("2026-11-22T21:30"), dueAt: at("2026-11-22T21:30"), repeatEveryMinutes: 60 },
+    });
+    const remindAt = async () => (await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).remindAt!.toISOString();
+
+    await runTick({ prisma, model, push }, at("2026-11-22T21:30"));
+    expect(await remindAt()).toBe(at("2026-11-22T22:30").toISOString());
+    await runTick({ prisma, model, push }, at("2026-11-22T22:30"));
+    // 23:30 is past the 23:00 bedtime: the next one is 07:30 tomorrow.
+    expect(await remindAt()).toBe(at("2026-11-23T07:30").toISOString());
+    expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(2);
+    expect((await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).status).toBe("open");
+  });
+
+  it("uses a plain line when a reminder has no nudge", async () => {
+    const user = await makeUser({ lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T09:30") });
+    await prisma.item.create({ data: { userId: user.id, type: "task", title: "تجديد الباسبور", remindAt: at("2026-11-22T10:00") } });
+    await runTick({ prisma, model, push }, at("2026-11-22T10:00"));
+    expect((await prisma.message.findFirstOrThrow({ where: { kind: "reminder" } })).text).toBe("فاكر «تجديد الباسبور»؟ ده وقته.");
+  });
+
   it("follows up after an event and marks it followed up", async () => {
     const user = await makeUser({ lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T19:00") });
     const item = await prisma.item.create({

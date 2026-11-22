@@ -5,7 +5,8 @@ import { isAwake, toLocalIso } from "../lib/time";
 
 const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, user.wakeTime, user.sleepTime);
 import { canChat, hasActivePlan } from "../billing/plan";
-import { detectScript, type Script } from "../pipeline/rules";
+import { nextOccurrences } from "@fakkarni/shared";
+import { detectScript, replyLang, type ReplyLang } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
@@ -23,15 +24,14 @@ export interface TickDeps {
 }
 
 /** Which language to start a conversation in: follow how the user last wrote, else their setting. */
-async function scriptFor(prisma: PrismaClient, user: User): Promise<Script> {
+async function scriptFor(prisma: PrismaClient, user: User): Promise<ReplyLang> {
   const last = await prisma.message.findFirst({ where: { userId: user.id, role: "user" }, orderBy: { createdAt: "desc" }, select: { text: true } });
-  if (last) return detectScript(last.text);
+  if (last) return replyLang(detectScript(last.text));
   return user.language === "en" ? "english" : "arabic";
 }
 
-const TRIAL_NOTICE: Record<Script, string> = {
+const TRIAL_NOTICE: Record<ReplyLang, string> = {
   arabic: "على فكرة، التجربة المجانية بتاعتك بتخلص بعد يومين. لو حابب نكمّل سوا، تقدر تشترك من الإعدادات — ولو لأ، ولا يهمك 🙂",
-  franco: "3ala fekra, el free trial bta3ak bey5las ba3d yomen. Law 7abeb nekamel sawa te2dar teshtrek men el settings — w law la2, wala yhemmak 🙂",
   english: "Heads up: your free trial ends in 2 days. If you'd like to keep chatting you can subscribe in settings — and if not, no worries 🙂",
 };
 
@@ -48,6 +48,60 @@ async function trialNotice(deps: TickDeps, user: User, now: Date): Promise<boole
   });
   await deps.prisma.event.create({ data: { userId: user.id, name: "trial_ending_notice", propsJson: {} } });
   return true;
+}
+
+/** How far back a missed reminder is still worth posting (server was down, user was inactive). */
+const REMINDER_LOOKBACK_MS = 6 * 3600_000;
+
+const REMINDER_FALLBACK: Record<ReplyLang, (title: string) => string> = {
+  arabic: (title) => `فاكر «${title}»؟ ده وقته.`,
+  english: (title) => `Remember “${title}”? It's time.`,
+};
+
+/**
+ * Reminders fire as local notifications on the phone (they work offline), but the
+ * conversation is the product: the same nudge is also written into the chat, so the
+ * user sees it there and the friend knows it reminded them. No push: the phone already
+ * notified. Idempotent through the unique (user, client_id).
+ */
+export async function postDueReminders(prisma: PrismaClient, user: User, now: Date): Promise<number> {
+  const due = await prisma.item.findMany({
+    where: {
+      userId: user.id,
+      status: "open",
+      type: { in: ["reminder", "task"] },
+      remindAt: { lte: now, gte: new Date(now.getTime() - REMINDER_LOOKBACK_MS) },
+    },
+    orderBy: { remindAt: "asc" },
+    take: 20,
+  });
+  if (!due.length) return 0;
+  const lang = await scriptFor(prisma, user);
+  let posted = 0;
+  for (const [n, item] of due.entries()) {
+    const { count } = await prisma.message.createMany({
+      data: [
+        {
+          userId: user.id,
+          role: "friend",
+          kind: "reminder",
+          text: item.nudge?.trim() || REMINDER_FALLBACK[lang](item.title),
+          // One message per item and remind time: a moved or repeating reminder makes a new one.
+          clientId: `reminder:${item.id}:${item.remindAt!.toISOString()}`,
+          // "now", not the remind time: the phone pulls messages newer than the last one it has.
+          createdAt: new Date(now.getTime() + n),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    posted += count;
+    if (item.repeatEveryMinutes) {
+      // Move a repeating reminder to its next waking-hours occurrence.
+      const [next] = nextOccurrences(item.remindAt!, item.repeatEveryMinutes, now, 1, (at) => isAwake(at, user.timezone, user.wakeTime, user.sleepTime));
+      if (next) await prisma.item.update({ where: { id: item.id }, data: { remindAt: next, dueAt: next } });
+    }
+  }
+  return posted;
 }
 
 /** Plan + write + store + push for one user. Returns the plan that was sent, if any. */
@@ -123,7 +177,7 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
       const result = await deps.push(
         devices.map((d) => ({
           to: d.pushToken!,
-          title: "Fakkarni",
+          title: "Zaki",
           body: stored.map((m) => m.text).join("\n"),
           sound: "default" as const,
           data: { type: "message", kind },
@@ -147,6 +201,7 @@ export async function runTick(deps: TickDeps, now = new Date()): Promise<number>
   let sent = 0;
   for (const user of users) {
     try {
+      await postDueReminders(deps.prisma, user, now);
       if (await runForUser(deps, user, now)) sent++;
     } catch (err) {
       deps.log?.error({ err: (err as Error).name, userId: user.id }, "proactive message failed");

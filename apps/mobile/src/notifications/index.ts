@@ -9,7 +9,8 @@ import { prefs } from "@/lib/prefs";
 import { upsertItem } from "@/db/messages";
 import { t } from "@/i18n";
 import { patchItem, registerDevice } from "@/lib/api";
-import { clearId, fill, hintId, planReminderNotifications } from "./plan";
+import { awakeAtMinutes } from "@fakkarni/shared";
+import { allIds, fill, hintId, planReminderNotifications } from "./plan";
 
 const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
@@ -68,23 +69,26 @@ function formatTime(d: Date) {
 
 /** (Re)schedule an item's local notifications; cancels them when it's done or cancelled. */
 export async function scheduleItem(item: Item) {
-  await Notifications.cancelScheduledNotificationAsync(hintId(item.id)).catch(() => {});
-  await Notifications.cancelScheduledNotificationAsync(clearId(item.id)).catch(() => {});
+  for (const id of allIds(item.id)) await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
   if (item.type !== "reminder" && item.type !== "task") return;
   const alwaysDirect = prefs.get("always_direct") === "1";
   const planned = planReminderNotifications(item, {
     now: new Date(),
     alwaysDirect,
     clearText: (title, due) => fill(t.notifications.clear, { title, time: formatTime(due) }),
+    followupText: (title) => fill(t.notifications.followup, { title }),
+    // The phone's own clock; the server's default waking hours (07:00–23:00).
+    awake: (at) => awakeAtMinutes(at.getHours() * 60 + at.getMinutes(), "07:00", "23:00"),
   });
   for (const n of planned) {
     await Notifications.scheduleNotificationAsync({
       identifier: n.identifier,
       content: {
-        title: "Fakkarni",
+        title: "Zaki",
         body: n.body,
-        categoryIdentifier: CATEGORY,
-        data: { type: "reminder", itemId: item.id, title: item.title },
+        // A follow-up is a question to answer in the chat, so it has no Done / Later buttons.
+        ...(n.kind === "followup" ? {} : { categoryIdentifier: CATEGORY }),
+        data: { type: n.kind === "followup" ? "followup" : "reminder", itemId: item.id, title: item.title, repeating: Boolean(item.repeat_every_minutes) },
         sound: true,
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.date, channelId: CHANNEL },
@@ -100,13 +104,26 @@ export async function scheduleItems(items: Item[]) {
  * Quick replies on reminders (FR-6: "replies update the item"), plus tap-to-open-chat.
  * `onMessage` pulls new friend messages when a push arrives.
  */
-export function listenForNotifications(onMessage: () => void) {
+export function listenForNotifications(onMessage: () => void, say: (text: string) => void) {
+  // The server writes each reminder into the chat within a minute of its time: pull now and again shortly.
+  const pullSoon = () => {
+    onMessage();
+    setTimeout(onMessage, 20_000);
+    setTimeout(onMessage, 75_000);
+  };
   const received = Notifications.addNotificationReceivedListener((n) => {
-    if (n.request.content.data?.["type"] === "message") onMessage();
+    const type = n.request.content.data?.["type"];
+    if (type === "message") onMessage();
+    if (type === "reminder" || type === "followup") pullSoon();
   });
   const response = Notifications.addNotificationResponseReceivedListener(async (res) => {
-    const data = res.notification.request.content.data as { type?: string; itemId?: string; title?: string } | undefined;
+    const data = res.notification.request.content.data as { type?: string; itemId?: string; title?: string; repeating?: boolean } | undefined;
+    if (data?.type === "reminder" || data?.type === "followup") pullSoon();
     if (res.actionIdentifier === ACTION_DONE && data?.itemId) {
+      // Everything goes through the conversation: the answer shows in the chat and the friend replies.
+      if (data.title) say(fill(t.notifications.doneSay, { title: data.title }));
+      // "Done" on a repeating reminder means this time only: it stays open and keeps repeating.
+      if (data.repeating) return;
       try {
         const item = await patchItem(data.itemId, { status: "done" });
         await upsertItem(item);
@@ -115,9 +132,10 @@ export function listenForNotifications(onMessage: () => void) {
         // Offline: keep it open; the friend will ask about it later.
       }
     } else if (res.actionIdentifier === ACTION_LATER && data?.itemId) {
+      if (data.title) say(fill(t.notifications.laterSay, { title: data.title }));
       await Notifications.scheduleNotificationAsync({
         identifier: hintId(data.itemId),
-        content: { title: "Fakkarni", body: res.notification.request.content.body ?? data.title ?? "", categoryIdentifier: CATEGORY, data, sound: true },
+        content: { title: "Zaki", body: res.notification.request.content.body ?? data.title ?? "", categoryIdentifier: CATEGORY, data, sound: true },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(Date.now() + 60 * 60_000), channelId: CHANNEL },
       });
     } else {

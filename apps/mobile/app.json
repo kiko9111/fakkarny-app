@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Fakkarni",
+    "name": "Zaki",
     "slug": "fakkarni",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -9,7 +9,15 @@
     "ios": {
       "supportsTablet": false,
       "usesAppleSignIn": true,
-      "bundleIdentifier": "com.fakkarni.app"
+      "bundleIdentifier": "com.fakkarni.app",
+      "infoPlist": {
+        "CFBundleLocalizations": [
+          "ar",
+          "en",
+          "ar",
+          "en"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -50,8 +58,29 @@
       "@sentry/react-native"
     ],
     "scheme": "fakkarni",
+    "locales": {
+      "ar": "./locales/ar.json",
+      "en": "./locales/en.json"
+    },
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "249766b3-d4c3-46d0-b596-3004a690def9"
+      }
+    },
+    "owner": "kiki91111",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/249766b3-d4c3-46d0-b596-3004a690def9"
     }
   }
 }

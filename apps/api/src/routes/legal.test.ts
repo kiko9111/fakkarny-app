@@ -19,7 +19,7 @@ describe("GET /legal/*", () => {
   it("serves English with ?lang=en and shows the escaped contact", async () => {
     const res = await app.inject({ method: "GET", url: "/legal/privacy?lang=en" });
     expect(res.body).toContain('dir="ltr"');
-    expect(res.body).toContain("Fakkarni — Privacy Policy");
+    expect(res.body).toContain("Zaki — Privacy Policy");
     expect(res.body).toContain("mailto:hello@example.com");
     expect(res.body).toContain("Example &lt;Co&gt;");
   });

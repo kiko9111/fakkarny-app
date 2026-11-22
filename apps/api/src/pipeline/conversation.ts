@@ -5,8 +5,8 @@ import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } fr
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
-import { isLatinOnly, loadContext, renderContext } from "./context";
-import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis } from "./rules";
+import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
+import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import type { MessagePipeline } from "./types";
 
@@ -23,9 +23,8 @@ const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "sav
 /** PRD §7 cost lever: a soft daily cap for heavy chatters (messages still saved, AI paused). */
 export const DAILY_MESSAGE_CAP = 150;
 
-const CAP_REPLY: Record<"arabic" | "franco" | "english", string> = {
+const CAP_REPLY: Record<ReplyLang, string> = {
   arabic: "وصلنا لحد الكلام بتاع النهارده 😅 هفضل فاكر كل اللي تبعته، ونكمل كلامنا عادي بكرة.",
-  franco: "Wesselna le7ad el kalam bta3 enharda 😅 hafdal faker kol elly teb3ato, w nekamel 3adi bokra.",
   english: "We've hit today's chat limit 😅 I'll still keep everything you send, and full replies are back tomorrow.",
 };
 
@@ -34,7 +33,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
   const dailyCap = deps.dailyCap ?? DAILY_MESSAGE_CAP;
 
   return async ({ prisma, user, message, now }) => {
-    const script = detectScript(message.text);
+    const script = replyLang(detectScript(message.text));
     const crisisKeyword = looksLikeCrisis(message.text);
 
     // 0. Fair-use cap (never applied to crisis messages).
@@ -64,7 +63,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
     try {
-      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, latinOnly: isLatinOnly(ctx.recent.at(-1)?.text ?? "") });
+      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) });
       usage = result.usage;
       if (result.ok) {
         replies = result.output.reply;

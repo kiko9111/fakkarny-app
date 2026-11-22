@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { appleAvailable, authAvailable, sendCode, signInWithApple, signInWithGoogle, verifyPhoneCode } from "@/auth";
+import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCode, signInWithApple, signInWithGoogle, verifyCode } from "@/auth";
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
@@ -9,13 +9,14 @@ import { reloadApp } from "@/lib/reload";
 import { colors } from "@/lib/theme";
 
 /**
- * F1 (under 2 minutes): pick a language, sign in with an emailed link, an SMS code, Apple or Google.
+ * F1 (under 2 minutes): pick a language, sign in with a code sent by email or SMS, Apple or Google.
  * No tutorial screens — afterwards the friend opens the chat and asks your name.
  */
 export default function OnboardingScreen() {
   const [step, setStep] = useState<"language" | "signin">(prefs.get("language") ? "signin" : "language");
   const [contactText, setContactText] = useState("");
-  const contact = parseContact(contactText);
+  const parsed = parseContact(contactText);
+  const contact = parsed?.kind === "phone" && !phoneAvailable ? null : parsed;
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,8 +31,12 @@ export default function OnboardingScreen() {
     try {
       await fn();
       then ? then() : finish();
-    } catch {
-      Alert.alert(t.onboarding.failed);
+    } catch (err) {
+      // Supabase limits how often a sign-in email can be sent (once a minute per address, and
+      // a small hourly total on the built-in mailer). That is "wait", not "something broke".
+      const e = err as { status?: number; code?: string };
+      const limited = e?.status === 429 || (typeof e?.code === "string" && e.code.includes("rate_limit"));
+      Alert.alert(limited ? t.onboarding.tooSoon : t.onboarding.failed);
     } finally {
       setBusy(false);
     }
@@ -72,24 +77,24 @@ export default function OnboardingScreen() {
               setContactText(v);
               setCodeSent(false);
             }}
-            placeholder={t.onboarding.contact}
+            placeholder={phoneAvailable ? t.onboarding.contact : t.onboarding.email}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
             textAlign="left"
           />
-          {codeSent && contact?.kind === "email" ? <Text style={styles.note}>{t.onboarding.linkSent}</Text> : null}
-          {codeSent && contact?.kind === "phone" ? (
+          {codeSent && contact ? (
             <>
-              <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder={t.onboarding.code} keyboardType="number-pad" autoComplete="one-time-code" textAlign="center" />
-              <Pressable style={styles.primary} disabled={busy} onPress={() => void run(() => verifyPhoneCode(contact.value, code.trim()))}>
+              {contact.kind === "email" ? <Text style={styles.note}>{t.onboarding.codeSentEmail}</Text> : null}
+              <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder={t.onboarding.code} keyboardType="number-pad" autoComplete="one-time-code" maxLength={8} textAlign="center" />
+              <Pressable style={[styles.primary, code.trim().length < 6 && styles.dim]} disabled={busy || code.trim().length < 6} onPress={() => void run(() => verifyCode(contact, code.trim()))}>
                 <Text style={styles.primaryText}>{t.onboarding.verify}</Text>
               </Pressable>
             </>
           ) : null}
           {!codeSent ? (
             <Pressable style={[styles.primary, !contact && styles.dim]} disabled={busy || !contact} onPress={() => contact && void run(() => sendCode(contact), () => setCodeSent(true))}>
-              <Text style={styles.primaryText}>{contact?.kind === "phone" ? t.onboarding.sendCode : t.onboarding.sendLink}</Text>
+              <Text style={styles.primaryText}>{t.onboarding.sendCode}</Text>
             </Pressable>
           ) : null}
           {appleAvailable ? (
@@ -97,9 +102,11 @@ export default function OnboardingScreen() {
               <Text style={styles.secondaryText}>{t.onboarding.apple}</Text>
             </Pressable>
           ) : null}
-          <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithGoogle)}>
-            <Text style={styles.secondaryText}>{t.onboarding.google}</Text>
-          </Pressable>
+          {googleAvailable ? (
+            <Pressable style={styles.secondary} disabled={busy} onPress={() => void run(signInWithGoogle)}>
+              <Text style={styles.secondaryText}>{t.onboarding.google}</Text>
+            </Pressable>
+          ) : null}
         </>
       ) : null}
       {busy ? <ActivityIndicator color={colors.accent} /> : null}

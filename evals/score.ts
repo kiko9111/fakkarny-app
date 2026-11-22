@@ -13,6 +13,10 @@ export const ExpectedItem = z.object({
   due: LocalMinute.optional(),
   due_date: z.union([LocalDate, z.array(LocalDate)]).optional(),
   important: z.boolean().optional(),
+  /** Minutes between occurrences of a repeating reminder. */
+  repeat: z.number().optional(),
+  /** True when the item must carry a follow-up time ("how did it go?"). */
+  follow_up: z.boolean().optional(),
   debt: z
     .object({ person_any: z.array(z.string()), amount: z.number(), direction: z.enum(["owed_to_me", "i_owe"]) })
     .optional(),
@@ -31,6 +35,7 @@ export const EvalCase = z.object({
         type: ItemType,
         title: z.string(),
         due_local: LocalMinute.optional(),
+        repeat: z.number().optional(),
         debt_person: z.string().optional(),
         debt_amount: z.number().optional(),
         debt_direction: z.enum(["owed_to_me", "i_owe"]).optional(),
@@ -39,6 +44,7 @@ export const EvalCase = z.object({
     .default([]),
   message: z.string(),
   expect: z.object({
+    /** How the USER writes. The friend answers arabic and franco in Arabic letters, english in English. */
     script: z.enum(["arabic", "franco", "english"]),
     items: z.array(ExpectedItem),
     updates: z.array(z.object({ id: z.uuid(), status: z.enum(["open", "done", "cancelled"]).optional(), due: LocalMinute.optional() })).optional(),
@@ -46,12 +52,17 @@ export const EvalCase = z.object({
     crisis: z.boolean().optional(),
     list_ok: z.boolean().optional(),
     reply_any: z.array(z.string()).optional(),
+    /** Substrings the reply must NOT contain (e.g. "بكرة" when it already asked about tomorrow). */
+    reply_none: z.array(z.string()).optional(),
+    /** True when the message is small talk that should save no memory. */
+    no_memories: z.boolean().optional(),
     note: z.string().optional(),
   }),
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 
-const lc = (s: string) => s.toLowerCase();
+// Lower-case and fold Arabic-Indic digits, so "١٦٣٢٨" matches "16328".
+const lc = (s: string) => s.toLowerCase().replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 const anyIn = (hay: string, needles: string[]) => needles.some((n) => lc(hay).includes(lc(n)));
 
 function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["create_items"][number]): boolean {
@@ -64,6 +75,8 @@ function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["creat
     if (!got.due_at_local || !allowed.includes(got.due_at_local.slice(0, 10))) return false;
   }
   if (exp.important && !got.important) return false;
+  if (exp.repeat !== undefined && got.repeat_every_minutes !== exp.repeat) return false;
+  if (exp.follow_up && !got.follow_up_at_local) return false;
   if (exp.debt) {
     if (!got.debt) return false;
     if (!anyIn(`${got.debt.person} ${got.title}`, exp.debt.person_any)) return false;
@@ -111,6 +124,8 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
     if (!anyIn(text, c.expect.memories_any)) problems.push(`no memory about ${c.expect.memories_any.join("/")}`);
   }
 
+  if (c.expect.no_memories && out.save_memories.length) problems.push(`saved a memory for small talk: ${JSON.stringify(out.save_memories)}`);
+
   const wantCrisis = c.expect.crisis ?? false;
   if (out.crisis !== wantCrisis) problems.push(`crisis ${out.crisis} ≠ ${wantCrisis}`);
   const extraction = problems.length === 0;
@@ -119,8 +134,17 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
   const styleProblems: string[] = [];
   const reply = out.reply.join("\n");
   const hasArabic = /[؀-ۿ]/.test(reply);
-  if (c.expect.script === "arabic" && !hasArabic) styleProblems.push("should reply in Arabic script");
-  if (c.expect.script !== "arabic" && hasArabic) styleProblems.push("should reply in Latin script");
+  // The friend reads Franco but never writes it: every message of an Arabic/Franco reply needs Arabic letters.
+  if (c.expect.script !== "english") {
+    if (!out.reply.every((r) => /[؀-ۿ]/.test(r))) styleProblems.push("should reply in Arabic script");
+    const franco = reply.match(/\b[a-z]*[a-z][2357][a-z]+\b|\b[2357][a-z]{2,}\b/gi);
+    if (franco) styleProblems.push(`Franco in the reply: ${franco.slice(0, 3).join(", ")}`);
+  }
+  if (c.expect.script === "english" && hasArabic) styleProblems.push("should reply in English");
+  if (c.expect.reply_none) {
+    const hit = c.expect.reply_none.filter((w) => lc(reply).includes(lc(w)));
+    if (hit.length) styleProblems.push(`reply should not mention ${hit.join("/")}`);
+  }
   if (out.reply.some((r) => r.length > 300)) styleProblems.push("a message is over 300 chars");
   if (!c.expect.list_ok && /^\s*([-•*]|\d+[.)])\s+/m.test(reply)) styleProblems.push("checklist-style reply");
   if (c.expect.reply_any && !anyIn(reply, c.expect.reply_any)) styleProblems.push(`reply should mention ${c.expect.reply_any.join("/")}`);

@@ -1,9 +1,10 @@
 import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
-import { insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
+import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
 import { listMessagesAfter, postMessage } from "@/lib/api";
 import { createEmitter } from "@/lib/emitter";
 import { kvGet } from "@/db/kv";
+import { listScheduled } from "@/db/items";
 import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications } from "@/notifications";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
@@ -65,10 +66,22 @@ export function startSync() {
   void setupNotifications().catch(() => {});
   // Keep the push token current once the user has been asked (first ask happens after their first message).
   void kvGet("asked_notifications").then((asked) => (asked ? ensurePermissionAndRegister() : false)).catch(() => {});
-  listenForNotifications(() => void pullMessages());
+  listenForNotifications(
+    () => void pullMessages(),
+    // "Done" / "Later" on a reminder notification becomes a chat message, sent like any other.
+    (text) =>
+      void addUserMessage(text)
+        .then(() => {
+          messagesChanged.emit();
+          return syncQueue.flush();
+        })
+        .catch(() => {}),
+  );
   const refresh = () => {
     void syncQueue.wake();
     void pullMessages();
+    // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
+    void listScheduled().then(scheduleItems).catch(() => {});
   };
   refresh();
   addNetworkStateListener(({ isConnected, isInternetReachable }) => {

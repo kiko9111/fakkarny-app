@@ -1,4 +1,4 @@
-// Fakkarni data model — PRD §6.
+// Zaki data model — PRD §6.
 // All DateTime columns are UTC; convert with User.timezone at the edges.
 // Columns are snake_case in Postgres, camelCase in TypeScript.
 
@@ -163,6 +163,8 @@ model Item {
   debtDirection   DebtDirection? @map("debt_direction")
   followUpAt      DateTime?      @map("follow_up_at")
   followedUpAt    DateTime?      @map("followed_up_at")
+  // Repeating reminder: minutes between occurrences; remindAt moves forward each time.
+  repeatEveryMinutes Int?        @map("repeat_every_minutes")
   sourceMessageId String?        @map("source_message_id") @db.Uuid
   updatedAt       DateTime       @updatedAt @map("updated_at")
   createdAt       DateTime       @default(now()) @map("created_at")

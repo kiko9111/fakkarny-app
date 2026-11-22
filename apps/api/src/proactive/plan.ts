@@ -91,7 +91,9 @@ export function planProactive(input: PlanInput): ProactivePlan | null {
   const dueToday = open.filter((i) => i.dueAt && dayKey(i.dueAt, tz) === today);
 
   // F6 follow-ups first: "How was the dentist?" once the event has passed.
-  if (awake && input.unpromptedToday < MAX_UNPROMPTED_PER_DAY) {
+  // Not counted against the daily cap: the user asked for this event to be remembered, and
+  // the phone has a local notification waiting at the same moment.
+  if (awake) {
     const due = items
       .filter((i) => i.followUpAt && !i.followedUpAt && i.followUpAt <= now && i.status !== "cancelled")
       .sort((a, b) => a.followUpAt!.getTime() - b.followUpAt!.getTime())[0];
@@ -99,7 +101,10 @@ export function planProactive(input: PlanInput): ProactivePlan | null {
       return {
         kind: "followup",
         itemIds: [due.id],
-        facts: [`Ask how this went: ${describe(due, tz)}. Status: ${due.status}.`],
+        facts: [
+          `Ask how this went: ${describe(due, tz)}. Status: ${due.status}.`,
+          "Make the question specific to that kind of event, the way a friend who cares would (after a dentist: did it hurt? after an exam: was it hard? after a meeting: did it go your way?).",
+        ],
         slowdownNotice: false,
       };
     }

@@ -78,6 +78,8 @@ export const Item = z.object({
   debt_amount: z.number().nullable(),
   debt_direction: DebtDirection.nullable(),
   follow_up_at: Instant.nullable(),
+  /** Set for a repeating reminder ("every hour"): minutes between occurrences. */
+  repeat_every_minutes: z.number().int().positive().nullable().default(null),
   source_message_id: Id.nullable(),
   updated_at: Instant,
   created_at: Instant,

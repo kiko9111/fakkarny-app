@@ -6,6 +6,9 @@ FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Prisma's migration engine needs OpenSSL, which the slim image leaves out.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Manifests first (all workspaces, so the lockfile matches), then install only the API's deps.
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/

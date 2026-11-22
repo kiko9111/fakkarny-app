@@ -3,6 +3,7 @@ import type { Item, MessageKind, MessageRole, PostMessageResponse } from "@fakka
 import type { OutboxMessage, OutboxStore } from "@/sync/queue";
 import { getDb } from "./database";
 import { parseSaved, summarizeSaved, type SavedSummary } from "./saved";
+import { LIST_MESSAGES_SQL, PENDING_MESSAGES_SQL } from "./sql";
 
 export type SyncStatus = "pending" | "synced" | "failed";
 
@@ -60,10 +61,7 @@ export async function addUserMessage(text: string): Promise<LocalMessage> {
 /** Latest messages, oldest first. */
 export async function listMessages(limit = 200): Promise<LocalMessage[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<Row>(
-    "SELECT * FROM (SELECT * FROM messages ORDER BY created_at DESC, rowid DESC LIMIT ?) ORDER BY created_at ASC, rowid ASC",
-    limit,
-  );
+  const rows = await db.getAllAsync<Row>(LIST_MESSAGES_SQL, limit);
   return rows.map(toLocal);
 }
 
@@ -71,15 +69,17 @@ export async function upsertItem(i: Item): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO items (id, type, title, due_at, remind_at, important, status, debt_person, debt_amount, debt_direction,
-       follow_up_at, source_message_id, updated_at, created_at, done_at, nudge)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       follow_up_at, source_message_id, updated_at, created_at, done_at, nudge, repeat_every_minutes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, due_at=excluded.due_at,
        remind_at=excluded.remind_at, important=excluded.important, status=excluded.status,
        debt_person=excluded.debt_person, debt_amount=excluded.debt_amount, debt_direction=excluded.debt_direction,
-       follow_up_at=excluded.follow_up_at, updated_at=excluded.updated_at, done_at=excluded.done_at, nudge=excluded.nudge
+       follow_up_at=excluded.follow_up_at, updated_at=excluded.updated_at, done_at=excluded.done_at, nudge=excluded.nudge,
+       repeat_every_minutes=excluded.repeat_every_minutes
      WHERE excluded.updated_at >= items.updated_at`,
     i.id, i.type, i.title, i.due_at, i.remind_at, i.important ? 1 : 0, i.status, i.debt_person, i.debt_amount,
     i.debt_direction, i.follow_up_at, i.source_message_id, i.updated_at, i.created_at, i.done_at, i.nudge,
+    i.repeat_every_minutes ?? null,
   );
 }
 
@@ -98,9 +98,7 @@ export async function insertServerMessages(messages: PostMessageResponse["replie
 export const sqliteOutbox: OutboxStore = {
   async pending(): Promise<OutboxMessage[]> {
     const db = await getDb();
-    const rows = await db.getAllAsync<Row>(
-      "SELECT * FROM messages WHERE sync_status = 'pending' AND role = 'user' ORDER BY created_at ASC, rowid ASC",
-    );
+    const rows = await db.getAllAsync<Row>(PENDING_MESSAGES_SQL);
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return rows.map((r) => ({ client_id: r.client_id, text: r.text, created_at: r.created_at, timezone, attempts: r.attempts }));
   },
@@ -110,8 +108,10 @@ export const sqliteOutbox: OutboxStore = {
     const saved = summarizeSaved(res);
     await db.withTransactionAsync(async () => {
       await db.runAsync(
-        "UPDATE messages SET sync_status = 'synced', server_id = ?, saved_json = ? WHERE client_id = ?",
-        res.message.id, saved ? JSON.stringify(saved) : null, clientId,
+        // Take the server's timestamp too: replies carry server time, and a phone clock
+        // that runs ahead would otherwise sort every reply above the message it answers.
+        "UPDATE messages SET sync_status = 'synced', server_id = ?, saved_json = ?, created_at = ? WHERE client_id = ?",
+        res.message.id, saved ? JSON.stringify(saved) : null, res.message.created_at, clientId,
       );
       await insertServerMessages(res.replies);
       for (const item of res.items) await upsertItem(item);

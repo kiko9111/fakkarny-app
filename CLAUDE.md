@@ -1,4 +1,4 @@
-# Fakkarni — paid AI friend that remembers and reminds in conversation
+# Zaki (formerly Fakkarni) — AI friend that remembers, reminds, and helps with family and friends
 Stack: Expo (React Native, expo-router), SQLite, Fastify, Prisma + Postgres (Supabase),
 pg-boss, zod, RevenueCat, vitest. Monorepo: apps/mobile, apps/api, packages/shared.
 Full product spec: docs/PRD.pdf (section numbers below refer to it).
@@ -17,6 +17,12 @@ Rules:
 - Run `npm test` and `npm run eval` before every commit.
 
 ## Repo notes (keep current)
+- Brand (owner decision, 2026-11-22): the app and its AI character are **Zaki** (زكي), super
+  positive and warm. User-visible text says Zaki/زكي. Internal IDs keep the old name
+  (Android package / bundle ID `com.fakkarni.app`, Expo slug and scheme `fakkarni`, npm
+  workspaces `@fakkarni/*`, DB names) unless the owner decides otherwise. The Arabic home
+  screen name comes from apps/mobile/locales/ar.json. "فكّرني" in strings is the verb
+  ("remind me"), not the brand: don't rename those.
 - Commands (from the repo root): `npm install`, `npm test`, `npm run typecheck`,
   `npm run dev:api`, `npm run dev:mobile`. Install Expo packages with
   `npx expo install <pkg>` inside apps/mobile (it picks SDK-compatible versions).
@@ -34,6 +40,24 @@ Rules:
   with no policies: the API connects as the table owner (bypasses RLS), and Supabase's
   public Data API gets nothing. Enable RLS in the migration of any new table. Connect
   with the session pooler (port 5432), not the transaction pooler: pg-boss needs it.
+- Production API: Railway project `mellow-reverence`, service `@fakkarni/api`, built
+  from the root Dockerfile and deployed from branch `claude/new-session-60jlqv` on
+  every push: https://fakkarniapi-production.up.railway.app (health check /health).
+  It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
+  RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
+  API because the container starts the server with it.
+- Expo: project `@kiki91111/fakkarni` (projectId in apps/mobile/app.json). The build
+  variables (EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SUPABASE_URL,
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
+  the development, preview and production environments, not in the repo. Android test
+  build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
+- EAS Update is configured (updates.url, runtimeVersion policy appVersion; channels
+  development / preview / production). Builds made after 2026-11-21 can take
+  JavaScript-only fixes over the air: `npx eas-cli@latest update --branch preview
+  --environment preview`. iPhone without an Apple Developer account: the app is
+  published for Expo Go on branch `expo-go` with runtime `exposdk:58.0.0` (temporarily
+  set runtimeVersion policy to sdkVersion for that publish, do not commit it); open it
+  from Expo Go signed in to the Expo account. Purchases, Sentry and push do not work there.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
@@ -41,6 +65,16 @@ Rules:
   (`@@unique([userId, clientId])`).
 - packages/shared is consumed as TypeScript source (no build step). The API runs
   under tsx in both dev and start.
+- Chat SQL lives in apps/mobile/src/db/sql.ts and is tested against a real SQLite
+  (node:sqlite) with the migrations (sql.test.ts): the first device build showed an
+  empty chat because the list query ordered a subquery by `rowid`, which no unit test
+  ran. Put any new non-trivial query there and test it the same way.
+- Chat layout on Android: the app is edge-to-edge, so KeyboardAvoidingView needs
+  `behavior="padding"` on both platforms with the header height as offset, and a
+  horizontal ScrollView (QuickReplies) needs `flexGrow: 0` or it takes half the screen.
+- Sign-in buttons are shown only for providers switched on in Supabase:
+  EXPO_PUBLIC_SIGNIN_GOOGLE / _PHONE / _APPLE = 1 (EAS environment variables). Email
+  links are always offered.
 - Mobile unit tests (vitest) cover pure modules only; don't import react-native in them.
   Keep logic pure and inject storage/transport (see apps/mobile/src/sync/queue.ts).
 - Identity (apps/api/src/plugins/auth.ts): Supabase JWT in `Authorization: Bearer`
@@ -50,12 +84,13 @@ Rules:
   pre-sign-in data to the account, then pulls everything (apps/mobile/src/sync/full.ts).
   Every route plugin gets the same `authenticate` hook from buildApp.
 - Sign-in methods (apps/mobile/src/auth): one field takes an email or a phone number
-  (`parseContact`, pure). Email → Supabase mails a sign-in link that reopens the app at
-  `auth/callback` (route src/app/auth/callback.tsx, PKCE code exchange shared with the
-  Google flow via `completeCallback`). It is a link, not a code, because Supabase's
-  free built-in mailer cannot use a custom template (and sends about 2 emails an hour:
-  set up custom SMTP before launch). Phone → SMS code (needs an SMS provider). The
-  Supabase redirect allow list has `fakkarni://auth/callback` and `exp://**` (Expo Go).
+  (`parseContact`, pure). Email → a 6-digit code typed into the app (`verifyOtp`, type
+  "email"). Supabase sends through custom SMTP (a Gmail account with an app password,
+  set in the dashboard on 2026-11-21); the code template and the 60-an-hour limit were
+  set through the management API. Before that, the built-in mailer allowed about 2
+  emails an hour for the whole project and could not send a code. The `auth/callback`
+  route stays for the Google redirect. Phone → SMS code (needs an SMS provider). Move
+  to a sending service with the project's own domain before public launch.
 - Legal pages: GET /legal/terms and /legal/privacy on the API (?lang=en, Arabic by
   default), text in apps/api/src/legal/content.ts, linked from the paywall and
   Settings. They show a draft notice until LEGAL_REVIEWED=1; set LEGAL_OPERATOR and
@@ -68,19 +103,29 @@ Rules:
   (`src/sync/`) POSTs oldest-first, the API dedupes on (user, client_id). Friend reply
   rows use client_id `<user client_id>:reply:<n>` so retries return the same replies.
 - API DB tests need Postgres: set `TEST_DATABASE_URL` in apps/api/.env (they skip
-  without it). Locally: `service postgresql start`; dev DB `fakkarni`, test DB
+  without it, silently: check the test summary says 0 skipped). Claude Code cloud
+  sessions have Postgres installed: `service postgresql start`, set the postgres
+  password, `createdb fakkarni_test`, then write apps/api/.env. Locally: `service postgresql start`; dev DB `fakkarni`, test DB
   `fakkarni_test`, user/password postgres/postgres.
 - Conversation pipeline (apps/api/src/pipeline/conversation.ts): rules fast path
   (rules.ts: thanks/emoji, crisis keyword safety net) → context (context.ts: ~20
   ranked memories, open items with ids, rolling summary, last 15 messages, local NOW)
-  → one Claude call (src/ai/model.ts, `claude-haiku-5-5`, structured output, persona
+  → one Claude call (src/ai/model.ts, `claude-haiku-5-5` at medium effort, structured output, persona
   system prompt cached) → strict zod validation → apply.ts in a transaction. Model
   times are local wall-clock, converted with src/lib/time.ts. The context also carries
   UPCOMING DAYS (14 dated weekdays, so the model looks dates up instead of computing
-  them) and REPLY SCRIPT (decided in code from the last message's letters); a reply
-  with Arabic letters to a Latin-letter message gets one retry (`latinOnly`). Every call logs an
+  them), REPLY SCRIPT and ADDRESS THE USER AS (both decided in code). Every call logs an
   `ai_call` Event with tokens + cost (no content). The pipeline is injected into
   buildApp, so tests use a scripted fake model.
+- Reply language (owner decision, 2026-11-21, replaces the PRD's "Franco → Franco"):
+  the friend reads Franco but never writes it. Arabic and Franco messages are answered
+  in Egyptian Arabic in Arabic letters (titles, nudges and names too); English in
+  English. `detectScript` (rules.ts) classifies the input, `replyLang` maps it, the
+  context states REPLY SCRIPT and ADDRESS THE USER AS (masculine until a memory says
+  "المؤنث"), and a reply without Arabic letters gets one retry (`requireArabic`). The
+  persona carries the colloquial-not-Modern-Standard rules and a Franco reading glossary.
+- The friend runs `claude-haiku-5-5` at effort "medium": at "low" it invented details
+  when reading Franco. Override with FAKKARNI_FRIEND_EFFORT / FAKKARNI_FRIEND_MODEL.
 - The app's Anthropic client ignores the shell's ANTHROPIC_BASE_URL on purpose
   (override with FAKKARNI_ANTHROPIC_BASE_URL). The server needs ANTHROPIC_API_KEY or
   the friend won't reply (messages are still stored).
@@ -90,8 +135,10 @@ Rules:
   the shell, so set that name in the cloud environment instead), scores
   extraction (target 90%) + style checks, writing evals/out/review.csv for blind
   native review. Add every message the friend gets wrong as a new line.
-  Last measured (persona 2026-11-20.1+, 101 cases): extraction 98–100%, style 100%
-  across runs; the baseline before tuning was 76% / 76%. Scores move a case or two
+  Last measured (persona 2026-11-21.5, 137 cases, effort medium): extraction 98–99%,
+  style 100% across runs; the baseline before tuning was 76% / 76%. Cases named
+  `talk-*` and `real-*` come from real device chats; `reply_none` and `no_memories` catch nagging
+  ("anything tomorrow?"), Modern Standard words and memories saved for small talk. Scores move a case or two
   between runs, so run twice before concluding a prompt change helped or hurt.
 - Helpline numbers in apps/api/src/persona/prompt.ts were checked against official
   sources on 2026-11-20 (Egypt now leads with 16328). Still to do before launch: one
@@ -115,6 +162,27 @@ Rules:
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
   template fallback) → stored as a friend Message + Expo push. The phone pulls them
   with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Everything shows in the chat (owner decision, 2026-11-21). The local notification
+  still fires on the phone, and `postDueReminders` (proactive tick) writes the same
+  nudge into the chat as a friend Message of kind "reminder" (client_id
+  `reminder:<itemId>:<remindAt>`, no push). Done / Later on the notification also send
+  a normal chat message ("خلصت «…» ✅"), which the friend answers and acts on.
+- Repeating reminders ("every hour"): Item.repeat_every_minutes (server column, shared
+  types, phone SQLite v3). `nextOccurrences` in packages/shared/src/repeat.ts is used
+  by both sides from the same anchor: the tick posts the chat message and moves
+  remind_at to the next waking-hours occurrence; the phone schedules the next 16 local
+  notifications and tops them up whenever the app returns to the foreground. Done on a
+  repeating reminder does not close it; "stop reminding me" cancels it. The phone
+  assumes waking hours 07:00–23:00 (the server uses the user's settings).
+- Follow-ups ("how was the dentist, did it hurt?"): the persona sets follow_up_at for
+  events with an outcome; the tick writes the question (not counted against the daily
+  cap); the phone shows a local notification at the same time, because remote push
+  needs FCM credentials that are not set up yet (devices register no push token).
+- A short Latin message with no language of its own ("yara", "ok") follows the
+  conversation: `detectScriptInContext` (rules.ts).
+- Message order on the phone: a synced user message takes the server's `created_at`.
+  Replies carry server time, so with a phone clock running ahead every reply used to
+  sort above the message it answered.
 - Reminders are local notifications on the phone (apps/mobile/src/notifications):
   `planReminderNotifications` (pure) → indirect hint at remind time + clear backup
   near the deadline; quick replies Done/Later. Remote push needs a dev build and an
