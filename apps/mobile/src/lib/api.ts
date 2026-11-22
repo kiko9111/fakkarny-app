@@ -9,6 +9,13 @@ import {
   ListTrackersResponse,
   TrackerResponse,
   SharedTrackersResponse,
+  MoneyOverview,
+  SectionResponse,
+  SectionDetail,
+  MonthGift,
+  type MoneySection,
+  type CreateSectionRequest,
+  type AddMoneyEntryRequest,
   type SharedTracker,
   type UpdateTrackerRequest,
   type CreateTrackerRequest,
@@ -348,4 +355,27 @@ export async function inviteToIftar(circleId: string, on: string): Promise<void>
 
 export async function answerInvite(circleId: string, postId: string, going: boolean): Promise<void> {
   await request(`/circles/${circleId}/posts/${postId}/rsvp`, { method: "POST", body: JSON.stringify({ going }) });
+}
+
+// Wider Daftar: expense / income sections and circle shared books. Needs a connection.
+export async function getMoney(month?: string): Promise<MoneyOverview> {
+  return MoneyOverview.parse(await request(`/money${month ? `?month=${month}` : ""}`));
+}
+export async function createSection(body: CreateSectionRequest): Promise<MoneySection> {
+  return SectionResponse.parse(await request("/money/sections", { method: "POST", body: JSON.stringify(body) })).section;
+}
+export async function getSection(id: string, month?: string): Promise<SectionDetail> {
+  return SectionDetail.parse(await request(`/money/sections/${id}${month ? `?month=${month}` : ""}`));
+}
+export async function deleteSection(id: string): Promise<void> {
+  await request(`/money/sections/${id}`, { method: "DELETE" });
+}
+export async function addMoney(id: string, body: AddMoneyEntryRequest): Promise<MoneySection> {
+  return SectionResponse.parse(await request(`/money/sections/${id}/entries`, { method: "POST", body: JSON.stringify(body) })).section;
+}
+export async function deleteMoneyEntry(id: string): Promise<void> {
+  await request(`/money/entries/${id}`, { method: "DELETE" });
+}
+export async function getMonthGift(): Promise<MonthGift> {
+  return MonthGift.parse(await request("/money/gift"));
 }

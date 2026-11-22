@@ -224,6 +224,8 @@ export default function CircleScreen() {
         </Card>
       )}
 
+      <Button label={t.circles.bookAction} kind="outline" icon="receipt-outline" block onPress={() => router.push({ pathname: "/money/new", params: { circle: id } })} />
+
       {isRamadanSeason(new Date()) && others ? <Button label={plain(t.ramadan.iftar)} kind="outline" icon="moon-outline" block onPress={askIftarDay} /> : null}
 
       {feed.posts.length ? <SectionHeader title={t.ui.zakiPosts} /> : null}

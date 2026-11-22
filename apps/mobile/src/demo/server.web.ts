@@ -9,6 +9,8 @@ import {
   type DaftarEntry,
   type Item,
   type Memory,
+  type MoneySection,
+  type SectionDetail,
   type Message,
   type Session,
   type SessionMessage,
@@ -90,10 +92,21 @@ interface State {
   session: SessionData;
   messages: Message[];
   served_morning: boolean;
+  /** Spending sections (older saved demos have none: seeded on first use). */
+  money?: SectionRow[];
   /** Item id of the status check Zaki just asked about (shows the "did Youssef pay you back?" flow). */
   pending_status?: string | null;
   status_asked?: boolean;
   language: string;
+}
+
+interface SectionRow {
+  id: string;
+  name: string;
+  kind: "expense" | "income";
+  budget: number | null;
+  circle_id: string | null;
+  entries: { id: string; amount: number; note: string | null; at: string; payer: string | null; mine: boolean; split: number }[];
 }
 
 const member = (user_id: string, name: string | null, extra: Partial<CircleMember> = {}): CircleMember => ({
@@ -390,6 +403,21 @@ on("POST", "/messages", (_m, b) => {
     const done = msg("friend", pending.type === "debt" ? L("حلو أوي! علّمتها إنها اتسدّت ✅", "Love that! Marked it as settled ✅") : L(`برافو عليك! علّمت «${pending.title}» إنها خلصت ✅`, `Nice one! Marked “${pending.title}” as done ✅`), `${clientId}:reply:0`);
     state.messages.push(userMsg, done);
     return { message: userMsg, replies: [done], items: [pending], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+  }
+  // "دفعت 300 بنزين": logged to a spending section by rules, as on the server.
+  const spent = /(?:^|\s)(?:دفعت|صرفت|اشتريت|spent|paid)\s+(\d+)\s*(?:جنيه\s*)?(?:على|علي|في|on|for)?\s*(.*)$/i.exec(text.trim());
+  if (spent && !/سلف|عليا|ليا|owe|lent|[?؟]/.test(text)) {
+    const amount = Number(spent[1]);
+    const note = spent[2]?.trim() || null;
+    const sections = money().filter((x) => x.kind === "expense" && !x.circle_id);
+    const target = sections.find((x) => note && (note.includes(x.name) || x.entries.some((e) => e.note === note))) ?? sections[0];
+    if (target) {
+      target.entries.push({ id: id(), amount, note, at: iso(now()), payer: null, mine: true, split: 1 });
+      const total = target.entries.reduce((n, e) => n + e.amount, 0);
+      const done = msg("friend", L(`سجّلت ${amount} جنيه في «${target.name}». الشهر ده لحد دلوقتي: ${total.toLocaleString("en-US")}.`, `Logged EGP ${amount} in “${target.name}”. This month so far: ${total.toLocaleString("en-US")}.`), `${clientId}:reply:0`);
+      state.messages.push(userMsg, done);
+      return { message: userMsg, replies: [done], items: [], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+    }
   }
   const reply = zakiReply(text, {
     name: state.user.name,
@@ -733,6 +761,80 @@ on("DELETE", "/trackers/([^/]+)", (m) => {
 on("POST", "/trackers/ramadan-pack", () => {
   throw new DemoHttpError(409);
 });
+
+// Wider Daftar
+const money = (): SectionRow[] => {
+  if (!state.money) {
+    const family = state.circles.find((c) => c.kind === "family");
+    const e = (amount: number, note: string | null, hoursAgo: number, payer: string | null = null, split = 1) => ({ id: id(), amount, note, at: inHours(-hoursAgo), payer, mine: payer === null, split });
+    state.money = [
+      { id: id(), name: L("العربية", "Car"), kind: "expense", budget: 1500, circle_id: null, entries: [e(500, L("بنزين", "fuel"), 30), e(350, L("صيانة", "service"), 120), e(420, L("بنزين", "fuel"), 200)] },
+      { id: id(), name: L("الأكل", "Food"), kind: "expense", budget: 3000, circle_id: null, entries: [e(1200, L("سوبر ماركت", "groceries"), 50), e(600, L("أكل بره", "eating out"), 10)] },
+      { id: id(), name: L("المرتب", "Salary"), kind: "income", budget: null, circle_id: null, entries: [e(9000, null, 400)] },
+      ...(family
+        ? [{ id: id(), name: L("مصاريف البيت", "House expenses"), kind: "expense" as const, budget: null, circle_id: family.id, entries: [e(300, L("خضار", "vegetables"), 20, L("ماما", "Mum"), 3), e(120, L("عيش", "bread"), 5, null, 3)] }]
+        : []),
+    ];
+  }
+  return state.money;
+};
+const toSection = (r: SectionRow): MoneySection => {
+  const total = r.entries.reduce((n, x) => n + x.amount, 0);
+  const share = r.circle_id ? r.entries.reduce((n, x) => n + x.amount / x.split, 0) : total;
+  return { id: r.id, name: r.name, kind: r.kind, budget: r.budget, circle_id: r.circle_id, circle_name: state.circles.find((c) => c.id === r.circle_id)?.name ?? null, is_owner: true, month_total: total, my_share: Math.round(share * 100) / 100, created_at: inHours(-24 * 30) };
+};
+const findSection = (sid: string) => {
+  const r = money().find((x) => x.id === sid);
+  if (!r) throw new DemoHttpError(404);
+  return r;
+};
+on("GET", "/money", () => {
+  const sections = money().map(toSection);
+  const sum = (k: string) => sections.filter((x) => x.kind === k).reduce((n, x) => n + x.my_share, 0);
+  return { month: iso(now()).slice(0, 7), sections, totals: { expense: sum("expense"), income: sum("income") } };
+});
+on("POST", "/money/sections", (_m, b) => {
+  const r: SectionRow = { id: id(), name: String(b.name ?? ""), kind: b.kind === "income" ? "income" : "expense", budget: (b.budget as number | null) ?? null, circle_id: (b.circle_id as string | null) ?? null, entries: [] };
+  money().push(r);
+  return { section: toSection(r) };
+});
+on("GET", "/money/sections/([^/]+)", (m): SectionDetail => {
+  const r = findSection(m[1]!);
+  const c = state.circles.find((x) => x.id === r.circle_id);
+  const share = toSection(r).my_share;
+  const paid = r.entries.filter((x) => x.mine).reduce((n, x) => n + x.amount, 0);
+  const owe = Math.round((share - paid) * 100) / 100;
+  const other = r.entries.find((x) => !x.mine)?.payer ?? null;
+  return {
+    section: toSection(r),
+    entries: [...r.entries].sort((a, b2) => b2.at.localeCompare(a.at)).map((x) => ({ id: x.id, section_id: r.id, amount: x.amount, note: x.note, at: x.at, payer_name: x.payer, is_mine: x.mine, split_count: x.split })),
+    settle: c && owe > 0 ? [{ from_name: null, to_name: other, amount: owe, from_me: true, to_me: false }] : [],
+    members: c ? c.members.map((x) => ({ user_id: x.user_id, name: x.name, is_me: x.is_me })) : [],
+  };
+});
+on("DELETE", "/money/sections/([^/]+)", (m) => {
+  state.money = money().filter((x) => x.id !== m[1]);
+  return null;
+});
+on("POST", "/money/sections/([^/]+)/entries", (m, b) => {
+  const r = findSection(m[1]!);
+  const split = r.circle_id ? (Array.isArray(b.split) ? b.split.length : state.circles.find((c) => c.id === r.circle_id)?.members.length ?? 1) : 1;
+  r.entries.push({ id: id(), amount: Number(b.amount), note: (b.note as string | null) ?? null, at: iso(now()), payer: null, mine: true, split });
+  return { section: toSection(r) };
+});
+on("DELETE", "/money/entries/([^/]+)", (m) => {
+  for (const r of money()) r.entries = r.entries.filter((x) => x.id !== m[1]);
+  return null;
+});
+on("GET", "/money/gift", () => ({
+  month: "2026-10",
+  expense: 6200,
+  income: 9000,
+  lines: L(
+    "🎁 هدية آخر الشهر من زكي: ملخّص أكتوبر|صرفت 6,200 جنيه في الشهر.|ودخلك 9,000 جنيه.|يعني فضل معاك 2,800 🌟 برافو عليك!|أكبر قسم: «الأكل» بـ2,900.|كل الأقسام فضلت جوه الميزانية 👏|شهر جديد، بداية جديدة. أنا معاك 💛",
+    "🎁 Zaki's end-of-month gift: your October in a nutshell|You spent EGP 6,200 this month.|Your income was EGP 9,000.|That leaves EGP 2,800 🌟 Well done!|Biggest section: “Food” at 2,900.|Every section stayed within budget 👏|New month, fresh start. I'm with you 💛",
+  ).split("|"),
+}));
 
 // Session
 const HELPLINE = L("لو حاسس إنك مش بخير خالص، كلّم الخط الساخن للصحة النفسية ١٦٣٢٨ (مجاني).", "If you feel really unwell, call the mental health line 16328 (free, Egypt).");
