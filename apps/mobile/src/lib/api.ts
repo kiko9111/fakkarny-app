@@ -1,6 +1,10 @@
 import Constants from "expo-constants";
 import {
   AcceptInviteResponse,
+  ListTrackersResponse,
+  TrackerResponse,
+  type CreateTrackerRequest,
+  type Tracker,
   CircleFeedResponse,
   ListTasksResponse,
   TaskResponse,
@@ -224,3 +228,25 @@ const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Pr
 export const finishTask = taskAction("done");
 export const cancelTask = taskAction("cancel");
 export const nudgeTask = taskAction("nudge");
+
+// Trackers dashboard. Needs a connection; chat messages feed it on the server too.
+export async function listTrackers(): Promise<ListTrackersResponse> {
+  return ListTrackersResponse.parse(await request("/trackers"));
+}
+
+export async function createTracker(body: CreateTrackerRequest): Promise<Tracker> {
+  return TrackerResponse.parse(await request("/trackers", { method: "POST", body: JSON.stringify(body) })).tracker;
+}
+
+/** One tap (no amount) adds the template's step; money trackers send the amount. */
+export async function logTracker(id: string, amount?: number): Promise<Tracker> {
+  return TrackerResponse.parse(await request(`/trackers/${id}/entries`, { method: "POST", body: JSON.stringify(amount === undefined ? {} : { amount }) })).tracker;
+}
+
+export async function undoTracker(id: string): Promise<Tracker> {
+  return TrackerResponse.parse(await request(`/trackers/${id}/undo`, { method: "POST" })).tracker;
+}
+
+export async function deleteTracker(id: string): Promise<void> {
+  await request(`/trackers/${id}`, { method: "DELETE" });
+}

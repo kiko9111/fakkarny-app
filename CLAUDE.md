@@ -206,6 +206,17 @@ Rules:
   when the assigner asks (every 12 h, 3 per task). Circle posts are stored as an event
   plus ids and written per reader language by `postLine`; never store model text there.
   Arabic lines about another person avoid gendered verbs. All of this is free: no AI call.
+- Trackers (Zaki M6): tables trackers and tracker_entries, routes
+  apps/api/src/routes/trackers.ts, kinds and defaults in packages/shared/src/trackers.ts.
+  Stats (today, 7 days, streak) are pure in apps/api/src/trackers/stats.ts and always use
+  the user's local day. Chat feeds trackers by rules only (apps/api/src/trackers/match.ts,
+  called from pipeline/conversation.ts step 1a): "شربت مية" logs, "تابع معايا المية"
+  starts one; no AI call, no allowance used. The rules are strict on purpose: plans,
+  reminders, questions, negations and debts must fall through to the model, and a kind
+  the user does not follow is never matched. Free plan keeps FREE_TRACKERS (1); a second
+  one returns 402 tracker_limit (app opens the paywall). Logging is never limited.
+- GET /me/export must include every new kind of user data (circles, Daftar, tasks,
+  trackers are in). Add to it whenever a table holding user data is added.
   Records only: never hold or move money (Central Bank rules).
 - InstaPay: there is no public deep link that pre-fills an amount. Users paste their own
   InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in

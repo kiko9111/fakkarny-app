@@ -97,6 +97,7 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
     await tx.summary.updateMany(move);
     await tx.device.updateMany(move);
     await tx.event.updateMany(move);
+    await tx.tracker.updateMany(move);
     // Circles: keep memberships the account doesn't already have (the rest go with the install user).
     const mine = new Set((await tx.circleMember.findMany({ where: { userId: account.id }, select: { circleId: true } })).map((m) => m.circleId));
     await tx.circleMember.updateMany({ where: { userId: install.id, circleId: { notIn: [...mine] } }, data: { userId: account.id } });

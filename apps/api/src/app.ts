@@ -21,6 +21,7 @@ import { invitePageRoutes } from "./routes/invite-page";
 import { daftarRoutes } from "./routes/daftar";
 import { daftarPageRoutes } from "./routes/daftar-page";
 import { taskRoutes } from "./routes/tasks";
+import { trackerRoutes } from "./routes/trackers";
 import type { PushSender } from "./proactive/push";
 
 export interface AppDeps {
@@ -94,6 +95,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(taskRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
+    app.register(trackerRoutes, { prisma, authenticate, now: deps.now });
     app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
