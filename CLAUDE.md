@@ -67,7 +67,7 @@ Rules:
   the development, preview and production environments, not in the repo. Android test
   build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
   The cloud session can't reach expo.dev, so .github/workflows/android-build.yml starts that
-  build from GitHub (secret EXPO_TOKEN) whenever a pushed commit message contains
+  build from GitHub (secret EXPO_TOKEN) whenever the last commit of a push has a message containing
   "[android-build]"; the EAS build page link is the install link for testers.
 - EAS Update is configured (updates.url, runtimeVersion policy appVersion; channels
   development / preview / production). Builds made after 2026-11-21 can take
