@@ -214,7 +214,7 @@ export default function SettingsScreen() {
           <Switch
             value={user?.always_direct ?? false}
             trackColor={{ true: palette.primary, false: palette.lineStrong }}
-            thumbColor={palette.surface}
+            thumbColor={palette.surfaceSolid}
             onValueChange={(v) => {
               prefs.set("always_direct", v ? "1" : "0");
               void save({ always_direct: v });
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   time: { width: 110, textAlign: "center" },
   segmented: { flexDirection: "row", backgroundColor: palette.surfaceAlt, borderRadius: radius.pill, padding: 4, gap: 4 },
   segment: { flex: 1, minHeight: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", paddingHorizontal: space.sm },
-  segmentOn: { backgroundColor: palette.surface, boxShadow: "0px 1px 4px rgba(92, 60, 34, 0.15)" },
+  segmentOn: { backgroundColor: palette.surfaceSolid, boxShadow: "0px 1px 4px rgba(92, 60, 34, 0.15)" },
   switchRow: { flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md },
   linkRow: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 52 },
 });

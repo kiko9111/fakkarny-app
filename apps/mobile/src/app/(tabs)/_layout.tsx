@@ -2,7 +2,7 @@ import { Redirect, router, Tabs } from "expo-router";
 import { t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { useUnlocked } from "@/lib/unlock-store";
-import { fonts, Icon, IconButton, palette, type IconName } from "@/ui";
+import { fonts, glass, GlassHeader, glassBar, Icon, IconButton, palette, radius, withGround, type IconName } from "@/ui";
 
 const icon = (outline: IconName, filled: IconName) =>
   function TabIcon({ focused, color }: { focused: boolean; color: unknown }) {
@@ -31,14 +31,16 @@ export default function TabsLayout() {
   }
   return (
     <Tabs
+      screenLayout={withGround}
       screenOptions={{
         tabBarActiveTintColor: palette.primaryInk,
         tabBarInactiveTintColor: palette.inkFaint,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: chatOnly ? { display: "none" } : { backgroundColor: palette.surface, borderTopColor: palette.line, height: 76, paddingTop: 6, paddingBottom: 14 },
+        tabBarStyle: chatOnly ? { display: "none" } : { ...glass, borderTopColor: palette.glassEdge, borderTopWidth: 1, borderWidth: 0, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, height: 76, paddingTop: 6, paddingBottom: 14, backgroundColor: palette.surfaceStrong },
         tabBarItemStyle: { paddingBottom: 2 },
         tabBarLabelStyle: { fontFamily: fonts.bodySemi, fontSize: 12, lineHeight: 18, paddingBottom: 2 },
-        headerStyle: { backgroundColor: palette.bg },
+        headerStyle: { backgroundColor: glassBar },
+        headerBackground: GlassHeader,
         headerShadowVisible: false,
         headerTitleAlign: "left",
         headerTitleStyle: { fontFamily: fonts.display, fontSize: 26, color: palette.ink },

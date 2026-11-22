@@ -7,7 +7,7 @@ import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { unlock } from "@/lib/unlock-store";
 import { reloadApp } from "@/lib/reload";
-import { Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker, type IconName } from "@/ui";
+import { glass, Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker, type IconName } from "@/ui";
 
 /**
  * F1 (under 2 minutes): meet Zaki and pick a language, then sign in with a code sent by email
@@ -153,11 +153,11 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, justifyContent: "center", padding: space.xl, gap: space.xl, maxWidth: 520, width: "100%", alignSelf: "center" },
   hero: { alignItems: "center", gap: space.md },
   lead: { maxWidth: 360 },
-  points: { gap: space.md, backgroundColor: palette.surface, borderRadius: radius.lg, padding: space.lg },
+  points: { ...glass, gap: space.md, borderRadius: radius.lg, padding: space.lg },
   point: { flexDirection: "row", alignItems: "center", gap: space.md },
   pointIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" },
   langs: { gap: space.sm },
   form: { gap: space.md },
-  input: { minHeight: 54, backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: palette.line, paddingHorizontal: space.lg, fontSize: 17, fontFamily: fonts.body, color: palette.ink },
+  input: { minHeight: 54, backgroundColor: palette.surfaceStrong, borderRadius: radius.md, borderWidth: 1, borderColor: palette.glassEdge, paddingHorizontal: space.lg, fontSize: 17, fontFamily: fonts.body, color: palette.ink },
   code: { fontSize: 24, fontFamily: fonts.display },
 });

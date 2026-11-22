@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { t } from "@/i18n";
-import { fonts, IconButton, palette, radius, shadow, space, textStart } from "@/ui";
+import { glass, fonts, IconButton, palette, radius, shadow, space, textStart } from "@/ui";
 
 /** Text only (CLAUDE.md). Users can dictate with the keyboard microphone. */
 export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
@@ -46,7 +46,7 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
 }
 
 const styles = StyleSheet.create({
-  bar: { paddingHorizontal: space.md, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: palette.bg },
-  field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, backgroundColor: palette.surface, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2, borderWidth: 1, borderColor: palette.line, ...shadow.card },
+  bar: { paddingHorizontal: space.md, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: "transparent" },
+  field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, ...glass, backgroundColor: palette.surfaceStrong, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2 },
   input: { flex: 1, minHeight: 40, maxHeight: 140, paddingTop: 9, paddingBottom: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, outlineStyle: "none" } as object,
 });

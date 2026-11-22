@@ -123,9 +123,9 @@ export function FeedbackHost() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   snackWrap: { position: "absolute", left: space.lg, right: space.lg, alignItems: "center" },
-  snack: { flexDirection: "row", alignItems: "center", gap: space.sm, maxWidth: 480, width: "100%", backgroundColor: "#2F2621", borderRadius: radius.md, paddingHorizontal: space.lg, paddingVertical: space.md, ...shadow.raised },
+  snack: { flexDirection: "row", alignItems: "center", gap: space.sm, maxWidth: 480, width: "100%", backgroundColor: "rgba(47,38,33,0.92)", borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, ...shadow.raised },
   scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: space.xl },
-  dialog: { width: "100%", maxWidth: 380, backgroundColor: palette.surface, borderRadius: radius.xl, padding: space.xl, gap: space.md, ...shadow.raised },
+  dialog: { width: "100%", maxWidth: 380, backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.glassEdge, borderRadius: radius.xl, padding: space.xl, gap: space.md, ...shadow.raised },
   actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: space.xs, marginTop: space.xs },
   action: { minHeight: 44, paddingHorizontal: space.md, borderRadius: radius.pill, justifyContent: "center" },
 });

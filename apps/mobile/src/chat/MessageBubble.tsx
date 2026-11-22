@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import type { MessageKind } from "@fakkarni/shared";
 import type { LocalMessage } from "@/db/messages";
 import { t, dateLocale } from "@/i18n";
-import { Button, Icon, palette, radius, shadow, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { glass, Button, Icon, palette, radius, shadow, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 /** Friend messages that Zaki started himself get a small label, so they read as his idea. */
 const KIND: Partial<Record<MessageKind, { icon: IconName; label: () => string; color: string }>> = {
@@ -83,8 +83,8 @@ const styles = StyleSheet.create({
   colFriend: { alignItems: "flex-start" },
   kind: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },
   bubble: { borderRadius: 20, paddingHorizontal: space.lg - 2, paddingVertical: space.sm + 1 },
-  mine: { backgroundColor: palette.primary },
-  friend: { backgroundColor: palette.surface, ...shadow.card },
+  mine: { backgroundColor: palette.primary, ...shadow.button },
+  friend: { ...glass },
   tailMine: { borderBottomEndRadius: 6 },
   tailFriend: { borderBottomStartRadius: 6 },
   pro: { marginTop: 2 },

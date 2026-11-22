@@ -28,9 +28,9 @@ export function ThemePicker() {
             accessibilityRole="radio"
             accessibilityState={{ selected: on }}
             accessibilityLabel={NAME[id]}
-            style={({ pressed }) => [styles.tile, { backgroundColor: th.bg, borderColor: on ? th.primary : palette.line }, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.tile, { backgroundColor: th.bg + "B3", borderColor: on ? th.primary : palette.glassEdge }, pressed && styles.pressed]}
           >
-            <ZakiAvatar size={44} colors={th} />
+            <ZakiAvatar size={44} theme={id} />
             <Text variant="smallStrong" color={on ? th.primaryInk : palette.inkSoft} align="center">
               {NAME[id]}
             </Text>

@@ -338,13 +338,21 @@ Rules:
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 - Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
-  parts, TextField, feedback, ThemePicker). Screens use it, not src/lib/theme (kept only as
-  an alias). Clean Apple-like structure (white surfaces on a tinted grouped background,
-  hairlines, large titles, one accent) in a soft theme the user picks: Sunrise (default),
-  Mint or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads).
-  Family, friends and Session keep fixed colours in every theme. One font family, IBM Plex
-  Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use `notify`/`confirm`/`ask`
-  from src/ui/feedback instead of Alert (Alert does nothing on web). Dates use `dateLocale`.
+  parts, TextField, feedback, ThemePicker, glass). Screens use it, not src/lib/theme (kept only as
+  an alias). Look = the liquid-glass logo (owner pick): a soft colour mesh behind every screen
+  (assets/bg/mesh-*.jpg via `Backdrop`; navigators use `screenLayout={withGround}` so each screen
+  carries its own mesh and mounted screens underneath never show through; headers use
+  `GlassHeader`), frosted translucent surfaces (`glass` token: white 68% + bright edge + tinted
+  shadow; real backdrop blur on web only), large radii, glossy pill buttons. No blur or gradient
+  native module: the mesh and Zaki art are images. Themes the user picks: Sunrise (default), Mint
+  or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads). Session has
+  its own calm mesh. Family, friends and Session keep fixed colours in every theme. One font
+  family, IBM Plex Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use
+  `notify`/`confirm`/`ask` from src/ui/feedback instead of Alert. Dates use `dateLocale`.
+- Logo and icons: the liquid-glass spark smile. The app icon, Android adaptive layers, splash,
+  favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
+  SVG; keep them in step if the mark changes. The splash is configured through the
+  expo-splash-screen plugin in app.json.
 - Chat first (owner decision, 2026-11-22): a new user sees only Zaki's chat (no tab bar,
   Settings in the header). Daftar opens on money talk, People on family/friends words or an
   accepted invite, Today after 3 active days (src/lib/unlock.ts, pure + tested; state in
@@ -356,7 +364,8 @@ Rules:
   asks permission only on tap and reads only the picked name).
 - Browser preview: `node scripts/build-web-preview.mjs out.html` in apps/mobile builds a
   single-file web app on sample data (EXPO_PUBLIC_DEMO=1, fake API in src/demo/server.web.ts,
-  SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged.
+  SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged. The script inlines
+  fonts, PNG and JPG assets; add any new asset type to it.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

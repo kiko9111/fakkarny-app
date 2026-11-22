@@ -21,9 +21,9 @@ html = html.replace(/<link rel="icon"[^>]*>/, "");
 const assets = [];
 const walk = (d) => readdirSync(d).forEach((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : assets.push(join(d, f))));
 walk(dir);
-for (const file of assets.filter((f) => /\.(ttf|otf|png)$/.test(f))) {
+for (const file of assets.filter((f) => /\.(ttf|otf|png|jpg)$/.test(f))) {
   const rel = file.slice(dir.length);
-  const mime = file.endsWith(".png") ? "image/png" : "font/ttf";
+  const mime = file.endsWith(".png") ? "image/png" : file.endsWith(".jpg") ? "image/jpeg" : "font/ttf";
   html = html.split(`"${rel}"`).join(`"data:${mime};base64,${readFileSync(file).toString("base64")}"`);
 }
 // Hosted previews live at a path the router doesn't know: start the app at "/" and remember

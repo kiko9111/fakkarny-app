@@ -2,20 +2,20 @@ import { plain } from "./plain";
 import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
-import { minTouch, palette, radius, space } from "./tokens";
+import { minTouch, palette, radius, shadow, space } from "./tokens";
 
 export type ButtonKind = "filled" | "tonal" | "outline" | "text" | "danger" | "whatsapp";
 
 const look: Record<ButtonKind, { bg: string; fg: string; border?: string; pressed: string }> = {
   filled: { bg: palette.primary, fg: palette.onPrimary, pressed: palette.primaryPressed },
-  tonal: { bg: palette.primarySoft, fg: palette.primaryInk, pressed: "#F6D6C5" },
-  outline: { bg: "transparent", fg: palette.primaryInk, border: palette.lineStrong, pressed: palette.surfaceAlt },
+  tonal: { bg: palette.primarySoftGlass, fg: palette.primaryInk, border: palette.glassEdge, pressed: palette.primarySoft },
+  outline: { bg: palette.surface, fg: palette.primaryInk, border: palette.glassEdge, pressed: palette.surfaceStrong },
   text: { bg: "transparent", fg: palette.primaryInk, pressed: palette.surfaceAlt },
   danger: { bg: "transparent", fg: palette.danger, pressed: palette.dangerSoft },
   whatsapp: { bg: palette.whatsapp, fg: "#FFFFFF", pressed: "#16733E" },
 };
 
-/** Material-style buttons: filled for the one main action, tonal/outline for the rest. */
+/** Pill buttons: filled (glossy, lit from the top) for the one main action, glass for the rest. */
 export function Button({
   label,
   onPress,
@@ -54,11 +54,13 @@ export function Button({
         styles.base,
         { minHeight: height, backgroundColor: pressed ? l.pressed : l.bg, paddingHorizontal: size === "sm" ? space.md : space.xl },
         l.border ? { borderWidth: 1, borderColor: l.border } : null,
+        kind === "filled" || kind === "whatsapp" ? [shadow.button, styles.clip] : null,
         block ? styles.block : null,
         off ? styles.off : null,
         style,
       ]}
     >
+      {kind === "filled" || kind === "whatsapp" ? <View pointerEvents="none" style={styles.gloss} /> : null}
       {busy ? (
         <ActivityIndicator color={l.fg} />
       ) : (
@@ -93,5 +95,8 @@ const styles = StyleSheet.create({
   base: { borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   row: { flexDirection: "row", alignItems: "center", gap: space.sm },
   block: { alignSelf: "stretch" },
+  clip: { overflow: "hidden" },
+  // The light edge across the top of a filled button, as on the glass logo.
+  gloss: { position: "absolute", top: 0, left: 0, right: 0, height: "50%", backgroundColor: "rgba(255,255,255,0.12)", borderBottomLeftRadius: 999, borderBottomRightRadius: 999 },
   off: { opacity: 0.45 },
 });
