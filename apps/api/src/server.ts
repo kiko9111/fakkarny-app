@@ -13,12 +13,14 @@ const prisma = env.DATABASE_URL ? db() : undefined;
 const model = env.ANTHROPIC_API_KEY ? createAnthropicModel({ apiKey: env.ANTHROPIC_API_KEY }) : undefined;
 const supabaseUrl = env.SUPABASE_URL;
 const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+const push = createExpoPushSender(fetch, env.EXPO_ACCESS_TOKEN);
 const app = buildApp(
   // Behind the host's proxy (Railway): take the caller's IP and protocol from its headers,
   // so the public invite page is rate-limited per visitor and invite links are https.
   { logger: { level: env.LOG_LEVEL, redact: LOG_REDACT }, trustProxy: true },
   {
     prisma,
+    push,
     pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
     auth: { supabaseUrl, supabaseJwtSecret: env.SUPABASE_JWT_SECRET, allowInstallId: env.ALLOW_INSTALL_ID === "1" },
     adminPassword: env.ADMIN_PASSWORD,
@@ -51,7 +53,7 @@ const boss =
     ? await startJobs(env.DATABASE_URL, {
         prisma,
         model,
-        push: createExpoPushSender(fetch, env.EXPO_ACCESS_TOKEN),
+        push,
         log: app.log,
         requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
       })
