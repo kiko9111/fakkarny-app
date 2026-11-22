@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueAt, dueChoices, sortTasks, taskActions } from "./logic";
+import { dueAt, dueChoices, iftarDate, sortTasks, taskActions } from "./logic";
 
 describe("task logic", () => {
   const t = (status: "pending" | "accepted" | "declined" | "done" | "cancelled", role: "assigner" | "assignee" | "watcher", can_nudge = false) => ({ status, role, can_nudge });
@@ -29,5 +29,14 @@ describe("task logic", () => {
     expect(new Date(dueAt("today", morning)!)).toEqual(new Date(2026, 10, 22, 18, 0));
     expect(new Date(dueAt("tomorrow", morning)!)).toEqual(new Date(2026, 10, 23, 10, 0));
     expect(new Date(dueAt("week", morning)!)).toEqual(new Date(2026, 10, 29, 10, 0));
+  });
+  it("picks the calendar day for an iftar", () => {
+    const sunday = new Date(2027, 1, 7, 15, 0); // Sunday 7 Feb 2027
+    expect(iftarDate("today", sunday)).toBe("2027-02-07");
+    expect(iftarDate("tomorrow", sunday)).toBe("2027-02-08");
+    expect(iftarDate("friday", sunday)).toBe("2027-02-12");
+    // On a Friday, "next Friday" is a week later, and month ends roll over.
+    expect(iftarDate("friday", new Date(2027, 1, 12, 9, 0))).toBe("2027-02-19");
+    expect(iftarDate("tomorrow", new Date(2027, 1, 28, 23, 30))).toBe("2027-03-01");
   });
 });

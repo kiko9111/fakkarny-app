@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { z } from "zod";
-import { CreateTrackerRequest, LogTrackerRequest, TRACKER_TEMPLATES, TrackerKind, type ListTrackersResponse, type TrackerResponse } from "@fakkarni/shared";
+import { CreateTrackerRequest, isRamadanSeason, LogTrackerRequest, RAMADAN_PACK, TRACKER_TEMPLATES, TrackerKind, type ListTrackersResponse, type TrackerResponse } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
-import { createTracker, logEntry, toWireTracker, trackerLimit } from "../trackers/store";
+import { addRamadanPack, createTracker, logEntry, toWireTracker, trackerLimit } from "../trackers/store";
 
 export interface TrackerRoutesOptions {
   prisma: PrismaClient;
@@ -29,6 +29,7 @@ export const trackerRoutes: FastifyPluginAsync<TrackerRoutesOptions> = async (ap
     const res: ListTrackersResponse = {
       trackers: await Promise.all(rows.map((t) => toWireTracker(prisma, t, req.user.timezone, at))),
       limit: await trackerLimit(prisma, req.user, at),
+      ramadan_pack: !isRamadanSeason(at) ? "off" : RAMADAN_PACK.every((k) => rows.some((t) => t.kind === k)) ? "added" : "available",
     };
     return res;
   });
@@ -42,6 +43,15 @@ export const trackerRoutes: FastifyPluginAsync<TrackerRoutesOptions> = async (ap
     if (made === "limit") return reply.code(402).send({ error: "tracker_limit" });
     await prisma.event.create({ data: { userId: req.user.id, name: "tracker_created", propsJson: { kind: body.data.kind, via: "app" } } });
     return reply.code(201).send({ tracker: await toWireTracker(prisma, made, req.user.timezone, at) } satisfies TrackerResponse);
+  });
+
+  /** The Ramadan pack: fasting, prayers, Quran and charity, free for everyone during the season. */
+  app.post("/trackers/ramadan-pack", async (req, reply) => {
+    const at = now();
+    const made = await addRamadanPack(prisma, req.user, at);
+    if (made === "off") return reply.code(409).send({ error: "not_in_season" });
+    if (made.length) await prisma.event.create({ data: { userId: req.user.id, name: "ramadan_pack_added", propsJson: { added: made.length } } });
+    return reply.code(204).send();
   });
 
   /** One tap: adds the template's step (a cup, a prayer) or the amount given (money). */

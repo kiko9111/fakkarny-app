@@ -421,6 +421,8 @@ model Tracker {
   kind      String
   name      String?
   goal      Decimal? @db.Decimal(12, 2)
+  // "ramadan" for trackers added by the Ramadan pack: free, outside the 1-tracker limit.
+  pack      String?
   createdAt DateTime @default(now()) @map("created_at")
 
   user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -71,6 +71,15 @@ export function postLine(lang: Lang, event: string, actor: string | null | undef
   const what = title ?? "";
   if (event === "task_accepted") return lang === "en" ? `${a} will take care of: ${what} (asked by ${b}) 🙌` : `${what}: في إيد ${a} دلوقتي (طلب ${b}) 🙌`;
   if (event === "task_done") return lang === "en" ? `${a} finished: ${what} ✅ Thank you, ${a}!` : `تمّت: ${what} ✅ تسلم الإيد يا ${a}!`;
+  if (event === "iftar") {
+    // title = "YYYY-MM-DD|note": a calendar day, shown in the reader's language.
+    const [day = "", note = ""] = (title ?? "").split("|");
+    const when = /^\d{4}-\d{2}-\d{2}$/.test(day) ? new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "ar-EG", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`)) : day;
+    const extra = note ? ` (${note})` : "";
+    return lang === "en" ? `Iftar invitation from ${a}: ${when} 🌙${extra} Who's coming?` : `عزومة فطار من ${a}: ${when} 🌙${extra} مين جاي؟`;
+  }
+  if (event === "rsvp:yes") return lang === "en" ? `${a}: I'm coming, inshallah ✋` : `${a}: جاي إن شاء الله ✋`;
+  if (event === "rsvp:no") return lang === "en" ? `${a}: I can't make it this time 💛` : `${a}: مش هقدر المرة دي 💛`;
   if (event.startsWith("checkin:")) {
     const said = CHECKIN_SAID[event.slice(8)]?.[lang];
     // A check-in is the member's own words, passed on: first person, so it fits anyone.

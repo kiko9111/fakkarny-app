@@ -36,7 +36,7 @@ export function nextAt(s: SessionWithMessages, now: Date): Date {
 export const userLang = (user: Pick<User, "language">): ReplyLang => (user.language === "en" ? "english" : "arabic");
 
 /** What the model is told about this person. Deliberately small: no tasks, debts, circles or memories. */
-function renderSessionContext(user: User, s: ReflectSession, now: Date): string {
+export function renderSessionContext(user: User, s: ReflectSession, now: Date): string {
   return [
     `User's name: ${user.name ?? "unknown"}`,
     `Mode: ${s.mode}`,

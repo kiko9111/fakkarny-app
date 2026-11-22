@@ -45,6 +45,8 @@ const MATCHERS: Record<Exclude<TrackerKind, "custom">, (t: string) => number | n
   medicine: (t) => (/(خدت|اخدت|took).*(دوا|علاج|برشام|حبايه|medicine|meds|pill)/.test(t) ? 1 : null),
   study: (t) => (/(^|\s)(ذاكرت|studied)/.test(t) ? smallCount(t, /ساعتين|two hours/, 16) : null),
   spending: (t) => (/(صرفت|دفعت|spent|paid)\s/.test(t) && !DEBT_WORDS.test(t) ? positive(firstNumber(t)) : null),
+  fasting: (t) => (/(^|\s)(صمت|صايم النهارده|صايمه النهارده|fasted|i fasted)(\s|$)/.test(t) ? 1 : null),
+  charity: (t) => (/(اتصدقت|تصدقت|طلعت صدقه|donated|gave charity|gave sadaqa)\s/.test(t) && !DEBT_WORDS.test(t) ? positive(firstNumber(t)) : null),
   savings: (t) => (/(حوشت|شلت|saved|put aside)\s/.test(t) && !DEBT_WORDS.test(t) ? positive(firstNumber(t)) : null),
 };
 function positive(n: number | null): number | null {
@@ -72,6 +74,8 @@ const SUBJECTS: [Exclude<TrackerKind, "custom">, RegExp][] = [
   ["study", /مذاكر|studying|study/],
   ["spending", /مصاريف|مصروف|spending|expenses/],
   ["savings", /تحويش|ادخار|savings|saving/],
+  ["fasting", /صيام|صومي|fasting/],
+  ["charity", /صدق|charity|sadaqa/],
 ];
 
 /** "track my water" / "تابع معايا المية" → the template to start. */

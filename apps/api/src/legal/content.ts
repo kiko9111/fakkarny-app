@@ -5,7 +5,7 @@
  * DRAFT written from what the code does. It has not been reviewed by a lawyer: the pages
  * show a draft notice until LEGAL_REVIEWED=1. Update LAST_UPDATED with every change.
  */
-export const LAST_UPDATED = "2026-11-22";
+export const LAST_UPDATED = "2026-11-23";
 
 export type LegalLang = "ar" | "en";
 export type LegalDoc = "terms" | "privacy";
@@ -111,6 +111,7 @@ const privacyEn: LegalPage = {
         "- Trackers: what you choose to follow (water, prayers, spending and so on) and each entry, whether you tap it or tell Zaki in chat. Only you see your trackers.",
         "- Check-ins and family roles: the check-ins you tap (for example \"arrived\" or \"took my medicine\"), which the members of that circle see, and the family role you pick, if any. A check-in is only the words you choose: Zaki never collects or tracks your location.",
         "- Session (a space to reflect, for ages 18 and up): only if you give separate consent, we keep the mood you tap and what you and Zaki write there, so the conversation can continue. This is sensitive data: it is stored apart from the rest of your data, is sent to our AI provider only to write Zaki's reply, is never shown to your circles, is never used for anything else, and you can delete all of it with one tap inside Session. Zaki is not a doctor, and Session is not medical or psychological care.",
+        "- Invitations in circles: an iftar invitation you send (its date and note) and each member's yes or no, which the members of that circle see.",
         "- Your phone's notification token, so we can send you messages from Zaki.",
         "- Subscription status from Apple or Google. We never see your card details.",
         "- Technical records: error reports and counts of events such as replies and their cost. These do not contain the text of your messages.",
@@ -259,6 +260,7 @@ const privacyAr: LegalPage = {
         "- المتابعة: الحاجات اللي بتختار تتابعها (المية، الصلاة، المصاريف وغيرها) وكل تسجيل فيها، سواء بدوسة أو لما تقول لزكي في الدردشة. إنت بس اللي بتشوف متابعاتك.",
         "- الاطمئنان وأدوار العيلة: الاطمئنان اللي بتدوس عليه (زي «وصلت» أو «خدت الدوا») وبيشوفه أفراد الدايرة دي، ومكانك في العيلة لو اخترته. الاطمئنان هو الكلام اللي بتختاره بس: زكي عمره ما بيجمع ولا بيتتبّع مكانك.",
         "- مساحة ليك (للتفكير بصوت عالي، من سن 18): بس لو وافقت موافقة منفصلة، بنحفظ المزاج اللي بتختاره واللي بتكتبه إنت وزكي هناك عشان الكلام يكمّل. دي بيانات حساسة: بتتحفظ لوحدها بعيد عن باقي بياناتك، وبتتبعت لمزوّد الذكاء الاصطناعي بس عشان يكتب رد زكي، ومبتظهرش لدوايرك أبداً، ومبتتستخدمش في أي حاجة تانية، وتقدر تمسحها كلها بدوسة واحدة من جوه المساحة. زكي مش دكتور، والمساحة دي مش رعاية طبية ولا نفسية.",
+        "- العزومات في الدواير: عزومة الفطار اللي بتبعتها (تاريخها وملاحظتها) ورد كل فرد بأيوه أو لأ، وبيشوفهم أفراد الدايرة دي.",
         "- رمز الإشعارات بتاع موبايلك، عشان نبعتلك رسائل زكي.",
         "- حالة الاشتراك من Apple أو Google. عمرنا ما بنشوف بيانات الكارت.",
         "- سجلات تقنية: تقارير الأخطاء وأعداد أحداث زي الردود وتكلفتها. السجلات دي مافيهاش نص رسائلك.",

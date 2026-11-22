@@ -304,3 +304,17 @@ export async function acceptSessionStep(messageId: string): Promise<void> {
 export async function deleteSessionData(): Promise<void> {
   await request("/session", { method: "DELETE" });
 }
+
+// Ramadan pack: free seasonal trackers and iftar invitations.
+export async function addRamadanPack(): Promise<void> {
+  await request("/trackers/ramadan-pack", { method: "POST" });
+}
+
+/** `on` is a calendar day, "YYYY-MM-DD". */
+export async function inviteToIftar(circleId: string, on: string): Promise<void> {
+  await request(`/circles/${circleId}/iftar`, { method: "POST", body: JSON.stringify({ on }) });
+}
+
+export async function answerInvite(circleId: string, postId: string, going: boolean): Promise<void> {
+  await request(`/circles/${circleId}/posts/${postId}/rsvp`, { method: "POST", body: JSON.stringify({ going }) });
+}

@@ -32,3 +32,14 @@ export function dueAt(choice: DueChoice, now: Date): string | null {
   }
   return d.toISOString();
 }
+
+export type IftarDay = "today" | "tomorrow" | "friday";
+
+/** The calendar day ("YYYY-MM-DD", phone's own time zone) for an iftar pick. "friday" is the next Friday after today. */
+export function iftarDate(pick: IftarDay, now: Date): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (pick === "tomorrow") d.setDate(d.getDate() + 1);
+  if (pick === "friday") d.setDate(d.getDate() + (((5 - d.getDay() + 7) % 7) || 7));
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}

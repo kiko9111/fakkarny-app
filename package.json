@@ -13,9 +13,10 @@
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "eval": "npm run eval -w @fakkarni/evals --",
+    "eval": "npm run eval -w @fakkarni/evals -- && npm run eval:session -w @fakkarni/evals --",
     "dev:api": "npm run dev -w @fakkarni/api",
-    "dev:mobile": "npm run start -w @fakkarni/mobile"
+    "dev:mobile": "npm run start -w @fakkarni/mobile",
+    "eval:session": "npm run eval:session -w @fakkarni/evals --"
   },
   "overrides": {
     "react": "19.3.0"

@@ -6,7 +6,8 @@
   "scripts": {
     "eval": "tsx --env-file-if-exists=../apps/api/.env run.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:session": "tsx --env-file-if-exists=../apps/api/.env session.ts"
   },
   "dependencies": {
     "@fakkarni/api": "*",

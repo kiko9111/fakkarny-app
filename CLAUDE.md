@@ -243,6 +243,16 @@ Rules:
     before the Session evals have been run and read.
   - Free: 1 session per 7 days; Pro unlimited; 30 user messages per session.
   Records only: never hold or move money (Central Bank rules).
+- Ramadan pack and iftar (Zaki M9): `RAMADAN_SEASONS` in packages/shared/src/trackers.ts
+  holds the dates (add next year's there). In season, POST /trackers/ramadan-pack adds
+  the pack trackers (fasting, prayers, Quran, charity) marked `pack`, which do not count
+  against the free tracker limit; out of season it answers 409 `not_in_season`. Iftar
+  invitations are circle posts (event `iftar`, RSVP events `rsvp:yes|no`) written by
+  templates in tasks/rules.ts: POST /circles/:id/iftar and
+  POST /circles/:id/posts/:postId/rsvp. No AI call anywhere in the pack.
+- Session evals: `npm run eval:session` (evals/session.ts, cases in
+  evals/session/cases.jsonl, scoring in evals/session-score.ts). Without a model key it
+  only validates the cases. Launch steps and the store listing text: docs/launch.md.
 - InstaPay: there is no public deep link that pre-fills an amount. Users paste their own
   InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in
   Settings; whoever owes them gets a "Pay with InstaPay" button that opens it, and the

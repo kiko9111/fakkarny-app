@@ -1,10 +1,10 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { z } from "zod";
-import { CreateTaskRequest, RespondTaskRequest, type CircleFeedResponse, type ListTasksResponse, type TaskResponse } from "@fakkarni/shared";
+import { CreateTaskRequest, IftarRequest, RespondTaskRequest, RsvpRequest, type CircleFeedResponse, type ListTasksResponse, type TaskResponse } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
-import { canCancel, canFinish, canNudge, canRespond, MAX_OPEN_PER_PAIR } from "../tasks/rules";
+import { canCancel, canFinish, canNudge, canRespond, MAX_OPEN_PER_PAIR, postLine } from "../tasks/rules";
 import { announce, cancel, finish, langOf, nudge, respond, roleOf, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
 
 export interface TaskRoutesOptions {
@@ -65,7 +65,42 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
       }),
     ]);
     const at = now();
-    return { posts: await wirePosts(prisma, posts, langOf(req.user)), tasks: tasks.map((t) => toWireTask(t, req.user.id, at)) } satisfies CircleFeedResponse;
+    return { posts: await wirePosts(prisma, posts, langOf(req.user), req.user.id), tasks: tasks.map((t) => toWireTask(t, req.user.id, at)) } satisfies CircleFeedResponse;
+  });
+
+  /** Iftar invitation to the whole circle (Ramadan pack): a post everyone can answer, plus a push. */
+  app.post("/circles/:id/iftar", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const params = IdParam.safeParse(req.params);
+    const body = IftarRequest.safeParse(req.body);
+    if (!params.success) return reply.code(404).send({ error: "not_found" });
+    if (!body.success) return reply.code(400).send({ error: "invalid_body" });
+    const circle = await prisma.circle.findFirst({ where: { id: params.data.id, members: { some: { userId: req.user.id } } }, include: { members: { include: { user: { select: { language: true } } } } } });
+    if (!circle) return reply.code(404).send({ error: "not_found" });
+    const title = `${body.data.on}|${body.data.note ?? ""}`;
+    const post = await prisma.circlePost.create({ data: { circleId: circle.id, event: "iftar", actorId: req.user.id, title, createdAt: now() } });
+    await prisma.event.create({ data: { userId: req.user.id, name: "iftar_invite", propsJson: {} } });
+    void pushNotices(prisma, opts.push, circle.members.filter((m) => m.userId !== req.user.id).map((m) => ({ userId: m.userId, text: `${circle.name}: ${postLine(langOf(m.user), "iftar", req.user.name, null, title)}` })), app.log);
+    return reply.code(201).send({ id: post.id });
+  });
+
+  /** Answer an invitation. One answer per person; answering again changes it. */
+  app.post("/circles/:id/posts/:postId/rsvp", async (req, reply) => {
+    const params = z.object({ id: z.uuid(), postId: z.uuid() }).safeParse(req.params);
+    const body = RsvpRequest.safeParse(req.body);
+    if (!params.success) return reply.code(404).send({ error: "not_found" });
+    if (!body.success) return reply.code(400).send({ error: "invalid_body" });
+    const { id: circleId, postId } = params.data;
+    const invite = (await isMember(circleId, req.user.id)) ? await prisma.circlePost.findFirst({ where: { id: postId, circleId, event: "iftar" } }) : null;
+    if (!invite) return reply.code(404).send({ error: "not_found" });
+    const event = body.data.going ? "rsvp:yes" : "rsvp:no";
+    const existing = await prisma.circlePost.findFirst({ where: { circleId, actorId: req.user.id, targetId: postId, event: { startsWith: "rsvp:" } } });
+    if (existing) await prisma.circlePost.update({ where: { id: existing.id }, data: { event, createdAt: now() } });
+    else await prisma.circlePost.create({ data: { circleId, event, actorId: req.user.id, targetId: postId, createdAt: now() } });
+    if (invite.actorId && invite.actorId !== req.user.id && existing?.event !== event) {
+      const host = await prisma.user.findUnique({ where: { id: invite.actorId }, select: { id: true, language: true } });
+      if (host) void pushNotices(prisma, opts.push, [{ userId: host.id, text: postLine(langOf(host), event, req.user.name, null, null) ?? "" }], app.log);
+    }
+    return reply.code(204).send();
   });
 
   app.post("/circles/:id/tasks", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {

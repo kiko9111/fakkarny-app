@@ -47,7 +47,20 @@ export const ListTasksResponse = z.object({ tasks: z.array(CircleTask) });
 export type ListTasksResponse = z.infer<typeof ListTasksResponse>;
 
 /** One line Zaki posted in a circle, already written in the reader's language. */
-export const CirclePost = z.object({ id: z.string(), text: z.string(), created_at: Instant });
+export const CirclePost = z.object({
+  id: z.string(),
+  text: z.string(),
+  created_at: Instant,
+  /** "iftar" = an invitation the reader can answer. */
+  kind: z.enum(["iftar"]).nullable().default(null),
+  /** The reader's own answer to that invitation, if any. */
+  my_rsvp: z.boolean().nullable().default(null),
+});
 export type CirclePost = z.infer<typeof CirclePost>;
 export const CircleFeedResponse = z.object({ posts: z.array(CirclePost), tasks: z.array(CircleTask) });
 export type CircleFeedResponse = z.infer<typeof CircleFeedResponse>;
+
+/** An iftar invitation to the whole circle (Ramadan pack). `on` is a calendar day. */
+export const IftarRequest = z.object({ on: z.iso.date(), note: z.string().trim().max(80).optional() });
+export type IftarRequest = z.infer<typeof IftarRequest>;
+export const RsvpRequest = z.object({ going: z.boolean() });
