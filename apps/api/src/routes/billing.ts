@@ -1,8 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
-import type { MeResponse } from "@fakkarni/shared";
+import type { BillingOffersResponse, MeResponse } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
-import { planFromEvent, planFromSubscriber, RevenueCatSubscriber, RevenueCatWebhook } from "../billing/plan";
+import { FOUNDERS_LIMIT, planFromEvent, planFromSubscriber, RevenueCatSubscriber, RevenueCatWebhook, type PlanState } from "../billing/plan";
 import { toWireUser } from "../serialize";
 
 export interface BillingOptions {
@@ -14,6 +14,8 @@ export interface BillingOptions {
   revenueCatSecretKey?: string;
   fetchImpl?: typeof fetch;
 }
+
+const planData = (p: PlanState) => ({ plan: p.plan, planExpiresAt: p.expiresAt, planTier: p.tier, planProductId: p.productId });
 
 const safeEqual = (a: string, b: string) => {
   const x = Buffer.from(a);
@@ -48,8 +50,8 @@ export const billingRoutes: FastifyPluginAsync<BillingOptions> = async (app, opt
     if (next && ids.length) {
       const user = await prisma.user.findFirst({ where: { id: { in: ids } } });
       if (user) {
-        await prisma.user.update({ where: { id: user.id }, data: { plan: next.plan, planExpiresAt: next.expiresAt } });
-        await prisma.event.create({ data: { userId: user.id, name: "subscription_event", propsJson: { type: e.type, plan: next.plan, environment: e.environment ?? null } } });
+        await prisma.user.update({ where: { id: user.id }, data: planData(next) });
+        await prisma.event.create({ data: { userId: user.id, name: "subscription_event", propsJson: { type: e.type, plan: next.plan, tier: next.tier, product: next.productId, environment: e.environment ?? null } } });
       }
     }
     return reply.code(200).send({ ok: true });
@@ -65,8 +67,15 @@ export const billingRoutes: FastifyPluginAsync<BillingOptions> = async (app, opt
     const parsed = RevenueCatSubscriber.safeParse(await res.json());
     if (!parsed.success) return reply.code(502).send({ error: "billing_unavailable" });
     const next = planFromSubscriber(parsed.data, new Date());
-    const user = await prisma.user.update({ where: { id: req.user.id }, data: { plan: next.plan, planExpiresAt: next.expiresAt } });
+    const user = await prisma.user.update({ where: { id: req.user.id }, data: planData(next) });
     const out: MeResponse = { user: toWireUser(user) };
     return out;
+  });
+
+  /** What the paywall may offer right now: the founders' offer is for the first 1,000 buyers. */
+  app.get("/billing/offers", { preHandler: opts.authenticate }, async () => {
+    const founders = await prisma.user.count({ where: { planProductId: { contains: "founder", mode: "insensitive" } } });
+    const res: BillingOffersResponse = { founders_left: Math.max(0, FOUNDERS_LIMIT - founders) };
+    return res;
   });
 };

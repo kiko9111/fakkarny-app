@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
 import {
+  BillingOffersResponse,
   HealthResponse,
   INSTALL_ID_HEADER,
   ExportResponse,
@@ -115,4 +116,8 @@ export async function listMemories() {
 /** Ask the server to re-read the RevenueCat entitlement (right after a purchase or restore). */
 export async function refreshPlan(): Promise<User> {
   return MeResponse.parse(await request("/me/plan/refresh", { method: "POST" })).user;
+}
+
+export async function getBillingOffers(): Promise<BillingOffersResponse> {
+  return BillingOffersResponse.parse(await request("/billing/offers"));
 }

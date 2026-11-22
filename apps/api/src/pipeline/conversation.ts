@@ -28,17 +28,27 @@ const CAP_REPLY: Record<ReplyLang, string> = {
   english: "We've hit today's chat limit 😅 I'll still keep everything you send, and full replies are back tomorrow.",
 };
 
+/** Free AI allowance used up: Zaki says so warmly (no AI call), with a Pro button. */
+const ALLOWANCE_FIRST: Record<ReplyLang, string> = {
+  arabic: "خلّصنا رسايلي المجانية بتاعة النهارده 🌟 بكرة نكمّل من تاني، وكل حاجة سجلناها محفوظة. ولو حابب نتكلم من غير حد، زكي برو مستنيك.",
+  english: "That's all my free messages for today 🌟 We'll pick up again tomorrow, and everything we saved is safe. If you'd like to keep chatting with no limit, Zaki Pro is here for you.",
+};
+const ALLOWANCE_AGAIN: Record<ReplyLang, string> = {
+  arabic: "رسايل النهارده خلصت، بس رسالتك وصلتني ومحفوظة. نكمّل بكرة إن شاء الله 🌟",
+  english: "Today's messages are used up, but I've kept yours. Talk tomorrow 🌟",
+};
+
 export function createConversationPipeline(deps: { model: FriendModel; log?: FastifyBaseLogger; dailyCap?: number }): MessagePipeline {
   const { model, log } = deps;
   const dailyCap = deps.dailyCap ?? DAILY_MESSAGE_CAP;
 
-  return async ({ prisma, user, message, now }) => {
+  return async ({ prisma, user, message, now, aiAllowance }) => {
     const script = replyLang(detectScript(message.text));
     const crisisKeyword = looksLikeCrisis(message.text);
+    const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
 
     // 0. Fair-use cap (never applied to crisis messages).
     if (!crisisKeyword) {
-      const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
       const today = await prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } });
       if (today > dailyCap) {
         // Tell them once, honestly; after that just save quietly.
@@ -53,6 +63,22 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (canned) {
       await event(prisma, user.id, "reply_fast_path", {});
       return applyActions(prisma, { user, message, replies: [canned], response: EMPTY_ACTIONS, now });
+    }
+
+    // 1b. Free AI allowance. Rule-answered messages above don't count; crisis is never blocked.
+    const limit = aiAllowance ?? null;
+    let used = 0;
+    if (limit !== null) {
+      used = await prisma.event.count({
+        where: { userId: user.id, name: "ai_call", createdAt: { gte: dayStart }, propsJson: { path: ["purpose"], equals: "chat" } },
+      });
+      if (used >= limit && !crisisKeyword) {
+        const toldToday = await prisma.event.count({ where: { userId: user.id, name: "ai_allowance_hit", createdAt: { gte: dayStart } } });
+        await event(prisma, user.id, "ai_allowance_hit", { limit });
+        const reply = toldToday === 0 ? ALLOWANCE_FIRST[script] : ALLOWANCE_AGAIN[script];
+        const applied = await applyActions(prisma, { user, message, replies: [reply], response: EMPTY_ACTIONS, now, replyKind: "upsell" });
+        return { ...applied, aiAllowance: { limit, used } };
+      }
     }
 
     // 2. One model call with persona (cached) + context + recent chat.
@@ -107,7 +133,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 5. Rolling summary in the background; never blocks the reply.
     void summarizeIfNeeded(prisma, model, user).catch((err) => log?.warn({ err: errorSummary(err) }, "summary failed"));
 
-    return applied;
+    return { ...applied, aiAllowance: { limit, used: used + (usage ? 1 : 0) } };
   };
 }
 

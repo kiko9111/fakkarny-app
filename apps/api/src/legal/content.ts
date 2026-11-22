@@ -53,12 +53,12 @@ const termsEn: LegalPage = {
       ],
     },
     {
-      heading: "4. Subscription and free trial",
+      heading: "4. Free plan and subscriptions",
       body: [
-        "Chatting with Zaki requires a paid subscription after an initial free allowance. New subscribers get a 7-day free trial.",
+        "Zaki is free to use. The free plan includes a limited number of AI replies per day (more during your first week). A paid subscription (Zaki Pro, or Family for up to 6 people) removes that daily limit, within fair use, and unlocks extra features. Inviting friends can earn you free Pro days.",
         "Subscriptions are sold through the Apple App Store or Google Play and are charged to your store account. They renew automatically for the same period unless you cancel in your store account settings at least 24 hours before the current period ends. We tell you before the trial ends.",
         "Prices are shown in the app before you buy and may differ by country. Refunds are handled by Apple or Google under their policies.",
-        "If your subscription ends, you can still read, export and delete everything you saved; you cannot send new messages until you subscribe again.",
+        "If your subscription ends, you go back to the free plan. You can still use the app and read, export and delete everything you saved.",
       ],
     },
     {
@@ -195,12 +195,12 @@ const termsAr: LegalPage = {
       ],
     },
     {
-      heading: "٤. الاشتراك والتجربة المجانية",
+      heading: "٤. الباقة المجانية والاشتراكات",
       body: [
-        "الكلام مع زكي محتاج اشتراك مدفوع بعد عدد محدود من الرسائل المجانية. المشترك الجديد بياخد تجربة مجانية ٧ أيام.",
+        "زكي ببلاش. الباقة المجانية فيها عدد محدود من ردود الذكاء الاصطناعي في اليوم (وأكتر في أول أسبوع). الاشتراك المدفوع (زكي برو، أو باقة العيلة لحد ٦ أفراد) بيشيل الحد اليومي ده في حدود الاستخدام المعقول، وبيفتح خصائص زيادة. ولما تعزم صحابك ممكن تاخد أيام برو ببلاش.",
         "الاشتراك بيتباع عن طريق Apple App Store أو Google Play وبيتخصم من حسابك في المتجر. بيتجدد لوحده لنفس المدة لحد ما تلغيه من إعدادات حسابك في المتجر قبل نهاية المدة بـ ٢٤ ساعة على الأقل. هنقولك قبل ما التجربة تخلص.",
         "الأسعار بتظهر في التطبيق قبل الشراء وممكن تختلف من بلد لبلد. استرجاع الفلوس بيتم عن طريق Apple أو Google حسب سياستهم.",
-        "لو الاشتراك خلص، تقدر تقرا وتصدّر وتمسح كل اللي اتحفظ، بس مش هتقدر تبعت رسائل جديدة لحد ما تشترك تاني.",
+        "لو الاشتراك خلص، بترجع للباقة المجانية. تقدر تكمّل استخدام التطبيق وتقرا وتصدّر وتمسح كل اللي اتحفظ.",
       ],
     },
     {

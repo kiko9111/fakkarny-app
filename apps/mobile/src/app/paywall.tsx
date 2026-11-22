@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { billingAvailable, getPlanOptions, purchase, restore, type PlanOption } from "@/billing";
+import { isFamily, isYearly } from "@/billing/options";
 import { language, t } from "@/i18n";
 import { legalUrl } from "@/lib/api-url";
 import { API_URL } from "@/lib/api";
 import { colors } from "@/lib/theme";
 
-/** FR-9: 7-day trial, then monthly or yearly. Prices come from the store (regional pricing). */
+/** Zaki Pro, Family and the founders' offer. Prices come from the store (regional pricing). */
 export default function PaywallScreen() {
   const [options, setOptions] = useState<PlanOption[] | null>(null);
   const [selected, setSelected] = useState<PlanOption | null>(null);
@@ -58,18 +59,20 @@ export default function PaywallScreen() {
       {options?.map((o) => (
         <Pressable key={o.kind} onPress={() => setSelected(o)} style={[styles.option, selected?.kind === o.kind && styles.optionOn]}>
           <View style={styles.flex}>
-            <Text style={styles.optionTitle}>{o.kind === "yearly" ? t.paywall.yearly : t.paywall.monthly}</Text>
+            <Text style={styles.optionTitle}>{t.paywall.plans[o.kind]}</Text>
+            {o.kind === "founders" ? <Text style={styles.trial}>{t.paywall.foundersNote}</Text> : null}
+            {isFamily(o.kind) ? <Text style={styles.planNote}>{t.paywall.familyNote}</Text> : null}
             {o.hasTrial ? <Text style={styles.trial}>{t.paywall.trial}</Text> : null}
           </View>
           <Text style={styles.price}>
-            {o.price} {o.kind === "yearly" ? t.paywall.perYear : t.paywall.perMonth}
+            {o.price} {isYearly(o.kind) ? t.paywall.perYear : t.paywall.perMonth}
           </Text>
         </Pressable>
       ))}
 
       {options && options.length > 0 ? (
         <Pressable style={[styles.cta, busy && styles.dim]} disabled={busy} onPress={() => void buy()}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>{t.paywall.cta}</Text>}
+          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>{selected?.hasTrial ? t.paywall.ctaTrial : t.paywall.cta}</Text>}
         </Pressable>
       ) : null}
 
@@ -104,6 +107,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   optionTitle: { fontSize: 17, fontWeight: "600", color: colors.text, textAlign: "left" },
   trial: { color: colors.ok, marginTop: 2, textAlign: "left" },
+  planNote: { color: colors.muted, marginTop: 2, textAlign: "left" },
   price: { fontSize: 15, color: colors.text },
   cta: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 16, alignItems: "center", marginTop: 6 },
   dim: { opacity: 0.6 },

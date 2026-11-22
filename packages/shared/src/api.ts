@@ -27,6 +27,9 @@ export const PostMessageRequest = z.object({
 });
 export type PostMessageRequest = z.infer<typeof PostMessageRequest>;
 
+export const AiAllowance = z.object({ limit: z.number().int().nullable(), used: z.number().int().nonnegative() });
+export type AiAllowance = z.infer<typeof AiAllowance>;
+
 export const PostMessageResponse = z.object({
   message: Message,
   /** Friend replies (1–3), already stored server-side. Empty if the AI is unavailable. */
@@ -37,8 +40,27 @@ export const PostMessageResponse = z.object({
   memories: z.array(Memory),
   /** True when this client_id was already processed (safe retry). */
   duplicate: z.boolean(),
+  /** Today's AI allowance after this message (limit null = unlimited). Absent on retries. */
+  ai_allowance: AiAllowance.optional(),
 });
 export type PostMessageResponse = z.infer<typeof PostMessageResponse>;
+
+/** GET /billing/offers — what the paywall may show right now. */
+export const BillingOffersResponse = z.object({ founders_left: z.number().int().nonnegative() });
+export type BillingOffersResponse = z.infer<typeof BillingOffersResponse>;
+
+/** GET /me/referral — the user's invite code and the Pro days it has earned. */
+export const ReferralResponse = z.object({
+  code: z.string(),
+  /** Pro days earned this calendar month (7 per friend, at most 28). */
+  days_this_month: z.number().int().nonnegative(),
+  max_days_per_month: z.number().int().positive(),
+});
+export type ReferralResponse = z.infer<typeof ReferralResponse>;
+
+/** POST /referrals/claim — a new user says who invited them (once, in their first week). */
+export const ClaimReferralRequest = z.object({ code: z.string().trim().min(4).max(16) });
+export type ClaimReferralRequest = z.infer<typeof ClaimReferralRequest>;
 
 /** GET /messages?after=<iso>&limit=<n> — pull messages (e.g. proactive ones) the phone hasn't seen. */
 export const ListMessagesQuery = z.object({

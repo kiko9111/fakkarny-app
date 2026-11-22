@@ -15,6 +15,7 @@ import { itemRoutes } from "./routes/items";
 import { legalRoutes, type LegalOptions } from "./routes/legal";
 import { meRoutes } from "./routes/me";
 import { messageRoutes } from "./routes/messages";
+import { referralRoutes } from "./routes/referrals";
 
 export interface AppDeps {
   /** Omit to run without a database (only /health is served). */
@@ -77,6 +78,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     const billing = deps.billing ?? { requireSubscription: false };
     app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription });
     app.register(billingRoutes, { prisma, authenticate, ...billing });
+    app.register(referralRoutes, { prisma, authenticate, now: deps.now });
     app.register(itemRoutes, { prisma, authenticate });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });

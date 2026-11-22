@@ -6,7 +6,7 @@ import {
   type PostMessageResponse,
 } from "@fakkarni/shared";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
-import { canChat } from "../billing/plan";
+import { dailyAiAllowance } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
 import type { preHandlerAsyncHookHandler } from "fastify";
 import { toWireItem, toWireMemory, toWireMessage } from "../serialize";
@@ -16,7 +16,7 @@ export interface MessageRoutesOptions {
   pipeline: MessagePipeline;
   now?: () => Date;
   authenticate: preHandlerAsyncHookHandler;
-  /** FR-9: lock chatting without the "pro" entitlement (after the free first exchange). */
+  /** Enforce the free plan's daily AI allowance (Pro is unlimited, fair use). */
   requireSubscription?: boolean;
 }
 
@@ -63,14 +63,6 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       return reply.code(200).send(res);
     }
 
-    // FR-9: chat locks when there's no active plan (data stays readable). The phone keeps
-    // the message queued and shows the paywall.
-    if (opts.requireSubscription) {
-      const sent = await prisma.message.count({ where: { userId: user.id, role: "user" } });
-      const access = canChat(user, sent, now());
-      if (!access.ok) return reply.code(402).send({ error: access.reason });
-    }
-
     // The phone's timestamp is when the user wrote it (it may have been offline), but the
     // conversation is ordered by arrival: never before the last stored message (e.g. the
     // friend's previous reply) and never in the future.
@@ -102,13 +94,16 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       data: { lastUserMessageAt: message.createdAt, ignoredCheckins: 0, slowdownNoticed: false },
     });
 
-    const result = await pipeline({ prisma, user, message, now: now() });
+    // Chat is never locked: free users get a daily AI allowance, then a warm Pro nudge.
+    const aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
+    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance });
     const res: PostMessageResponse = {
       message: toWireMessage(message),
       replies: result.replies.map(toWireMessage),
       items: result.items.map(toWireItem),
       memories: result.memories.map(toWireMemory),
       duplicate: false,
+      ...(result.aiAllowance ? { ai_allowance: result.aiAllowance } : {}),
     };
     return reply.code(201).send(res);
   });

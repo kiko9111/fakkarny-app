@@ -7,12 +7,16 @@ export interface PipelineInput {
   message: Message;
   /** Current instant (injected for tests). */
   now: Date;
+  /** AI messages allowed today (free plan); null or absent = unlimited (Pro, or not enforced). */
+  aiAllowance?: number | null;
 }
 
 export interface PipelineResult {
   replies: Message[];
   items: Item[];
   memories: Memory[];
+  /** Today's AI allowance after this message, when one applies. */
+  aiAllowance?: { limit: number | null; used: number };
 }
 
 /** Runs after a user message is stored: decides the friend's reply and what to remember. */

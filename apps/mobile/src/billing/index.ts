@@ -1,7 +1,8 @@
 import { Platform } from "react-native";
 import Purchases, { type PurchasesPackage } from "react-native-purchases";
 import { PRO_ENTITLEMENT } from "@fakkarni/shared";
-import { getMe, refreshPlan } from "@/lib/api";
+import { getBillingOffers, getMe, refreshPlan } from "@/lib/api";
+import { arrangeOptions, planKind, type PlanKind } from "./options";
 import { syncQueue } from "@/sync";
 
 /**
@@ -27,21 +28,26 @@ export async function ensurePurchases(): Promise<boolean> {
 
 export interface PlanOption {
   pkg: PurchasesPackage;
-  kind: "monthly" | "yearly";
+  kind: PlanKind;
   price: string;
   hasTrial: boolean;
 }
 
+/** Every package in the current offering (Pro, Family, founders' offer), in display order. */
 export async function getPlanOptions(): Promise<PlanOption[]> {
   if (!(await ensurePurchases())) return [];
   const offerings = await Purchases.getOfferings();
   const current = offerings.current;
   if (!current) return [];
-  const opts: PlanOption[] = [];
-  for (const [kind, pkg] of [["yearly", current.annual], ["monthly", current.monthly]] as const) {
-    if (pkg) opts.push({ pkg, kind, price: pkg.product.priceString, hasTrial: Boolean(pkg.product.introPrice) });
-  }
-  return opts;
+  const opts: PlanOption[] = current.availablePackages.map((pkg) => ({
+    pkg,
+    kind: planKind(pkg.product.identifier),
+    price: pkg.product.priceString,
+    hasTrial: Boolean(pkg.product.introPrice),
+  }));
+  // If the server can't be reached, don't offer a deal that may be sold out.
+  const foundersLeft = opts.some((o) => o.kind === "founders") ? await getBillingOffers().then((o) => o.founders_left).catch(() => 0) : 0;
+  return arrangeOptions(opts, foundersLeft);
 }
 
 /** After the store confirms, ask the server to refresh the plan, then send anything queued. */

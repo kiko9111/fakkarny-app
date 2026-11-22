@@ -9,6 +9,7 @@ import {
   MessageKind,
   MessageRole,
   Plan,
+  PlanTier,
   Platform,
   Tone,
 } from "./enums";
@@ -36,6 +37,11 @@ export const User = z.object({
   ignored_checkins: z.number().int().nonnegative(),
   plan: Plan,
   plan_expires_at: Instant.nullable(),
+  plan_tier: PlanTier,
+  /** Pro days earned by inviting friends run until this instant. */
+  bonus_pro_until: Instant.nullable(),
+  /** True when Pro features are unlocked right now (paid plan or invite days). */
+  pro: z.boolean(),
   always_direct: z.boolean(),
   created_at: Instant,
   last_active_at: Instant.nullable(),
