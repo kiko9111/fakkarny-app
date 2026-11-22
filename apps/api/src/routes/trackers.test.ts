@@ -101,6 +101,29 @@ describe.skipIf(!hasTestDb)("trackers", () => {
     expect(await trackerFastPath(prisma, await user(id), "صرفت 300 على البقالة", "arabic", clock)).toBeNull();
   });
 
+  it("gives the Ramadan pack for free in season, outside the one-tracker limit", async () => {
+    const { h, id } = await signedIn();
+    await post(h, "/trackers", { kind: "prayer" });
+    // Outside the season there is no pack.
+    expect((await list(h)).ramadan_pack).toBe("off");
+    expect((await post(h, "/trackers/ramadan-pack")).json()).toEqual({ error: "not_in_season" });
+
+    clock = new Date("2027-02-10T10:00:00Z");
+    expect((await list(h)).ramadan_pack).toBe("available");
+    expect((await post(h, "/trackers/ramadan-pack")).statusCode).toBe(204);
+    const after = await list(h);
+    // The prayer tracker they already had is kept; the other three are added as pack trackers.
+    expect(after.trackers.map((t) => [t.kind, t.pack])).toEqual([["prayer", null], ["fasting", "ramadan"], ["quran", "ramadan"], ["charity", "ramadan"]]);
+    expect(after).toMatchObject({ ramadan_pack: "added", limit: 1 });
+    expect((await post(h, "/trackers/ramadan-pack")).statusCode).toBe(204); // again: nothing new
+    expect((await list(h)).trackers).toHaveLength(4);
+    // Still only one tracker of their own on the free plan.
+    expect((await post(h, "/trackers", { kind: "water" })).statusCode).toBe(402);
+
+    expect((await trackerFastPath(prisma, await user(id), "صمت النهارده", "arabic", clock))!.text).toContain("الصيام 🌙");
+    expect((await trackerFastPath(prisma, await user(id), "اتصدقت بـ 50 جنيه", "arabic", clock))!.text).toContain("سجّلت 50 جنيه في الصدقة 🤍");
+  });
+
   it("keeps running totals for money trackers", async () => {
     const { h, id } = await signedIn();
     await prisma.user.update({ where: { id }, data: { bonusProUntil: new Date("2026-12-01T00:00:00Z") } });

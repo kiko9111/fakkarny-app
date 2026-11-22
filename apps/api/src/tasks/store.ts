@@ -34,12 +34,15 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
 }
 
 /** Zaki's circle posts, written for this reader. Names come from the people as they are now. */
-export async function wirePosts(db: Db, posts: CirclePost[], lang: Lang): Promise<WirePost[]> {
+export async function wirePosts(db: Db, posts: CirclePost[], lang: Lang, viewerId?: string): Promise<WirePost[]> {
+  // The viewer's own answers to invitations (an rsvp post keeps the invitation's id in targetId).
+  const mine = new Map(posts.filter((p) => p.event.startsWith("rsvp:") && p.actorId === viewerId && p.targetId).map((p) => [p.targetId!, p.event === "rsvp:yes"]));
   const ids = [...new Set(posts.flatMap((p) => [p.actorId, p.targetId]).filter((id): id is string => Boolean(id)))];
   const names = new Map((await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   return posts.flatMap((p) => {
     const text = postLine(lang, p.event, p.actorId ? names.get(p.actorId) : null, p.targetId ? names.get(p.targetId) : null, p.title);
-    return text ? [{ id: p.id, text, created_at: p.createdAt.toISOString() }] : [];
+    const iftar = p.event === "iftar";
+    return text ? [{ id: p.id, text, created_at: p.createdAt.toISOString(), kind: iftar ? ("iftar" as const) : null, my_rsvp: iftar ? mine.get(p.id) ?? null : null }] : [];
   });
 }
 

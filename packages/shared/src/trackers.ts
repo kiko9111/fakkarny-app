@@ -6,7 +6,7 @@ import { z } from "zod";
  */
 const Instant = z.iso.datetime({ offset: true });
 
-export const TrackerKind = z.enum(["water", "prayer", "gym", "quran", "medicine", "study", "spending", "savings", "custom"]);
+export const TrackerKind = z.enum(["water", "prayer", "gym", "quran", "medicine", "study", "spending", "savings", "fasting", "charity", "custom"]);
 export type TrackerKind = z.infer<typeof TrackerKind>;
 export const TrackerUnit = z.enum(["count", "money"]);
 export type TrackerUnit = z.infer<typeof TrackerUnit>;
@@ -24,8 +24,22 @@ export const TRACKER_TEMPLATES: Record<TrackerKind, { unit: TrackerUnit; goal: n
   study: { unit: "count", goal: 1, step: 1, cumulative: false },
   spending: { unit: "money", goal: null, step: 0, cumulative: false },
   savings: { unit: "money", goal: null, step: 0, cumulative: true },
+  fasting: { unit: "count", goal: 1, step: 1, cumulative: false },
+  charity: { unit: "money", goal: null, step: 0, cumulative: true },
   custom: { unit: "count", goal: 1, step: 1, cumulative: false },
 };
+
+/**
+ * Ramadan pack: these four trackers are a gift during the season and never count against
+ * the free limit. The window opens two weeks early and is generous at both ends, because
+ * the month starts on the moon sighting. Add next year's window before it comes.
+ */
+export const RAMADAN_PACK: TrackerKind[] = ["fasting", "prayer", "quran", "charity"];
+export const RAMADAN_SEASONS: { from: string; to: string }[] = [{ from: "2027-01-25", to: "2027-03-12" }];
+export function isRamadanSeason(now: Date): boolean {
+  const day = now.toISOString().slice(0, 10);
+  return RAMADAN_SEASONS.some((s) => day >= s.from && day <= s.to);
+}
 
 /** Trackers a free user may keep. Pro: no limit. */
 export const FREE_TRACKERS = 1;
@@ -45,6 +59,8 @@ export const Tracker = z.object({
   total: z.number(),
   /** Days in a row (ending today or yesterday) that met the daily goal. 0 for money trackers. */
   streak: z.number().int().nonnegative(),
+  /** Set for trackers that came with a seasonal pack (they do not count against the free limit). */
+  pack: z.enum(["ramadan"]).nullable().default(null),
   created_at: Instant,
 });
 export type Tracker = z.infer<typeof Tracker>;
@@ -65,5 +81,7 @@ export const ListTrackersResponse = z.object({
   trackers: z.array(Tracker),
   /** How many trackers this user may keep; null = no limit (Pro). */
   limit: z.number().int().nullable(),
+  /** "available" during the season until the user adds it; "off" outside the season. */
+  ramadan_pack: z.enum(["available", "added", "off"]).default("off"),
 });
 export type ListTrackersResponse = z.infer<typeof ListTrackersResponse>;

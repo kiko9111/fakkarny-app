@@ -5,7 +5,7 @@ import type { Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
 import { t } from "@/i18n";
-import { deleteTracker, listTrackers, logTracker, undoTracker } from "@/lib/api";
+import { addRamadanPack, deleteTracker, listTrackers, logTracker, undoTracker } from "@/lib/api";
 import { colors } from "@/lib/theme";
 import { canAdd, formatNumber, progress, weekBars } from "@/trackers/logic";
 
@@ -13,6 +13,7 @@ import { canAdd, formatNumber, progress, weekBars } from "@/trackers/logic";
 export default function TrackersScreen() {
   const [trackers, setTrackers] = useState<Tracker[]>([]);
   const [limit, setLimit] = useState<number | null>(1);
+  const [ramadan, setRamadan] = useState<"available" | "added" | "off">("off");
   const [state, setState] = useState<"loading" | "ready" | "offline">("loading");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -21,6 +22,7 @@ export default function TrackersScreen() {
       const res = await listTrackers();
       setTrackers(res.trackers);
       setLimit(res.limit);
+      setRamadan(res.ramadan_pack);
       setState("ready");
     } catch {
       setState((s) => (s === "ready" ? s : "offline"));
@@ -33,7 +35,8 @@ export default function TrackersScreen() {
   );
 
   const replace = (next: Tracker) => setTrackers((all) => all.map((x) => (x.id === next.id ? next : x)));
-  const add = () => (canAdd(trackers.length, limit) ? router.push("/tracker/new") : router.push("/paywall"));
+  const own = trackers.filter((x) => !x.pack).length;
+  const add = () => (canAdd(own, limit) ? router.push("/tracker/new") : router.push("/paywall"));
 
   return (
     <ScrollView
@@ -53,6 +56,20 @@ export default function TrackersScreen() {
       <Pressable style={styles.sessionCard} onPress={() => router.push("/session")} accessibilityRole="button">
         <Text style={styles.sessionText}>{t.session.entry}</Text>
       </Pressable>
+      {ramadan === "available" ? (
+        <Pressable
+          style={styles.sessionCard}
+          onPress={() =>
+            void addRamadanPack()
+              .then(load)
+              .catch(() => Alert.alert(t.trackers.failed))
+          }
+          accessibilityRole="button"
+        >
+          <Text style={styles.sessionText}>{t.ramadan.addPack}</Text>
+          <Text style={styles.hint}>{t.ramadan.packHint}</Text>
+        </Pressable>
+      ) : null}
       {state === "offline" ? <Text style={styles.empty}>{t.trackers.offline}</Text> : null}
       {state === "ready" && trackers.length === 0 ? <Text style={styles.empty}>{t.trackers.empty}</Text> : null}
       {trackers.map((tr) => (
@@ -60,7 +77,7 @@ export default function TrackersScreen() {
       ))}
       {state === "ready" ? (
         <Pressable style={styles.add} onPress={add} accessibilityRole="button">
-          <Text style={styles.addText}>{canAdd(trackers.length, limit) ? t.trackers.add : t.trackers.addPro}</Text>
+          <Text style={styles.addText}>{canAdd(own, limit) ? t.trackers.add : t.trackers.addPro}</Text>
         </Pressable>
       ) : null}
       {state === "ready" && trackers.length > 0 ? <Text style={styles.hint}>{t.trackers.chatHint}</Text> : null}

@@ -1,14 +1,14 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { checkinOrder, FamilyRole, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember } from "@fakkarni/shared";
+import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember } from "@fakkarni/shared";
 import { ItemRow, SectionTitle } from "@/components/ItemRow";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t } from "@/i18n";
-import { askCheckin, checkIn, createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { colors } from "@/lib/theme";
-import { sortTasks } from "@/tasks/logic";
+import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
 
 const confirm = (message: string, onYes: () => void) =>
@@ -92,6 +92,14 @@ export default function CircleScreen() {
       Alert.alert(t.circles.failed);
     }
   };
+  const iftar = (pick: IftarDay) => void act(async () => (await inviteToIftar(id, iftarDate(pick, new Date())), Alert.alert(t.ramadan.sent)), false);
+  // Three choices fit an Android alert.
+  const askIftarDay = () =>
+    Alert.alert(t.ramadan.iftarWhen, undefined, [
+      { text: t.ramadan.days.today, onPress: () => iftar("today") },
+      { text: t.ramadan.days.tomorrow, onPress: () => iftar("tomorrow") },
+      { text: t.ramadan.days.friday, onPress: () => iftar("friday") },
+    ]);
   const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 
   if (!circle) {
@@ -148,11 +156,27 @@ export default function CircleScreen() {
         <TaskCard key={task.id} task={task} onChanged={() => void load()} />
       ))}
 
+      {isRamadanSeason(new Date()) && circle.members.length > 1 ? (
+        <Pressable style={styles.ask} onPress={askIftarDay} accessibilityRole="button">
+          <Text style={styles.askText}>{t.ramadan.iftar}</Text>
+        </Pressable>
+      ) : null}
+
       {feed.posts.length ? <SectionTitle>{t.tasks.zakiTitle}</SectionTitle> : null}
       {feed.posts.slice(0, 20).map((p) => (
         <View key={p.id} style={styles.post}>
           <Text style={styles.postBy}>🌟 {t.tasks.zaki}</Text>
           <Text style={styles.postText}>{p.text}</Text>
+          {p.kind === "iftar" ? (
+            <View style={styles.chips}>
+              <Pressable style={[styles.chip, p.my_rsvp === true && styles.chipOn]} onPress={() => void act(() => answerInvite(id, p.id, true), false)} accessibilityRole="button">
+                <Text style={[styles.chipText, p.my_rsvp === true && styles.chipTextOn]}>{t.ramadan.going}</Text>
+              </Pressable>
+              <Pressable style={[styles.chip, p.my_rsvp === false && styles.chipOn]} onPress={() => void act(() => answerInvite(id, p.id, false), false)} accessibilityRole="button">
+                <Text style={[styles.chipText, p.my_rsvp === false && styles.chipTextOn]}>{t.ramadan.notGoing}</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       ))}
 

@@ -182,6 +182,39 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect(ListTasksResponse.parse((await app.inject({ method: "GET", url: "/tasks", headers: ahmed })).json()).tasks).toEqual([]);
   });
 
+  it("posts an iftar invitation the circle can answer, once per person", async () => {
+    const mona = await signedIn("منى");
+    const ahmed = await signedIn("Ahmed", { language: "en" });
+    const circleId = await circleOf(mona, ahmed);
+    await prisma.device.create({ data: { userId: mona.id, platform: "android", pushToken: "ExponentPushToken[mona]" } });
+    await prisma.device.create({ data: { userId: ahmed.id, platform: "android", pushToken: "ExponentPushToken[ahmed]" } });
+
+    const made = await post(mona, `/circles/${circleId}/iftar`, { on: "2027-02-12", note: "عندنا في البيت" });
+    expect(made.statusCode).toBe(201);
+    const inviteId = (made.json() as { id: string }).id;
+    await flush();
+    expect(pushed.map((p) => p.to)).toEqual(["ExponentPushToken[ahmed]"]);
+    expect(pushed[0]!.body).toBe("البيت: Iftar invitation from منى: Friday 12 February 🌙 (عندنا في البيت) Who's coming?");
+
+    const forAhmed = (await feed(ahmed, circleId)).posts;
+    expect(forAhmed).toMatchObject([{ id: inviteId, kind: "iftar", my_rsvp: null }]);
+    expect((await feed(mona, circleId)).posts[0]!.text).toContain("عزومة فطار من منى:");
+
+    clock = new Date("2026-11-22T10:05:00Z");
+    expect((await post(ahmed, `/circles/${circleId}/posts/${inviteId}/rsvp`, { going: true })).statusCode).toBe(204);
+    await flush();
+    expect(pushed.at(-1)).toMatchObject({ to: "ExponentPushToken[mona]", body: "Ahmed: جاي إن شاء الله ✋" });
+    // Changing the answer replaces it instead of adding a second line.
+    expect((await post(ahmed, `/circles/${circleId}/posts/${inviteId}/rsvp`, { going: false })).statusCode).toBe(204);
+    const after = (await feed(ahmed, circleId)).posts;
+    expect(after.map((p) => p.text)).toEqual(["Ahmed: I can't make it this time 💛", expect.stringContaining("Iftar invitation from منى")]);
+    expect(after[1]).toMatchObject({ kind: "iftar", my_rsvp: false });
+
+    const stranger = await signedIn("غريب");
+    expect((await post(stranger, `/circles/${circleId}/posts/${inviteId}/rsvp`, { going: true })).statusCode).toBe(404);
+    expect((await post(mona, `/circles/${circleId}/iftar`, { on: "next friday" })).statusCode).toBe(400);
+  });
+
   it("refuses people outside the circle, yourself, and empty titles", async () => {
     const mona = await signedIn("منى");
     const ahmed = await signedIn("أحمد");

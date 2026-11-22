@@ -19,6 +19,9 @@ describe("tracker chat rules", () => {
     expect(log("صرفت 300 على البقالة")).toEqual({ kind: "spending", amount: 300 });
     expect(log("paid 1,200 for groceries")).toEqual({ kind: "spending", amount: 1200 });
     expect(log("حوشت 500")).toEqual({ kind: "savings", amount: 500 });
+    expect(log("صمت النهارده")).toEqual({ kind: "fasting", amount: 1 });
+    expect(log("اتصدقت بـ 50 جنيه")).toEqual({ kind: "charity", amount: 50 });
+    expect(log("donated 100 today")).toEqual({ kind: "charity", amount: 100 });
   });
 
   it("leaves plans, reminders, questions, negations and debts to the model", () => {
