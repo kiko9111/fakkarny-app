@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect, router, Stack, useLocalSearchParams } from "expo-router";
 import type { DaftarEntry } from "@fakkarni/shared";
 import { DaftarCard } from "@/daftar/DaftarCard";
 import { t } from "@/i18n";
 import { openDaftar } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
-import { colors } from "@/lib/theme";
+import { EmptyState, palette, plain, space } from "@/ui";
 
 /** Opened from a Daftar link (fakkarni://daftar/CODE): the entry appears in this person's Daftar. */
 export default function OpenDaftarScreen() {
@@ -30,14 +30,13 @@ export default function OpenDaftarScreen() {
   return (
     <View style={styles.page}>
       <Stack.Screen options={{ title: t.daftar.title }} />
-      {!entry && !failed ? <ActivityIndicator color={colors.accent} /> : null}
-      {failed ? <Text style={styles.body}>{t.daftar.notFound}</Text> : null}
+      {!entry && !failed ? <ActivityIndicator color={palette.primary} /> : null}
+      {failed ? <EmptyState title={plain(t.daftar.notFound)} /> : null}
       {entry ? <DaftarCard entry={entry} onChanged={() => router.replace("/money")} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg, padding: 16, gap: 12, justifyContent: "center" },
-  body: { fontSize: 15, color: colors.muted, textAlign: "center" },
+  page: { flex: 1, backgroundColor: palette.bg, padding: space.lg, gap: space.md, justifyContent: "center" },
 });

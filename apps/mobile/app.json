@@ -55,7 +55,13 @@
       "expo-web-browser",
       "expo-sharing",
       "expo-apple-authentication",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Zaki only reads the one contact you pick, to fill in their name."
+        }
+      ]
     ],
     "scheme": "fakkarni",
     "locales": {

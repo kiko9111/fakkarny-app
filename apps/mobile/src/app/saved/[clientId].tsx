@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { getMessage, setSaved, upsertItem } from "@/db/messages";
 import type { SavedSummary } from "@/db/saved";
-import { t } from "@/i18n";
+import { t, dateLocale } from "@/i18n";
 import { deleteMemory, patchItem } from "@/lib/api";
-import { colors } from "@/lib/theme";
 import { messagesChanged } from "@/sync";
+import { Button, Card, IconTile, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /** F2: tapping the "Saved" chip lets the user fix what the friend remembered. */
 export default function SavedScreen() {
@@ -29,45 +29,64 @@ export default function SavedScreen() {
     try {
       await fn();
     } catch {
-      Alert.alert(t.saved.offline);
+      notify(t.saved.offline, "error");
     }
   };
 
   if (!saved) return <Stack.Screen options={{ title: t.saved.title }} />;
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+    <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.saved.title }} />
-      <Text style={styles.hint}>{t.saved.hint}</Text>
+      <Text variant="body" color={palette.inkSoft}>
+        {plain(t.saved.hint)}
+      </Text>
 
       {saved.items.map((item) => (
-        <View key={item.id} style={styles.card}>
-          {editing === item.id ? (
-            <View style={styles.row}>
-              <TextInput style={styles.input} value={draft} onChangeText={setDraft} autoFocus textAlign="start" />
-              <Pressable
-                style={styles.button}
-                onPress={() =>
-                  guard(async () => {
-                    const updated = await patchItem(item.id, { title: draft });
-                    await upsertItem(updated);
-                    await persist({ ...saved, items: saved.items.map((i) => (i.id === item.id ? { ...i, title: updated.title } : i)) });
-                    setEditing(null);
-                  })
-                }
-              >
-                <Text style={styles.buttonText}>{t.saved.save}</Text>
-              </Pressable>
+        <Card key={item.id} style={styles.card}>
+          <View style={styles.head}>
+            <IconTile name="alarm-outline" size={40} />
+            <View style={styles.flex}>
+              {editing === item.id ? (
+                <TextField value={draft} onChangeText={setDraft} autoFocus />
+              ) : (
+                <>
+                  <Text variant="bodyStrong">{item.title}</Text>
+                  {item.due_at ? (
+                    <Text variant="small" color={palette.inkSoft}>
+                      {new Date(item.due_at).toLocaleString(dateLocale)}
+                    </Text>
+                  ) : null}
+                </>
+              )}
             </View>
-          ) : (
-            <>
-              <Text style={styles.title}>{item.title}</Text>
-              {item.due_at ? <Text style={styles.meta}>{new Date(item.due_at).toLocaleString()}</Text> : null}
-              <View style={styles.row}>
-                <Pressable onPress={() => (setEditing(item.id), setDraft(item.title))}>
-                  <Text style={styles.link}>{t.saved.rename}</Text>
-                </Pressable>
-                <Pressable
+          </View>
+          <View style={styles.actions}>
+            {editing === item.id ? (
+              <>
+                <Button kind="text" size="sm" label={t.ui.cancel} onPress={() => setEditing(null)} />
+                <Button
+                  size="sm"
+                  label={t.saved.save}
+                  disabled={!draft.trim()}
+                  onPress={() =>
+                    guard(async () => {
+                      const updated = await patchItem(item.id, { title: draft.trim() });
+                      await upsertItem(updated);
+                      await persist({ ...saved, items: saved.items.map((i) => (i.id === item.id ? { ...i, title: updated.title } : i)) });
+                      setEditing(null);
+                    })
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <Button kind="text" size="sm" icon="create-outline" label={t.saved.rename} onPress={() => (setEditing(item.id), setDraft(item.title))} />
+                <Button
+                  kind="text"
+                  size="sm"
+                  icon="trash-outline"
+                  label={t.saved.remove}
                   onPress={() =>
                     guard(async () => {
                       const updated = await patchItem(item.id, { status: "cancelled" });
@@ -75,48 +94,50 @@ export default function SavedScreen() {
                       await persist({ ...saved, items: saved.items.filter((i) => i.id !== item.id) });
                     })
                   }
-                >
-                  <Text style={[styles.link, styles.danger]}>{t.saved.remove}</Text>
-                </Pressable>
-              </View>
-            </>
-          )}
-        </View>
+                />
+              </>
+            )}
+          </View>
+        </Card>
       ))}
 
       {saved.memories.map((m) => (
-        <View key={m.id} style={styles.card}>
-          <Text style={styles.meta}>{t.saved.memory}</Text>
-          <Text style={styles.title}>
-            {m.subject}: {m.content}
-          </Text>
-          <Pressable
-            onPress={() =>
-              guard(async () => {
-                await deleteMemory(m.id);
-                await persist({ ...saved, memories: saved.memories.filter((x) => x.id !== m.id) });
-              })
-            }
-          >
-            <Text style={[styles.link, styles.danger]}>{t.saved.remove}</Text>
-          </Pressable>
-        </View>
+        <Card key={m.id} style={styles.card}>
+          <View style={styles.head}>
+            <IconTile name="bookmark-outline" size={40} color={palette.calm} bg={palette.calmSoft} />
+            <View style={styles.flex}>
+              <Text variant="caption" color={palette.inkSoft}>
+                {plain(t.saved.memory)}
+              </Text>
+              <Text variant="bodyStrong">
+                {m.subject}: {m.content}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.actions}>
+            <Button
+              kind="text"
+              size="sm"
+              icon="trash-outline"
+              label={t.saved.remove}
+              onPress={() =>
+                guard(async () => {
+                  await deleteMemory(m.id);
+                  await persist({ ...saved, memories: saved.memories.filter((x) => x.id !== m.id) });
+                })
+              }
+            />
+          </View>
+        </Card>
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 12 },
-  hint: { color: colors.muted },
-  card: { backgroundColor: "#fff", borderRadius: 14, padding: 14, gap: 6 },
-  title: { fontSize: 16, color: colors.text },
-  meta: { fontSize: 13, color: colors.muted },
-  row: { flexDirection: "row", gap: 16, alignItems: "center" },
-  link: { color: colors.accent, fontWeight: "600" },
-  danger: { color: colors.error },
-  input: { flex: 1, borderWidth: 1, borderColor: "#E5DDD5", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, fontSize: 16 },
-  button: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  buttonText: { color: "#fff", fontWeight: "600" },
+  content: { padding: space.lg, gap: space.md },
+  card: { gap: space.sm },
+  head: { flexDirection: "row", gap: space.md, alignItems: "center" },
+  flex: { flex: 1, gap: 2 },
+  actions: { flexDirection: "row", justifyContent: "flex-end", gap: space.xs },
 });

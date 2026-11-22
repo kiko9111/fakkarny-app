@@ -16,3 +16,5 @@ if (I18nManager.isRTL !== isRTL) {
   I18nManager.allowRTL(isRTL);
   I18nManager.forceRTL(isRTL);
 }
+/** Locale for dates and times: the app's language (Latin digits, like amounts), not the phone's. */
+export const dateLocale = language === "ar-EG" ? "ar-EG-u-nu-latn" : "en-US";
