@@ -165,6 +165,8 @@ model User {
   tasksGiven    CircleTask[] @relation("TaskAssigner")
   tasksTaken    CircleTask[] @relation("TaskAssignee")
   trackers      Tracker[]
+  sessionConsent SessionConsent?
+  reflectSessions ReflectSession[]
 
   @@index([referredById])
   @@map("users")
@@ -440,4 +442,51 @@ model TrackerEntry {
 
   @@index([trackerId, at])
   @@map("tracker_entries")
+}
+
+/// Session (a space to reflect, never called therapy). Sensitive data: its own explicit
+/// consent, its own tables, never read by the chat, memories, summaries or analytics.
+model SessionConsent {
+  userId      String   @id @map("user_id") @db.Uuid
+  version     String
+  // The user confirmed they are 18 or older.
+  adult       Boolean
+  consentedAt DateTime @map("consented_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session_consents")
+}
+
+model ReflectSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  mode      String
+  mood      Int
+  crisis    Boolean   @default(false)
+  startedAt DateTime  @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ReflectMessage[]
+
+  @@index([userId, startedAt])
+  @@map("reflect_sessions")
+}
+
+model ReflectMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  role      String // "user" | "zaki"
+  text      String
+  // One small step Zaki suggested with this message, if any.
+  stepTitle    String?   @map("step_title")
+  stepAt       DateTime? @map("step_at")
+  stepAccepted Boolean   @default(false) @map("step_accepted")
+  createdAt DateTime @map("created_at")
+
+  session ReflectSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("reflect_messages")
 }

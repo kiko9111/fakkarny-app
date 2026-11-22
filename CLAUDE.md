@@ -225,6 +225,23 @@ Rules:
   in" writes one chat line + push to the target, at most once per 3 hours per pair (the
   message client_id carries the time bucket). `checkinOrder` in shared decides button
   order per family type.
+- Session (Zaki M8, "a space to reflect"): routes apps/api/src/routes/session.ts, turn
+  logic apps/api/src/session/store.ts, fixed wording and limits in session/rules.ts, prompt
+  in apps/api/src/persona/session.ts. Rules that must hold:
+  - Never called therapy, in any string or prompt. Every session opens with the template
+    "not a doctor" line. The prompt's SAFETY section is never removed or weakened (same
+    standing as WELLBEING).
+  - Crisis safety net as in the main chat: keyword check on every message, helpline number
+    always in the reply, no step, works even when the model fails. Never blocked by limits.
+  - Sensitive data: own tables (session_consents, reflect_sessions, reflect_messages), own
+    consent (18+ tick and agree tick), DELETE /session wipes it all. Nothing from Session is
+    read by the chat context, memories, summaries, trackers or circles, and event props
+    never carry content or mood. The only thing that leaves is a step title, when the user
+    taps "Remind me".
+  - 18+: anyone with family_role "teen" in any circle is refused.
+  - Off unless SESSION_ENABLED=1 (and a model key is set). Do not turn it on in production
+    before the Session evals have been run and read.
+  - Free: 1 session per 7 days; Pro unlimited; 30 user messages per session.
   Records only: never hold or move money (Central Bank rules).
 - InstaPay: there is no public deep link that pre-fills an amount. Users paste their own
   InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in

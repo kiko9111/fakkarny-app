@@ -50,6 +50,9 @@ export default function TrackersScreen() {
         />
       }
     >
+      <Pressable style={styles.sessionCard} onPress={() => router.push("/session")} accessibilityRole="button">
+        <Text style={styles.sessionText}>{t.session.entry}</Text>
+      </Pressable>
       {state === "offline" ? <Text style={styles.empty}>{t.trackers.offline}</Text> : null}
       {state === "ready" && trackers.length === 0 ? <Text style={styles.empty}>{t.trackers.empty}</Text> : null}
       {trackers.map((tr) => (
@@ -177,6 +180,8 @@ const styles = StyleSheet.create({
   primaryText: { color: "#fff", fontWeight: "700" },
   quiet: { marginStart: "auto", paddingVertical: 8 },
   quietText: { color: colors.muted, fontSize: 13 },
+  sessionCard: { backgroundColor: "#fff", borderRadius: 14, padding: 14 },
+  sessionText: { color: colors.text, fontSize: 15, fontWeight: "600", textAlign: "left" },
   add: { borderWidth: 1, borderColor: colors.accent, borderRadius: 16, paddingVertical: 12, alignItems: "center" },
   addText: { color: colors.accent, fontSize: 16, fontWeight: "700" },
 });

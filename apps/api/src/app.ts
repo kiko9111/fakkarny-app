@@ -22,6 +22,8 @@ import { daftarRoutes } from "./routes/daftar";
 import { daftarPageRoutes } from "./routes/daftar-page";
 import { taskRoutes } from "./routes/tasks";
 import { trackerRoutes } from "./routes/trackers";
+import { sessionRoutes } from "./routes/session";
+import type { FriendModel } from "./ai/model";
 import type { PushSender } from "./proactive/push";
 
 export interface AppDeps {
@@ -37,6 +39,10 @@ export interface AppDeps {
   /** Invite links: where they point, and the store link offered after the web confirm. */
   invites?: { publicUrl?: string; storeUrl?: string };
   billing?: { requireSubscription: boolean; webhookAuth?: string; revenueCatSecretKey?: string; fetchImpl?: typeof fetch };
+  /** The model, for Session turns (the chat gets it through `pipeline`). Session answers with a fallback without it. */
+  model?: FriendModel;
+  /** Session is served only when this is true (SESSION_ENABLED=1). */
+  sessionEnabled?: boolean;
   /** Free push for lines Zaki writes to other people (task requests, nudges). Off when absent. */
   push?: PushSender;
   /** FR-15 dashboard password (HTTP Basic, user "admin"). The dashboard is off without it. */
@@ -96,6 +102,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(taskRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(trackerRoutes, { prisma, authenticate, now: deps.now });
+    app.register(sessionRoutes, { prisma, authenticate, now: deps.now, model: deps.model, enabled: deps.sessionEnabled });
     app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });

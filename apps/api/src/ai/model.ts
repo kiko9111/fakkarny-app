@@ -52,8 +52,19 @@ export type FriendModelResult =
   | { ok: true; output: FriendResponse; usage: Usage }
   | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
 
+/** One Session turn: what Zaki says, whether this is a crisis, and at most one small step. */
+export const SessionTurn = z.object({
+  reply: z.array(z.string()),
+  crisis: z.boolean(),
+  step: z.object({ title: z.string(), remind_at_local: z.string().nullable() }).nullable(),
+});
+export type SessionTurn = z.infer<typeof SessionTurn>;
+export type SessionTurnResult = { ok: true; output: SessionTurn; usage: Usage } | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
+
 export interface FriendModel {
   respond(input: FriendModelInput): Promise<FriendModelResult>;
+  /** A Session turn (apps/api/src/session). Separate prompt, separate output; never creates items or memories. */
+  reflect?(input: { system: string; context: string; history: ChatTurn[] }): Promise<SessionTurnResult>;
   /** Plain-text completion for summaries and proactive messages (no structured output). */
   complete(input: { system: string; prompt: string; maxTokens?: number }): Promise<{ text: string; usage: Usage }>;
 }
@@ -180,6 +191,25 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
         } catch {
           continue;
         }
+      }
+      return { ok: false, reason: "invalid_output", usage };
+    },
+
+    async reflect(input) {
+      let usage = zeroUsage;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await client.messages.parse({
+          model: FRIEND_MODEL,
+          max_tokens: 1200,
+          system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
+          messages: buildMessages(input),
+          output_config: { effort: FRIEND_EFFORT, format: zodOutputFormat(SessionTurn) },
+        });
+        usage = addUsage(usage, toUsage(res.usage));
+        if (res.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
+        if (res.stop_reason === "max_tokens") return { ok: false, reason: "max_tokens", usage };
+        const reply = res.parsed_output ? capReplies(res.parsed_output.reply) : [];
+        if (res.parsed_output && reply.length) return { ok: true, output: { ...res.parsed_output, reply }, usage };
       }
       return { ok: false, reason: "invalid_output", usage };
     },

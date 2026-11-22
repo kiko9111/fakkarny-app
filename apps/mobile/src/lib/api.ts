@@ -1,6 +1,11 @@
 import Constants from "expo-constants";
 import {
   AcceptInviteResponse,
+  SessionMessage,
+  SessionResponse,
+  SessionState,
+  type Session,
+  type StartSessionRequest,
   ListTrackersResponse,
   TrackerResponse,
   type CreateTrackerRequest,
@@ -267,4 +272,35 @@ export async function undoTracker(id: string): Promise<Tracker> {
 
 export async function deleteTracker(id: string): Promise<void> {
   await request(`/trackers/${id}`, { method: "DELETE" });
+}
+
+// Session: a private space to reflect. Online only; nothing is kept on the phone.
+export async function getSessionState(): Promise<SessionState> {
+  return SessionState.parse(await request("/session"));
+}
+
+export async function consentToSession(): Promise<void> {
+  await request("/session/consent", { method: "POST", body: JSON.stringify({ adult: true, agree: true }) });
+}
+
+/** Throws HttpError 402 when the free session of the week is used. */
+export async function startSession(body: StartSessionRequest): Promise<Session> {
+  return SessionResponse.parse(await request("/session/start", { method: "POST", body: JSON.stringify(body) })).session;
+}
+
+export async function sendSessionMessage(id: string, text: string): Promise<{ messages: SessionMessage[]; ended: boolean }> {
+  const res = (await request(`/session/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) })) as { messages?: unknown; ended?: unknown };
+  return { messages: SessionMessage.array().parse(res.messages), ended: res.ended === true };
+}
+
+export async function endSession(id: string): Promise<Session> {
+  return SessionResponse.parse(await request(`/session/${id}/end`, { method: "POST" })).session;
+}
+
+export async function acceptSessionStep(messageId: string): Promise<void> {
+  await request(`/session/steps/${messageId}/remind`, { method: "POST" });
+}
+
+export async function deleteSessionData(): Promise<void> {
+  await request("/session", { method: "DELETE" });
 }
