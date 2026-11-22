@@ -15,6 +15,21 @@ Rules:
 - Paid features check the RevenueCat entitlement "pro".
 - Never log message content.
 - Run `npm test` and `npm run eval` before every commit.
+- Check the installed skills and use any that fit before starting a task.
+
+## Skills, plugins and MCP (shared by every session)
+- Plugins, enabled in .claude/settings.json from their marketplaces: superpowers,
+  task-observer, impeccable, agent-skills (Addy Osmani). Skills copied into .claude/skills/:
+  find-skills, graphify, and seven Strix security-testing skills.
+- Context7 (library docs) is in .mcp.json, keyless (lower rate limit).
+- Strix skills: use their testing checklists only. Do not install the Strix scanner, Docker,
+  or sign up for app.strix.ai.
+- graphify: the skill installs its own CLI (`graphifyy` from PyPI) on first `/graphify`.
+  When graphify-out/graph.json exists, run `graphify query "<question>"` before grepping or
+  reading source for a codebase question, and `graphify update .` after code changes. The
+  hooks in .claude/settings.json do nothing while the CLI is not installed.
+- impeccable's hooks (Edit/Write and Stop) download its checksum-verified engine binary from
+  GitHub releases on first run, into ~/.impeccable.
 
 ## Repo notes (keep current)
 - Brand (owner decision, 2026-11-22): the app and its AI character are **Zaki** (زكي), super
