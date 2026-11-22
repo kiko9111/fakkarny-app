@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { INSTALL_ID_HEADER, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
+import { coveredByFamilyPlan } from "../billing/family";
 import { isValidTimeZone } from "../lib/time";
 import { linkInstallToAccount, type AuthConfig } from "../plugins/auth";
 import { toWireItem, toWireMemory, toWireMessage, toWireUser } from "../serialize";
@@ -22,7 +23,10 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.addHook("preHandler", opts.authenticate);
 
   app.get("/me", async (req) => {
-    const res: MeResponse = { user: toWireUser(req.user) };
+    const user = toWireUser(req.user);
+    // A relative's Family plan also gives Pro.
+    if (!user.pro) user.pro = await coveredByFamilyPlan(prisma, req.user.id, new Date());
+    const res: MeResponse = { user };
     return res;
   });
 

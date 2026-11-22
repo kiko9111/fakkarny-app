@@ -1,28 +1,14 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { ClaimReferralRequest, type MeResponse, type ReferralResponse } from "@fakkarni/shared";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
-import {
-  canClaim,
-  extendBonus,
-  monthStart,
-  newReferralCode,
-  normalizeReferralCode,
-  REFERRAL_MAX_DAYS_PER_MONTH,
-  referralDaysToGrant,
-} from "../billing/referral";
+import { canClaim, newReferralCode, normalizeReferralCode, REFERRAL_MAX_DAYS_PER_MONTH } from "../billing/referral";
+import { referralDaysThisMonth as daysThisMonth, rewardInviter } from "../billing/referral-store";
 import { toWireUser } from "../serialize";
 
 export interface ReferralRoutesOptions {
   prisma: PrismaClient;
   authenticate: preHandlerAsyncHookHandler;
   now?: () => Date;
-}
-
-const REWARD_EVENT = "referral_reward";
-
-async function daysThisMonth(prisma: PrismaClient | Prisma.TransactionClient, userId: string, now: Date): Promise<number> {
-  const rows = await prisma.event.findMany({ where: { userId, name: REWARD_EVENT, createdAt: { gte: monthStart(now) } }, select: { propsJson: true } });
-  return rows.reduce((sum, r) => sum + (Number((r.propsJson as { days?: number }).days) || 0), 0);
 }
 
 /** The user's code, created on first use (retry on the rare collision). */
@@ -63,16 +49,7 @@ export const referralRoutes: FastifyPluginAsync<ReferralRoutesOptions> = async (
     if (!check.ok) return reply.code(check.reason === "unknown_code" ? 404 : 409).send({ error: check.reason });
 
     const user = await prisma.$transaction(async (tx) => {
-      // Guard against a double tap: only the first claim sets referred_by_id.
-      const claimed = await tx.user.updateMany({ where: { id: req.user.id, referredById: null }, data: { referredById: inviter!.id, referralRewardedAt: at } });
-      if (claimed.count === 0) return null;
-      const fresh = await tx.user.findUniqueOrThrow({ where: { id: inviter!.id } });
-      const days = referralDaysToGrant(await daysThisMonth(tx, fresh.id, at));
-      if (days > 0) {
-        await tx.user.update({ where: { id: fresh.id }, data: { bonusProUntil: extendBonus(fresh.bonusProUntil, at, days) } });
-      }
-      // Recorded even at 0 days, so the inviter still sees the friend joined.
-      await tx.event.create({ data: { userId: fresh.id, name: REWARD_EVENT, propsJson: { days }, createdAt: at } });
+      if (!(await rewardInviter(tx, req.user.id, inviter!.id, at))) return null;
       return tx.user.findUniqueOrThrow({ where: { id: req.user.id } });
     });
     if (!user) return reply.code(409).send({ error: "already_claimed" });

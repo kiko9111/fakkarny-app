@@ -165,7 +165,27 @@ Rules:
 - Invite rewards: GET /me/referral (code + days this month), POST /referrals/claim
   {code}. A signed-in user in their first week names their inviter once; the inviter
   gets 7 Pro days, at most 28 per calendar month (apps/api/src/billing/referral.ts).
-  The app UI for it arrives with invite links.
+  Joining a circle through an invite link claims the reward for the inviter too.
+- Circles (Zaki M3): the Friends and Family spaces. Tables circles / circle_members /
+  invites; routes in apps/api/src/routes/circles.ts (members only; owner renames,
+  removes, deletes; when the owner leaves the longest-standing member takes over).
+  Circles are free: the limits in apps/api/src/circles/rules.ts (50 members, 100
+  circles) are abuse guards, not product caps. Circles are server-only, not in SQLite:
+  the Circles tab needs a connection.
+- Invite links: POST /circles/:id/invites returns a multi-use link (valid 30 days, one
+  live link per member per circle) and the WhatsApp text; the phone opens
+  https://wa.me/?text=… so it goes out from the user's own number (never a WhatsApp
+  bot). The link is a public page served by the API, GET /i/:code
+  (apps/api/src/routes/invite-page.ts): confirm first with nothing to install, then
+  the store button (ANDROID_STORE_URL), a fakkarni://invite/CODE deep link and the
+  typeable code. The web tap only counts (`web_confirms`); joining happens in the app
+  (POST /invites/:code/accept, route apps/mobile/src/app/invite/[code].tsx). An invite
+  opened before onboarding is kept in prefs `pending_invite` and resumed after. Set
+  PUBLIC_URL so links use the real domain. The server runs with trustProxy so the
+  public page is rate-limited per visitor.
+- Family plan sharing: a member with an active plan of tier "family" covers the first 6
+  people (payer included, by join time) of each family circle they are in
+  (apps/api/src/billing/family.ts); used for the AI allowance and GET /me `pro`.
 - Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
   keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
   still saved, user told once), Sentry on API and app with all content collection off,

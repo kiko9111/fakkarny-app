@@ -42,6 +42,17 @@ enum PlanTier {
   family
 }
 
+// Circles (Zaki M3): the Friends and Family spaces. Personal has no circle.
+enum CircleKind {
+  friends
+  family
+}
+
+enum CircleRole {
+  owner
+  member
+}
+
 enum Platform {
   ios
   android
@@ -126,6 +137,8 @@ model User {
   memories  Memory[]
   summaries Summary[]
   events    Event[]
+  circles   CircleMember[]
+  invitesSent Invite[] @relation("InviteInviter")
 
   @@index([referredById])
   @@map("users")
@@ -236,4 +249,54 @@ model Event {
   @@index([userId, createdAt])
   @@index([name, createdAt])
   @@map("events")
+}
+
+/// A group in the Friends or Family space. Free and unlimited (never cap the shared action).
+model Circle {
+  id          String     @id @default(uuid()) @db.Uuid
+  kind        CircleKind
+  name        String
+  createdById String     @map("created_by_id") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  members CircleMember[]
+  invites Invite[]
+
+  @@map("circles")
+}
+
+model CircleMember {
+  circleId String     @map("circle_id") @db.Uuid
+  userId   String     @map("user_id") @db.Uuid
+  role     CircleRole @default(member)
+  joinedAt DateTime   @default(now()) @map("joined_at")
+
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([circleId, userId])
+  @@index([userId])
+  @@map("circle_members")
+}
+
+/// An invite link sent over WhatsApp. One link can bring in several people (it may be
+/// posted in a family group). The code is in the URL and can also be typed in the app.
+model Invite {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  circleId    String    @map("circle_id") @db.Uuid
+  inviterId   String    @map("inviter_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  // Funnel counters: taps on "confirm" on the web page, and people who joined in the app.
+  webConfirms Int       @default(0) @map("web_confirms")
+  joins       Int       @default(0)
+
+  circle  Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  inviter User   @relation("InviteInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([circleId])
+  @@index([inviterId])
+  @@map("invites")
 }

@@ -97,7 +97,24 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
     await tx.summary.updateMany(move);
     await tx.device.updateMany(move);
     await tx.event.updateMany(move);
+    // Circles: keep memberships the account doesn't already have (the rest go with the install user).
+    const mine = new Set((await tx.circleMember.findMany({ where: { userId: account.id }, select: { circleId: true } })).map((m) => m.circleId));
+    await tx.circleMember.updateMany({ where: { userId: install.id, circleId: { notIn: [...mine] } }, data: { userId: account.id } });
+    await tx.circleMember.updateMany({ where: { userId: account.id, role: "member", circle: { members: { some: { userId: install.id, role: "owner" } } } }, data: { role: "owner" } });
+    await tx.invite.updateMany({ where: { inviterId: install.id }, data: { inviterId: account.id } });
+    await tx.circle.updateMany({ where: { createdById: install.id }, data: { createdById: account.id } });
+    await tx.user.updateMany({ where: { referredById: install.id }, data: { referredById: account.id } });
     await tx.user.delete({ where: { id: install.id } });
-    return tx.user.update({ where: { id: account.id }, data: { name: account.name ?? install.name, lastActiveAt: new Date() } });
+    const bonus = [account.bonusProUntil, install.bonusProUntil].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    return tx.user.update({
+      where: { id: account.id },
+      data: {
+        name: account.name ?? install.name,
+        lastActiveAt: new Date(),
+        bonusProUntil: bonus,
+        referralCode: account.referralCode ?? install.referralCode,
+        referredById: account.referredById ?? (install.referredById === account.id ? null : install.referredById),
+      },
+    });
   });
 }

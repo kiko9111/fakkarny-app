@@ -16,7 +16,7 @@ const Env = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional().transform((v) => v || undefined),
   /** "0" in production once sign-in is required; "1" (default) accepts the phone's install ID. */
   ALLOW_INSTALL_ID: z.enum(["0", "1"]).default("1"),
-  /** "1" (default): chat needs the RevenueCat "pro" entitlement after the free first exchange. */
+  /** "1" (default): free users get a daily AI allowance; "0": unlimited for everyone. */
   REQUIRE_SUBSCRIPTION: z.enum(["0", "1"]).default("1"),
   /** Authorization header value set on the RevenueCat webhook. */
   REVENUECAT_WEBHOOK_AUTH: z.string().optional().transform((v) => v || undefined),
@@ -32,6 +32,10 @@ const Env = z.object({
   LEGAL_CONTACT_EMAIL: z.string().optional().transform((v) => v || undefined),
   /** "1" once a lawyer has reviewed apps/api/src/legal/content.ts; removes the draft notice. */
   LEGAL_REVIEWED: z.enum(["0", "1"]).default("0"),
+  /** Public base URL of this API, used in invite links (e.g. https://zaki.app). Defaults to the request host. */
+  PUBLIC_URL: z.string().url().optional().or(z.literal("").transform(() => undefined)),
+  /** Google Play link shown on the invite page after the web confirm. */
+  ANDROID_STORE_URL: z.string().url().optional().or(z.literal("").transform(() => undefined)),
   EXPO_ACCESS_TOKEN: z.string().optional().transform((v) => v || undefined),
 });
 export type Env = z.infer<typeof Env>;
