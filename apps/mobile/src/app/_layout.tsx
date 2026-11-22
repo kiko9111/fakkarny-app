@@ -22,6 +22,10 @@ export default function RootLayout() {
         <Stack.Screen name="memories" options={{ title: t.memories.title }} />
         <Stack.Screen name="paywall" options={{ presentation: "modal", title: "" }} />
         <Stack.Screen name="saved/[clientId]" options={{ presentation: "modal" }} />
+        <Stack.Screen name="circle/new" options={{ presentation: "modal" }} />
+        <Stack.Screen name="circle/[id]" options={{ title: "" }} />
+        <Stack.Screen name="invite/index" options={{ presentation: "modal", title: t.circles.codeTitle }} />
+        <Stack.Screen name="invite/[code]" options={{ title: "" }} />
       </Stack>
     </>
   );

@@ -16,6 +16,8 @@ import { legalRoutes, type LegalOptions } from "./routes/legal";
 import { meRoutes } from "./routes/me";
 import { messageRoutes } from "./routes/messages";
 import { referralRoutes } from "./routes/referrals";
+import { circleRoutes } from "./routes/circles";
+import { invitePageRoutes } from "./routes/invite-page";
 
 export interface AppDeps {
   /** Omit to run without a database (only /health is served). */
@@ -27,6 +29,8 @@ export interface AppDeps {
   /** Defaults to install-ID identity only (development and tests). */
   auth?: AuthConfig;
   deleteAuthUser?: (sub: string) => Promise<void>;
+  /** Invite links: where they point, and the store link offered after the web confirm. */
+  invites?: { publicUrl?: string; storeUrl?: string };
   billing?: { requireSubscription: boolean; webhookAuth?: string; revenueCatSecretKey?: string; fetchImpl?: typeof fetch };
   /** FR-15 dashboard password (HTTP Basic, user "admin"). The dashboard is off without it. */
   adminPassword?: string;
@@ -79,6 +83,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription });
     app.register(billingRoutes, { prisma, authenticate, ...billing });
     app.register(referralRoutes, { prisma, authenticate, now: deps.now });
+    app.register(circleRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
+    app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(itemRoutes, { prisma, authenticate });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });

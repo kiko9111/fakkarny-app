@@ -11,6 +11,6 @@ export function testPrisma(): PrismaClient {
 
 export async function resetDb(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "events", "summaries", "memories", "items", "messages", "devices", "users" CASCADE',
+    'TRUNCATE TABLE "invites", "circle_members", "circles", "events", "summaries", "memories", "items", "messages", "devices", "users" CASCADE',
   );
 }

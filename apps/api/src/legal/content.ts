@@ -5,7 +5,7 @@
  * DRAFT written from what the code does. It has not been reviewed by a lawyer: the pages
  * show a draft notice until LEGAL_REVIEWED=1. Update LAST_UPDATED with every change.
  */
-export const LAST_UPDATED = "2026-11-20";
+export const LAST_UPDATED = "2026-11-22";
 
 export type LegalLang = "ar" | "en";
 export type LegalDoc = "terms" | "privacy";
@@ -105,6 +105,7 @@ const privacyEn: LegalPage = {
         "- What you write: your messages, and the reminders, tasks, shopping items, notes, money owed and memories Zaki saves from them. These can include details about other people you mention.",
         "- Account details: your email address or phone number, or your Apple or Google account identifier, if you sign in. Without sign-in, a random identifier created on your phone.",
         "- Settings: your name if you give it, language, time zone, wake and sleep times, and tone preference.",
+        "- Circles: the circles you create or join, their names and members. Other members of a circle see your name. Anyone who has an invite link sees the name of the person who sent it and the name of the circle.",
         "- Your phone's notification token, so we can send you messages from Zaki.",
         "- Subscription status from Apple or Google. We never see your card details.",
         "- Technical records: error reports and counts of events such as replies and their cost. These do not contain the text of your messages.",
@@ -247,6 +248,7 @@ const privacyAr: LegalPage = {
         "- اللي بتكتبه: رسائلك، والتذكيرات والمهام وحاجات التسوق والملاحظات والفلوس والذكريات اللي زكي بيحفظها منها. ده ممكن يشمل تفاصيل عن ناس تانية بتذكرهم.",
         "- بيانات الحساب: إيميلك أو رقم موبايلك، أو معرّف حسابك في Apple أو Google، لو دخلت بحساب. من غير حساب، بنستخدم معرّف عشوائي بيتعمل على موبايلك.",
         "- الإعدادات: اسمك لو قلته، اللغة، المنطقة الزمنية، مواعيد الصحيان والنوم، وطريقة الكلام اللي بتفضّلها.",
+        "- الدواير: الدواير اللي بتعملها أو بتدخلها، وأساميها وأفرادها. باقي أفراد الدايرة بيشوفوا اسمك. وأي حد معاه لينك الدعوة بيشوف اسم اللي بعته واسم الدايرة.",
         "- رمز الإشعارات بتاع موبايلك، عشان نبعتلك رسائل زكي.",
         "- حالة الاشتراك من Apple أو Google. عمرنا ما بنشوف بيانات الكارت.",
         "- سجلات تقنية: تقارير الأخطاء وأعداد أحداث زي الردود وتكلفتها. السجلات دي مافيهاش نص رسائلك.",

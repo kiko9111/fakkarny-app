@@ -6,6 +6,7 @@ import {
   type PostMessageResponse,
 } from "@fakkarni/shared";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
+import { coveredByFamilyPlan } from "../billing/family";
 import { dailyAiAllowance } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
 import type { preHandlerAsyncHookHandler } from "fastify";
@@ -95,7 +96,8 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     });
 
     // Chat is never locked: free users get a daily AI allowance, then a warm Pro nudge.
-    const aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
+    let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
+    if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
     const result = await pipeline({ prisma, user, message, now: now(), aiAllowance });
     const res: PostMessageResponse = {
       message: toWireMessage(message),

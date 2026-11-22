@@ -1,6 +1,14 @@
 import Constants from "expo-constants";
 import {
+  AcceptInviteResponse,
   BillingOffersResponse,
+  CircleResponse,
+  CreateInviteResponse,
+  InvitePreview,
+  ListCirclesResponse,
+  type Circle,
+  type CircleDetail,
+  type CircleKind,
   HealthResponse,
   INSTALL_ID_HEADER,
   ExportResponse,
@@ -120,4 +128,38 @@ export async function refreshPlan(): Promise<User> {
 
 export async function getBillingOffers(): Promise<BillingOffersResponse> {
   return BillingOffersResponse.parse(await request("/billing/offers"));
+}
+
+// Circles (Friends and Family spaces). These need a connection: they are shared records.
+export async function listCircles(): Promise<Circle[]> {
+  return ListCirclesResponse.parse(await request("/circles")).circles;
+}
+
+export async function createCircle(kind: CircleKind, name: string): Promise<CircleDetail> {
+  return CircleResponse.parse(await request("/circles", { method: "POST", body: JSON.stringify({ kind, name }) })).circle;
+}
+
+export async function getCircle(id: string): Promise<CircleDetail> {
+  return CircleResponse.parse(await request(`/circles/${id}`)).circle;
+}
+
+export async function deleteCircle(id: string): Promise<void> {
+  await request(`/circles/${id}`, { method: "DELETE" });
+}
+
+/** Remove a member, or leave when `userId` is your own. */
+export async function removeCircleMember(id: string, userId: string): Promise<void> {
+  await request(`/circles/${id}/members/${userId}`, { method: "DELETE" });
+}
+
+export async function createInvite(circleId: string): Promise<CreateInviteResponse> {
+  return CreateInviteResponse.parse(await request(`/circles/${circleId}/invites`, { method: "POST" }));
+}
+
+export async function previewInvite(code: string): Promise<InvitePreview> {
+  return InvitePreview.parse(await request(`/invites/${encodeURIComponent(code)}`));
+}
+
+export async function acceptInvite(code: string): Promise<CircleDetail> {
+  return AcceptInviteResponse.parse(await request(`/invites/${encodeURIComponent(code)}/accept`, { method: "POST" })).circle;
 }

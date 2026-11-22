@@ -14,7 +14,9 @@ const model = env.ANTHROPIC_API_KEY ? createAnthropicModel({ apiKey: env.ANTHROP
 const supabaseUrl = env.SUPABASE_URL;
 const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
 const app = buildApp(
-  { logger: { level: env.LOG_LEVEL, redact: LOG_REDACT } },
+  // Behind the host's proxy (Railway): take the caller's IP and protocol from its headers,
+  // so the public invite page is rate-limited per visitor and invite links are https.
+  { logger: { level: env.LOG_LEVEL, redact: LOG_REDACT }, trustProxy: true },
   {
     prisma,
     pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
@@ -22,6 +24,7 @@ const app = buildApp(
     adminPassword: env.ADMIN_PASSWORD,
     legal: { operator: env.LEGAL_OPERATOR, contactEmail: env.LEGAL_CONTACT_EMAIL, reviewed: env.LEGAL_REVIEWED === "1" },
     sentry,
+    invites: { publicUrl: env.PUBLIC_URL, storeUrl: env.ANDROID_STORE_URL },
     billing: {
       requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
       webhookAuth: env.REVENUECAT_WEBHOOK_AUTH,
