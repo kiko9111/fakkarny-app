@@ -126,6 +126,32 @@ export function looksLikeCrisis(text: string): boolean {
   return CRISIS_PATTERNS.some((re) => re.test(text) || re.test(folded));
 }
 
+/**
+ * A wider net than the crisis keywords: signs of distress that must reach Zaki even when the
+ * free AI allowance is used up (the model then decides whether it is a crisis). Never used to
+ * add the helpline by itself, only to make sure the message is answered by a caring reply.
+ */
+const DISTRESS_PATTERNS: RegExp[] = [
+  /\b(depress\w*|hopeless|worthless|can'?t go on|can'?t take (it|this) anymore|give up on (everything|life)|nobody cares|no one cares|so alone|all alone|falling apart|panic attack|breaking down|i'?m not ok(ay)?)\b/i,
+  /(مكتئب|اكتئاب|مخنوق|مخنوقه|يائس|يائسه|مش قادر اكمل|مش قادره اكمل|مبقتش قادر|مبقتش قادره|تعبت من كل حاجه|تعبت من حياتي|زهقت من حياتي|زهقت من نفسي|محدش حاسس بيا|محدش بيحبني|لوحدي خالص|ملوش لازمه|ماليش لازمه|مليش لازمه|مفيش فايده|انهرت|منهار|منهاره|نوبه هلع|مش كويس خالص|مش كويسه خالص|حياتي وحشه)/,
+  /\b(mekte2eb|mekta2eb|ekte2ab|m5no2|ma5no2|makhno2|mesh 2ader akamel|msh 2ader akamel|zh2t men hayaty|ma7adsh 7ases beya)\b/i,
+];
+
+/** Distress signal (includes every crisis keyword). */
+export function looksDistressed(text: string): boolean {
+  const folded = foldArabic(text).replace(/ة/g, "ه").replace(/ى/g, "ي");
+  return looksLikeCrisis(text) || DISTRESS_PATTERNS.some((re) => re.test(text) || re.test(folded));
+}
+
+/**
+ * Reminder work stays free past the AI allowance: asking for a reminder, and the Done / Later
+ * lines the notification buttons send ("خلصت «…» ✅", "فكرني بـ«…» كمان ساعة").
+ */
+const REMINDER_WORK = /(فكرني|فكريني|فكّرني|فكّريني|ذكرني|ذكريني|نبهني|نبهيني|\bremind me\b|\breminder\b|\bfakarny\b|\bfakkarny\b|\bfakarni\b|\bfakkarni\b|خلصت «|^done: )/i;
+export function looksLikeReminderWork(text: string): boolean {
+  return REMINDER_WORK.test(text.trim());
+}
+
 const HELPLINE_LEAD: Record<ReplyLang, string> = {
   arabic: "أنا جنبك. لو حاسس إنك ممكن تأذي نفسك، كلّم حد بتثق فيه دلوقتي، أو اتصل بالخط الساخن:",
   english: "I'm here with you. If you might hurt yourself, please reach out to someone you trust right now, or call:",

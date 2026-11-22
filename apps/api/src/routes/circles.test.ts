@@ -204,9 +204,36 @@ describe.skipIf(!hasTestDb)("circles and invites", () => {
     const send = (h: H) => app.inject({ method: "POST", url: "/messages", headers: h, payload: { client_id: randomUUID(), text: "hello", created_at: clock.toISOString() } });
     expect((await send(kids[0]!)).statusCode).toBe(201);
 
+    // Six people per payer in all, not per circle: joining another family circle covers nobody new.
+    const other = await signedIn("other");
+    const second = await create(other, "family", "عيلة تانية");
+    clock = new Date(clock.getTime() + 60_000);
+    await accept(payer, (await invite(other, second.id)).invite.code);
+    await prisma.user.updateMany({ where: { name: "other" }, data: { bonusProUntil: null, createdAt: new Date("2026-10-01T00:00:00Z") } });
+    expect(await pro(other)).toBe(false);
+    expect(await pro(kids[4]!)).toBe(true);
+
     // A Pro (not Family) payer covers nobody else, and a friends circle is never covered.
     await prisma.user.updateMany({ where: { name: "بابا" }, data: { planTier: "pro" } });
     expect(await pro(kids[0]!)).toBe(false);
+  });
+
+  it("hands owned circles on and removes the user's circle posts when they delete their account", async () => {
+    const owner = await signedIn("owner");
+    const member = await signedIn("member");
+    const circle = await create(owner, "family", "بيتنا");
+    const solo = await create(owner, "friends", "لوحدي");
+    clock = new Date(clock.getTime() + 60_000);
+    await accept(member, (await invite(owner, circle.id)).invite.code);
+    const ownerId = (await prisma.user.findFirstOrThrow({ where: { name: "owner" } })).id;
+    await prisma.circlePost.create({ data: { circleId: circle.id, event: "checkin:ok", actorId: ownerId, title: "وصلت المستشفى" } });
+
+    expect((await app.inject({ method: "DELETE", url: "/me", headers: owner })).statusCode).toBe(204);
+    const memberId = (await prisma.user.findFirstOrThrow({ where: { name: "member" } })).id;
+    expect((await prisma.circleMember.findUniqueOrThrow({ where: { circleId_userId: { circleId: circle.id, userId: memberId } } })).role).toBe("owner");
+    expect(await prisma.circle.findUnique({ where: { id: solo.id } })).toBeNull();
+    expect(await prisma.circlePost.count({ where: { actorId: ownerId } })).toBe(0);
+    expect((await app.inject({ method: "PATCH", url: `/circles/${circle.id}`, headers: member, payload: { name: "بيتنا الجديد" } })).statusCode).toBe(200);
   });
 
   it("keeps circles when a phone's data is linked to an account", async () => {

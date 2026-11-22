@@ -115,6 +115,7 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
     await tx.circlePost.updateMany({ where: { actorId: install.id }, data: { actorId: account.id } });
     await tx.circlePost.updateMany({ where: { targetId: install.id }, data: { targetId: account.id } });
     await tx.user.delete({ where: { id: install.id } });
+    const notSelf = (id: string | null) => (id === install.id || id === account.id ? null : id);
     const bonus = [account.bonusProUntil, install.bonusProUntil].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
     return tx.user.update({
       where: { id: account.id },
@@ -124,7 +125,8 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
         bonusProUntil: bonus,
         referralCode: account.referralCode ?? install.referralCode,
         instapayLink: account.instapayLink ?? install.instapayLink,
-        referredById: account.referredById ?? (install.referredById === account.id ? null : install.referredById),
+        // The moves above may have pointed the account at itself (it was referred by this install).
+        referredById: notSelf(account.referredById) ?? notSelf(install.referredById),
       },
     });
   });

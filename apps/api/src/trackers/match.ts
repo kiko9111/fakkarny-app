@@ -38,10 +38,12 @@ const smallCount = (t: string, two: RegExp, max: number): number => {
 };
 
 const MATCHERS: Record<Exclude<TrackerKind, "custom">, (t: string) => number | null> = {
-  water: (t) => (/(شربت|drank|had ).*(ميه|مايه|مياه|water|كوبا|كوب|cup|glass)/.test(t) ? smallCount(t, /كوبايتين|كوبين|two|ازازتين/, 20) : null),
+  // The subject word itself is required: "شربت كوباية شاي" / "had a cup of coffee" is not water.
+  water: (t) => (/(شربت|drank|had ).*(ميه|مايه|مياه|water)/.test(t) ? smallCount(t, /كوبايتين|كوبين|two|ازازتين/, 20) : null),
   prayer: (t) => (/(^|\s)(صليت|prayed)/.test(t) ? Math.max(1, PRAYERS.filter((p) => p.test(t)).length) : null),
   gym: (t) => (/(روحت|رحت|خلصت|لعبت|went|did|finished|hit).*(جيم|تمرين|gym|workout)|اتمرنت|worked out/.test(t) ? 1 : null),
-  quran: (t) => (/(قريت|قرات|read).*(قران|quran|صفح|الورد|وردي|جزء|page)/.test(t) ? smallCount(t, /صفحتين|two pages/, 604) : null),
+  // "read 30 pages of my novel" is not Quran: pages count only with the Quran or the daily wird named.
+  quran: (t) => (/(قريت|قرات|read).*(قران|quran|الورد|وردي|wird)/.test(t) ? smallCount(t, /صفحتين|two pages/, 604) : null),
   medicine: (t) => (/(خدت|اخدت|took).*(دوا|علاج|برشام|حبايه|medicine|meds|pill)/.test(t) ? 1 : null),
   study: (t) => (/(^|\s)(ذاكرت|studied)/.test(t) ? smallCount(t, /ساعتين|two hours/, 16) : null),
   spending: (t) => (/(صرفت|دفعت|spent|paid)\s/.test(t) && !DEBT_WORDS.test(t) ? positive(firstNumber(t)) : null),
@@ -84,6 +86,12 @@ export function matchTrackCommand(text: string): Exclude<TrackerKind, "custom"> 
   if (t.split(/\s+/).length > 7 || /[?؟]/.test(t)) return null;
   if (!/(^|\s)(track|تابع|اتابع|تتابع|نتابع)(\s|$)/.test(t)) return null;
   return SUBJECTS.find(([, re]) => re.test(t))?.[0] ?? null;
+}
+
+/** Does an item title (a reminder) talk about the same thing as this tracker kind? */
+export function titleMatchesKind(title: string, kind: TrackerKind): boolean {
+  const re = SUBJECTS.find(([k]) => k === kind)?.[1];
+  return re ? re.test(normalize(title)) : false;
 }
 
 export const ALL_KINDS = Object.keys(TRACKER_TEMPLATES) as TrackerKind[];

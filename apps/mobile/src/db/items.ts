@@ -31,3 +31,10 @@ export async function listScheduled(): Promise<Item[]> {
   );
   return rows.map(toItem);
 }
+
+/** id → updated_at of every local item, to tell which server items are new or changed. */
+export async function localItemVersions(): Promise<Map<string, string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ id: string; updated_at: string }>("SELECT id, updated_at FROM items");
+  return new Map(rows.map((r) => [r.id, r.updated_at]));
+}

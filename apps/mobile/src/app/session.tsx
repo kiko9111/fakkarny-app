@@ -6,6 +6,7 @@ import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
 import { acceptSessionStep, consentToSession, deleteSessionData, endSession, getSessionState, sendSessionMessage, startSession } from "@/lib/api";
 import { colors } from "@/lib/theme";
+import { pullItems } from "@/sync/items";
 import { HttpError } from "@/sync/queue";
 
 const FACES = ["😞", "😕", "😐", "🙂", "😄"];
@@ -66,6 +67,7 @@ export default function SessionScreen() {
   const remind = (m: SessionMessage) =>
     run(async () => {
       await acceptSessionStep(m.id);
+      void pullItems(); // the step is now a reminder: schedule its notification
       if (session) setSession({ ...session, messages: session.messages.map((x) => (x.id === m.id && x.step ? { ...x, step: { ...x.step, accepted: true } } : x)) });
     });
 

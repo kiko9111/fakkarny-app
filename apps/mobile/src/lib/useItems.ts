@@ -2,7 +2,8 @@ import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import type { Item } from "@fakkarni/shared";
 import { upsertItem } from "@/db/messages";
-import { listItems, patchItem } from "@/lib/api";
+import { patchItem } from "@/lib/api";
+import { pullItems } from "@/sync/items";
 import { scheduleItem } from "@/notifications";
 
 /**
@@ -18,9 +19,8 @@ export function useItems(load: () => Promise<Item[]>) {
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      for (const item of await listItems()) await upsertItem(item);
-    } catch {
-      // offline: local data is still shown
+      // Also (re)plans notifications for items changed on the server (tasks, Session steps).
+      await pullItems();
     } finally {
       await reloadLocal();
       setRefreshing(false);

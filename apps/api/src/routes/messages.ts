@@ -9,6 +9,8 @@ import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
 import { dailyAiAllowance } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
+import { pushNotices } from "../proactive/notify";
+import type { PushSender } from "../proactive/push";
 import type { preHandlerAsyncHookHandler } from "fastify";
 import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../serialize";
 
@@ -19,6 +21,7 @@ export interface MessageRoutesOptions {
   authenticate: preHandlerAsyncHookHandler;
   /** Enforce the free plan's daily AI allowance (Pro is unlimited, fair use). */
   requireSubscription?: boolean;
+  push?: PushSender;
 }
 
 const isValidTimeZone = (tz: string) => {
@@ -99,6 +102,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
     const result = await pipeline({ prisma, user, message, now: now(), aiAllowance });
+    if (result.notices?.length) void pushNotices(prisma, opts.push, result.notices, app.log);
     const res: PostMessageResponse = {
       message: toWireMessage(message, readsNewKinds(req)),
       replies: result.replies.map((m) => toWireMessage(m, readsNewKinds(req))),

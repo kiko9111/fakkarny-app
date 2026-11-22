@@ -2,7 +2,7 @@ import { FREE_TRACKERS, isRamadanSeason, RAMADAN_PACK, TRACKER_TEMPLATES, Tracke
 import { hasProAccess } from "../billing/family";
 import { Prisma, type PrismaClient, type Tracker, type User } from "../generated/prisma/client";
 import type { ReplyLang } from "../pipeline/rules";
-import { ALL_KINDS, matchTrackCommand, matchTrackerLog } from "./match";
+import { matchTrackCommand, matchTrackerLog, titleMatchesKind } from "./match";
 import { trackerStats } from "./stats";
 
 const STREAK_DAYS = 370;
@@ -85,6 +85,8 @@ export function loggedLine(lang: ReplyLang, w: Pick<WireTracker, "kind" | "unit"
 export interface TrackerReply {
   text: string;
   upsell: boolean;
+  /** Logged, but the message also answers an open reminder: let the model reply and close it. */
+  closesReminder?: boolean;
 }
 
 /**
@@ -102,11 +104,17 @@ export async function trackerFastPath(prisma: PrismaClient, user: User, text: st
     await prisma.event.create({ data: { userId: user.id, name: "tracker_created", propsJson: { kind: wanted, via: "chat" } } });
     return { text: ar ? `تمام! بدأت أتابع معاك ${label} قولّي كل ما تعمل، أو دوس عليها في صفحة المتابعة 🌟` : `Done! I'm now following ${label} with you. Tell me each time, or tap it on the Trackers page 🌟`, upsell: false };
   }
-  const hit = matchTrackerLog(text, ALL_KINDS);
-  if (!hit) return null;
+  // Only kinds the user follows, so a kind they don't track can't hide one they do.
+  const followed = [...new Set((await prisma.tracker.findMany({ where: { userId: user.id }, select: { kind: true } })).map((t) => t.kind as TrackerKind))];
+  const hit = matchTrackerLog(text, followed);
+  if (!hit) return null; // Not something they follow: let Zaki answer normally.
   const tracker = await prisma.tracker.findFirst({ where: { userId: user.id, kind: hit.kind }, orderBy: { createdAt: "asc" } });
-  if (!tracker) return null; // Not something they follow: let Zaki answer normally.
+  if (!tracker) return null;
   await logEntry(prisma, tracker.id, hit.amount, "chat", now);
   await prisma.event.create({ data: { userId: user.id, name: "tracker_logged", propsJson: { kind: hit.kind, via: "chat" } } });
+  // "خدت الدوا" may also answer an open reminder about it: logged here, then Zaki (the model)
+  // still sees the message so it can close that reminder.
+  const open = await prisma.item.findMany({ where: { userId: user.id, status: "open" }, select: { title: true }, take: 200 });
+  if (open.some((i) => titleMatchesKind(i.title, hit.kind))) return { text: "", upsell: false, closesReminder: true };
   return { text: loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), hit.amount), upsell: false };
 }
