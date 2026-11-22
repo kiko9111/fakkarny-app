@@ -66,6 +66,9 @@ Rules:
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
   the development, preview and production environments, not in the repo. Android test
   build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
+  The cloud session can't reach expo.dev, so .github/workflows/android-build.yml starts that
+  build from GitHub (secret EXPO_TOKEN) whenever a pushed commit message contains
+  "[android-build]"; the EAS build page link is the install link for testers.
 - EAS Update is configured (updates.url, runtimeVersion policy appVersion; channels
   development / preview / production). Builds made after 2026-11-21 can take
   JavaScript-only fixes over the air: `npx eas-cli@latest update --branch preview
@@ -303,6 +306,17 @@ Rules:
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
   template fallback) → stored as a friend Message + Expo push. The phone pulls them
   with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Status checks (owner ask, 2026-11-22: "ask the status of everything, not just remind"):
+  apps/api/src/proactive/status.ts (pure, tested) picks one subject per tick, in order: a
+  reminder/task whose time passed 45 min to 3 days ago and is still open, a debt open 7+ days,
+  an untimed task 3+ days old, and from 18:00 a tracker with nothing logged today. Template
+  words only (no AI call), stored as kind "followup" with client_id
+  `status:<item|tracker>:<id>:<iso>`, pushed like other proactive messages, and they take the
+  place of a plain check-in. Not nagging: waking hours away from the morning/night windows,
+  never within 30 min of the user's last message, max 2 a day, 3 h apart, per-subject
+  cool-downs, and a 48 h pause after 2 unanswered in a row. In the chat pipeline a plain yes
+  (`isPlainYes`) to the latest status check marks the item done or logs one tracker step by
+  rules; any other answer goes to the model as free reminder work.
 - Everything shows in the chat (owner decision, 2026-11-21). The local notification
   still fires on the phone, and `postDueReminders` (proactive tick) writes the same
   nudge into the chat as a friend Message of kind "reminder" (client_id
@@ -335,19 +349,34 @@ Rules:
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 - Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
-  parts, TextField, feedback). Screens use it, not src/lib/theme (kept only as an alias).
-  Warm sand ground, apricot primary, Nile green family, saffron friends, dusk violet for
-  Session. Fonts Alexandria (display) + IBM Plex Sans Arabic (body) via expo-font; Ionicons
-  for icons; no emoji on buttons/chips (`plain()` strips them). Use `notify`/`confirm`/`ask`
-  from src/ui/feedback instead of Alert (Alert does nothing on web). Dates use `dateLocale`
-  from src/i18n. Tabs: Zaki, Today, People, Daftar, Me (trackers/upcoming routes hidden).
+  parts, TextField, feedback, ThemePicker, glass). Screens use it, not src/lib/theme (kept only as
+  an alias). Look = the liquid-glass logo (owner pick): a soft colour mesh behind every screen
+  (assets/bg/mesh-*.jpg via `Backdrop`; navigators use `screenLayout={withGround}` so each screen
+  carries its own mesh and mounted screens underneath never show through; headers use
+  `GlassHeader`), frosted translucent surfaces (`glass` token: white 68% + bright edge + tinted
+  shadow; real backdrop blur on web only), large radii, glossy pill buttons. No blur or gradient
+  native module: the mesh and Zaki art are images. Themes the user picks: Sunrise (default), Mint
+  or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads). Session has
+  its own calm mesh. Family, friends and Session keep fixed colours in every theme. One font
+  family, IBM Plex Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use
+  `notify`/`confirm`/`ask` from src/ui/feedback instead of Alert. Dates use `dateLocale`.
+- Logo and icons: the liquid-glass spark smile. The app icon, Android adaptive layers, splash,
+  favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
+  SVG; keep them in step if the mark changes. The splash is configured through the
+  expo-splash-screen plugin in app.json.
+- Chat first (owner decision, 2026-11-22): a new user sees only Zaki's chat (no tab bar,
+  Settings in the header). Daftar opens on money talk, People on family/friends words or an
+  accepted invite, Today after 3 active days (src/lib/unlock.ts, pure + tested; state in
+  prefs "unlocked" via src/lib/unlock-store.ts). No saved state = a user from before this
+  change: everything stays open. Story: "Zaki remembers so you don't have to".
 - Native modules: existing builds take JS over the air (runtimeVersion appVersion), so
   a new native module must be optional: check `requireOptionalNativeModule` and require it
   lazily (see src/lib/contacts.ts, expo-contacts for "Pick from contacts" in Daftar, which
   asks permission only on tap and reads only the picked name).
 - Browser preview: `node scripts/build-web-preview.mjs out.html` in apps/mobile builds a
   single-file web app on sample data (EXPO_PUBLIC_DEMO=1, fake API in src/demo/server.web.ts,
-  SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged.
+  SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged. The script inlines
+  fonts, PNG and JPG assets; add any new asset type to it.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

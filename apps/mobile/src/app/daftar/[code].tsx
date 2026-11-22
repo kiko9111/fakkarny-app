@@ -6,6 +6,7 @@ import { DaftarCard } from "@/daftar/DaftarCard";
 import { t } from "@/i18n";
 import { openDaftar } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
+import { unlock } from "@/lib/unlock-store";
 import { EmptyState, palette, plain, space } from "@/ui";
 
 /** Opened from a Daftar link (fakkarni://daftar/CODE): the entry appears in this person's Daftar. */
@@ -17,7 +18,10 @@ export default function OpenDaftarScreen() {
 
   const load = useCallback(() => {
     openDaftar(code)
-      .then(setEntry)
+      .then((e) => {
+        setEntry(e);
+        unlock.open("daftar");
+      })
       .catch(() => setFailed(true));
   }, [code]);
 

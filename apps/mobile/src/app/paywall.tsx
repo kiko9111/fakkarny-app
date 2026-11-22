@@ -6,7 +6,7 @@ import { isFamily, isYearly } from "@/billing/options";
 import { language, t } from "@/i18n";
 import { legalUrl } from "@/lib/api-url";
 import { API_URL } from "@/lib/api";
-import { Badge, Button, Icon, notify, palette, plain, radius, Screen, shadow, space, Text, ZakiAvatar } from "@/ui";
+import { glass, Badge, Button, Icon, notify, palette, plain, radius, Screen, shadow, space, Text, ZakiAvatar } from "@/ui";
 
 /** Zaki Pro, Family and the founders' offer. Prices come from the store (regional pricing). */
 export default function PaywallScreen() {
@@ -136,9 +136,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   content: { padding: space.xl, gap: space.md, maxWidth: 560, width: "100%", alignSelf: "center" },
   hero: { alignItems: "center", gap: space.sm },
-  points: { gap: space.sm, backgroundColor: palette.surface, borderRadius: radius.lg, padding: space.lg, marginBottom: space.sm },
+  points: { ...glass, gap: space.sm, borderRadius: radius.lg, padding: space.lg, marginBottom: space.sm },
   point: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  option: { flexDirection: "row", alignItems: "center", gap: space.md, backgroundColor: palette.surface, borderRadius: radius.lg, padding: space.lg, borderWidth: 2, borderColor: "transparent", ...shadow.card },
+  option: { ...glass, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.lg, padding: space.lg, borderWidth: 2, borderColor: palette.glassEdge },
   optionOn: { borderColor: palette.primary, backgroundColor: "#FFFAF6" },
   optionHead: { flexDirection: "row", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: palette.lineStrong, alignItems: "center", justifyContent: "center" },

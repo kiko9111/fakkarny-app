@@ -89,5 +89,5 @@ const styles = StyleSheet.create({
   content: { padding: space.xl, gap: space.lg },
   row: { flexDirection: "row", gap: space.md },
   pick: { alignItems: "flex-start", marginTop: -space.md },
-  choice: { flex: 1, alignItems: "center", gap: space.xs, borderWidth: 2, borderColor: palette.line, backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: space.md },
+  choice: { flex: 1, alignItems: "center", gap: space.xs, borderWidth: 2, borderColor: palette.glassEdge, backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: space.md },
 });

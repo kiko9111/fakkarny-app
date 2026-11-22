@@ -63,7 +63,7 @@ export function zakiReply(text: string, ctx: { name: string | null; upcoming: It
     return {
       texts: [
         L(`ألف سلامة عليك${name} 💛 الأيام دي بتعدّي. تحب تحكيلي حصل إيه؟`, `I'm sorry it's a hard day${name} 💛 Want to tell me what happened?`),
-        L("ولو محتاج مساحة هادية تفضفض فيها، جرّب «مساحة للتفكير» من صفحة المتابعة.", "And if you'd like a quiet space to talk it through, try “A space to reflect” in the Trackers tab."),
+        L("وأنا هنا، خد راحتك واحكي براحتك 💛", "I'm right here. Take your time 💛"),
       ],
       items: [],
     };
@@ -79,4 +79,11 @@ export function zakiReply(text: string, ctx: { name: string | null; upcoming: It
     texts: generic === 1 ? [reply, L("(دي نسخة تجربة: ردود زكي هنا بسيطة، والحقيقي أذكى بكتير ✨)", "(This is a preview: Zaki's replies here are simple; the real one is much smarter ✨)")] : [reply],
     items: [],
   };
+}
+
+/** A short plain "yes" (demo copy of the server's rule in apps/api/src/proactive/status.ts). */
+export function isPlainYes(text: string): boolean {
+  const ok = new Set(["اه", "آه", "أه", "ايوه", "أيوه", "اكيد", "أكيد", "تمام", "خلصت", "خلصتها", "عملت", "عملتها", "تم", "خلاص", "رجعهم", "رجعلي", "دفع", "الحمد", "لله", "الحمدلله", "يا", "زكي", "yes", "yeah", "yep", "yup", "done", "did", "it", "i", "sure", "paid", "he", "she"]);
+  const words = text.toLowerCase().replace(/[^\p{L}\s]/gu, " ").split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= 5 && words.every((w) => ok.has(w));
 }

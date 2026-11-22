@@ -20,7 +20,7 @@ import {
 import { clearWebDb } from "@/db/database.web";
 import { language } from "@/i18n";
 import { prefs } from "@/lib/prefs";
-import { zakiReply } from "./zaki";
+import { isPlainYes, zakiReply } from "./zaki";
 
 /**
  * The browser preview's pretend server: answers every API call from sample data kept in
@@ -85,6 +85,9 @@ interface State {
   session: SessionData;
   messages: Message[];
   served_morning: boolean;
+  /** Item id of the status check Zaki just asked about (shows the "did Youssef pay you back?" flow). */
+  pending_status?: string | null;
+  status_asked?: boolean;
   language: string;
 }
 
@@ -347,7 +350,14 @@ on("GET", "/messages", (_m, _b, q) => {
           : L("مساء الخير يا كريم 🌙 يومك كان عامل إزاي؟ لسه فاضل مكالمة تيتة الساعة ٨.", "Good evening, Kareem 🌙 How was your day? There's still grandma's call at 8.");
     const m = msg("friend", text, `demo:welcome:${Date.now()}`, hour < 12 ? "morning" : hour < 18 ? "chat" : "night");
     state.messages.push(m);
-    return { messages: [m] };
+    // A status check, the way the server asks one: Zaki follows up on its own.
+    const debt = state.items.find((i) => i.type === "debt" && i.status === "open");
+    if (!debt) return { messages: [m] };
+    const check = { ...msg("friend", L(`${debt.debt_person} رجّعلك الـ${debt.debt_amount}؟`, `Did ${debt.debt_person} pay you back the ${debt.debt_amount}?`), `status:item:${debt.id}:${Date.now()}`, "followup"), created_at: iso(new Date(now().getTime() + 1)) };
+    state.messages.push(check);
+    state.pending_status = debt.id;
+    state.status_asked = true;
+    return { messages: [m, check] };
   }
   return { messages: [] };
 });
@@ -356,6 +366,15 @@ on("POST", "/messages", (_m, b) => {
   const text = String(b.text ?? "");
   const clientId = String(b.client_id ?? id());
   const userMsg = { ...msg("user", text, clientId), created_at: String(b.created_at ?? iso(now())) };
+  const pending = state.pending_status ? state.items.find((i) => i.id === state.pending_status && i.status === "open") : undefined;
+  state.pending_status = null;
+  if (pending && isPlainYes(text)) {
+    pending.status = "done";
+    pending.updated_at = iso(now());
+    const done = msg("friend", pending.type === "debt" ? L("حلو أوي! علّمتها إنها اتسدّت ✅", "Love that! Marked it as settled ✅") : L(`برافو عليك! علّمت «${pending.title}» إنها خلصت ✅`, `Nice one! Marked “${pending.title}” as done ✅`), `${clientId}:reply:0`);
+    state.messages.push(userMsg, done);
+    return { message: userMsg, replies: [done], items: [pending], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+  }
   const reply = zakiReply(text, {
     name: state.user.name,
     upcoming: state.items.filter((i) => i.status === "open" && i.type !== "debt"),
@@ -375,6 +394,13 @@ on("POST", "/messages", (_m, b) => {
     }
   }
   const replies = reply.texts.map((t, n) => msg("friend", t, `${clientId}:reply:${n}`));
+  // In the preview, show one status check early: Zaki asking on its own how things stand.
+  const debt = state.items.find((i) => i.type === "debt" && i.status === "open");
+  if (!state.status_asked && debt && !reply.items.length) {
+    state.status_asked = true;
+    state.pending_status = debt.id;
+    replies.push({ ...msg("friend", L(`على فكرة، ${debt.debt_person} رجّعلك الـ${debt.debt_amount}؟`, `By the way, did ${debt.debt_person} pay you back the ${debt.debt_amount}?`), `status:item:${debt.id}:${Date.now()}`, "followup"), created_at: iso(new Date(now().getTime() + replies.length)) });
+  }
   state.messages.push(userMsg, ...replies);
   return { message: userMsg, replies, items, memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
 });

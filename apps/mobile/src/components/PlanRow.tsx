@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import type { Item } from "@fakkarni/shared";
 import { t, dateLocale } from "@/i18n";
-import { Icon, palette, radius, shadow, space, Text } from "@/ui";
+import { glass, Icon, palette, radius, shadow, space, Text } from "@/ui";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
@@ -31,7 +31,7 @@ export function PlanRow({ item, onDone }: { item: Item; onDone: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: space.md, backgroundColor: palette.surface, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 64, ...shadow.card },
+  row: { ...glass, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 64 },
   check: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: palette.lineStrong, alignItems: "center", justifyContent: "center" },
   checkOn: { backgroundColor: palette.ok, borderColor: palette.ok },
   text: { flex: 1, minWidth: 0, gap: 2 },

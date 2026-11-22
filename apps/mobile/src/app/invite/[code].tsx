@@ -6,6 +6,7 @@ import { fill, joinFailure } from "@/circles/logic";
 import { t } from "@/i18n";
 import { acceptInvite, previewInvite } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
+import { unlock } from "@/lib/unlock-store";
 import { HttpError } from "@/sync/queue";
 import { Button, EmptyState, IconTile, palette, plain, space, Text } from "@/ui";
 
@@ -41,6 +42,7 @@ export default function InviteScreen() {
     setBusy(true);
     try {
       const circle = await acceptInvite(code);
+      unlock.open("people");
       router.replace({ pathname: "/circle/[id]", params: { id: circle.id } });
     } catch (err) {
       setError(joinFailure(statusOf(err)));

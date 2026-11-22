@@ -1,32 +1,24 @@
-import { StyleSheet, View } from "react-native";
-import { palette } from "./tokens";
+import { Image, View } from "react-native";
+import type { ThemeId } from "./themes";
+import { palette, themeId } from "./tokens";
+
+const ART: Record<ThemeId, { happy: number; calm: number }> = {
+  sunrise: { happy: require("../../assets/zaki/zaki-sunrise-happy.png"), calm: require("../../assets/zaki/zaki-sunrise-calm.png") },
+  mint: { happy: require("../../assets/zaki/zaki-mint-happy.png"), calm: require("../../assets/zaki/zaki-mint-calm.png") },
+  cloud: { happy: require("../../assets/zaki/zaki-cloud-happy.png"), calm: require("../../assets/zaki/zaki-cloud-calm.png") },
+};
 
 /**
- * Zaki's face: a warm little sun with a smile. Drawn with views (no image or SVG module), so it
- * stays sharp at any size and works in every build. `mood` only changes the eyes.
+ * Zaki: the liquid-glass spark smile from the app icon, in the user's theme (or `theme`).
+ * `mood` "calm" closes the eye into a soft curve. The art is rendered from the same SVG as the
+ * icon (assets/zaki, 320 px), so it stays crisp up to about 100 pt.
  */
-export function ZakiAvatar({ size = 40, glow = false, mood = "happy" }: { size?: number; glow?: boolean; mood?: "happy" | "calm" }) {
-  const s = size;
-  const eye = Math.max(3, Math.round(s * 0.1));
+export function ZakiAvatar({ size = 40, glow = false, mood = "happy", theme }: { size?: number; glow?: boolean; mood?: "happy" | "calm"; theme?: ThemeId }) {
+  const id = theme ?? themeId;
   return (
-    <View style={{ width: s, height: s, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Zaki" accessible>
-      {glow ? <View style={[StyleSheet.absoluteFill, { borderRadius: s, backgroundColor: palette.primary, opacity: 0.14, transform: [{ scale: 1.28 }] }]} /> : null}
-      <View style={{ width: s, height: s, borderRadius: s / 2, backgroundColor: "#F0A35E", borderWidth: Math.max(1.5, s * 0.06), borderColor: "#E07B3C", alignItems: "center", justifyContent: "center" }}>
-        <View style={{ flexDirection: "row", gap: s * 0.2, marginTop: s * 0.04 }}>
-          {[0, 1].map((i) =>
-            mood === "calm" ? (
-              <View key={i} style={{ width: eye * 1.6, height: eye * 0.8, borderBottomWidth: Math.max(1.5, s * 0.05), borderColor: palette.ink, borderBottomLeftRadius: eye, borderBottomRightRadius: eye }} />
-            ) : (
-              <View key={i} style={{ width: eye, height: eye * 1.25, borderRadius: eye, backgroundColor: palette.ink }} />
-            ),
-          )}
-        </View>
-        <View style={{ width: s * 0.38, height: s * 0.16, marginTop: s * 0.05, borderBottomWidth: Math.max(1.5, s * 0.055), borderColor: palette.ink, borderBottomLeftRadius: s * 0.2, borderBottomRightRadius: s * 0.2 }} />
-        <View style={{ position: "absolute", flexDirection: "row", gap: s * 0.42, top: s * 0.54 }}>
-          <View style={{ width: s * 0.12, height: s * 0.08, borderRadius: s, backgroundColor: "#E8805A", opacity: 0.6 }} />
-          <View style={{ width: s * 0.12, height: s * 0.08, borderRadius: s, backgroundColor: "#E8805A", opacity: 0.6 }} />
-        </View>
-      </View>
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Zaki" accessible>
+      {glow ? <View style={{ position: "absolute", width: size * 0.9, height: size * 0.9, borderRadius: size * 0.3, backgroundColor: palette.primary, boxShadow: `0px ${Math.round(size * 0.12)}px ${Math.round(size * 0.4)}px ${palette.primary}66`, opacity: 0.9 }} /> : null}
+      <Image source={ART[id][mood]} style={{ width: size, height: size }} accessibilityIgnoresInvertColors />
     </View>
   );
 }

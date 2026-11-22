@@ -4,9 +4,9 @@ import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
 import { plain } from "./plain";
 import { ZakiAvatar } from "./Zaki";
-import { minTouch, palette, radius, shadow, space } from "./tokens";
+import { glass, minTouch, palette, radius, space } from "./tokens";
 
-/** A scrolling page on the warm ground, with pull-to-refresh when `onRefresh` is given. */
+/** A scrolling page over the colour mesh, with pull-to-refresh when `onRefresh` is given. */
 export function Screen({ children, onRefresh, refreshing = false, contentStyle, keyboard }: { children: ReactNode; onRefresh?: () => void; refreshing?: boolean; contentStyle?: ViewStyle; keyboard?: boolean }) {
   return (
     <ScrollView
@@ -22,7 +22,7 @@ export function Screen({ children, onRefresh, refreshing = false, contentStyle, 
 
 /** A surface that groups one thing. Pass `onPress` to make the whole card a button. */
 export function Card({ children, onPress, style, tone, accessibilityLabel }: { children: ReactNode; onPress?: () => void; style?: ViewStyle | ViewStyle[]; tone?: string; accessibilityLabel?: string }) {
-  const base = [styles.card, tone ? { backgroundColor: tone, boxShadow: "none" } : null, style];
+  const base = [styles.card, tone ? { backgroundColor: tone + "E6" } : null, style];
   if (!onPress) return <View style={base}>{children}</View>;
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={({ pressed }) => [...base, pressed && styles.pressed]}>
@@ -178,20 +178,20 @@ export function Note({ children, icon = "information-circle-outline", tone = "ne
 export const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: palette.bg },
   content: { padding: space.lg, paddingBottom: space.xxxl, gap: space.md },
-  card: { backgroundColor: palette.surface, borderRadius: radius.lg, padding: space.lg, gap: space.sm, ...shadow.card },
+  card: { ...glass, borderRadius: radius.lg, padding: space.lg, gap: space.sm },
   pressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
   section: { flexDirection: "row", alignItems: "center", marginTop: space.md, gap: space.sm },
   sectionAction: { minHeight: 32, justifyContent: "center" },
   flex: { flex: 1, minWidth: 0 },
-  row: { flexDirection: "row", alignItems: "center", gap: space.md, backgroundColor: palette.surface, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 64, ...shadow.card },
+  row: { ...glass, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 64 },
   strike: { textDecorationLine: "line-through" },
-  chip: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: 40, paddingHorizontal: space.md + 2, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.lineStrong, backgroundColor: palette.surface },
+  chip: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: 40, paddingHorizontal: space.md + 2, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.glassEdge, backgroundColor: palette.surface },
   badge: { paddingHorizontal: space.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
-  track: { height: 8, borderRadius: 4, backgroundColor: palette.surfaceAlt, overflow: "hidden" },
+  track: { height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.7)", overflow: "hidden" },
   fill: { height: 8, borderRadius: 4 },
   empty: { alignItems: "center", gap: space.sm, paddingVertical: space.xxl, paddingHorizontal: space.lg },
   emptyBody: { maxWidth: 320 },
-  note: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: palette.surfaceAlt, borderRadius: radius.md, padding: space.md },
+  note: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: "rgba(255,255,255,0.5)", borderWidth: 1, borderColor: "rgba(255,255,255,0.7)", borderRadius: radius.md, padding: space.md },
 });
 
 export { minTouch };

@@ -5,7 +5,7 @@ import { Mood, SessionMode, type Session, type SessionMessage, type SessionState
 import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
 import { acceptSessionStep, consentToSession, deleteSessionData, endSession, getSessionState, sendSessionMessage, startSession } from "@/lib/api";
-import { Button, Card, Chip, confirm, fonts, Icon, IconButton, notify, palette, radius, shadow, space, Text, textStart, ZakiAvatar, type IconName } from "@/ui";
+import { Backdrop, glass, Button, Card, Chip, confirm, fonts, Icon, IconButton, notify, palette, radius, shadow, space, Text, textStart, ZakiAvatar, type IconName } from "@/ui";
 import { pullItems } from "@/sync/items";
 import { HttpError } from "@/sync/queue";
 
@@ -22,7 +22,17 @@ const FACES: { icon: IconName; color: string }[] = [
  * Session: a private space to reflect with Zaki. Not therapy. Adults only, its own consent,
  * and the helpline is always on screen. Nothing here is stored on the phone.
  */
+/** Session keeps its own calm ground in every theme. */
 export default function SessionScreen() {
+  return (
+    <View style={styles.ground}>
+      <Backdrop calm />
+      <SessionBody />
+    </View>
+  );
+}
+
+function SessionBody() {
   const [state, setState] = useState<SessionState | null>(null);
   const [failed, setFailed] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -267,7 +277,8 @@ export default function SessionScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  page: { flex: 1, backgroundColor: palette.calmSoft },
+  ground: { flex: 1 },
+  page: { flex: 1, backgroundColor: "transparent" },
   content: { padding: space.xl, gap: space.md, maxWidth: 560, width: "100%", alignSelf: "center" },
   center: { flex: 1, backgroundColor: palette.calmSoft, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
   hero: { alignItems: "center", gap: space.sm, marginBottom: space.xs },
@@ -287,9 +298,9 @@ const styles = StyleSheet.create({
   msgMine: { alignSelf: "flex-end" },
   msgZaki: { alignSelf: "flex-start" },
   bubble: { flexShrink: 1, borderRadius: radius.lg, paddingHorizontal: space.lg - 2, paddingVertical: space.sm + 2, gap: space.sm },
-  zaki: { backgroundColor: palette.surface, borderBottomStartRadius: 6, ...shadow.card },
+  zaki: { ...glass, borderBottomStartRadius: 6 },
   mine: { backgroundColor: palette.calm, borderBottomEndRadius: 6 },
   bar: { paddingHorizontal: space.md, paddingBottom: space.md, gap: space.xs },
-  field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, backgroundColor: palette.surface, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: 6, paddingVertical: 6, ...shadow.card },
+  field: { ...glass, backgroundColor: palette.surfaceStrong, flexDirection: "row", alignItems: "flex-end", gap: space.sm, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: 6, paddingVertical: 6 },
   input: { flex: 1, minHeight: 40, maxHeight: 140, paddingVertical: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, outlineStyle: "none" } as object,
 });

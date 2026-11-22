@@ -70,17 +70,17 @@ export default function MoneyScreen() {
             {fill(t.ui.pounds, { n: "" }).trim()}
           </Text>
         </View>
-        <View style={[styles.total, { backgroundColor: palette.primarySoft }]}>
+        <View style={[styles.total, { backgroundColor: palette.friendsSoft }]}>
           <View style={styles.totalHead}>
-            <Icon name="arrow-up-circle" size={18} color={palette.primaryInk} />
-            <Text variant="smallStrong" color={palette.primaryInk}>
+            <Icon name="arrow-up-circle" size={18} color={palette.friends} />
+            <Text variant="smallStrong" color={palette.friends}>
               {t.ui.youOwe}
             </Text>
           </View>
-          <Text variant="number" color={palette.primaryInk}>
+          <Text variant="number" color={palette.friends}>
             {formatMoney(totals.iOwe)}
           </Text>
-          <Text variant="caption" color={palette.primaryInk}>
+          <Text variant="caption" color={palette.friends}>
             {fill(t.ui.pounds, { n: "" }).trim()}
           </Text>
         </View>
@@ -114,7 +114,7 @@ export default function MoneyScreen() {
         p.items.map((i) => (
           <ListRow
             key={i.id}
-            leading={<PersonAvatar name={p.person} size={36} color={mine ? palette.ok : palette.primaryInk} bg={mine ? palette.okSoft : palette.primarySoft} />}
+            leading={<PersonAvatar name={p.person} size={36} color={mine ? palette.ok : palette.friends} bg={mine ? palette.okSoft : palette.friendsSoft} />}
             title={`${p.person} · ${fill(t.ui.pounds, { n: formatMoney(i.debt_amount ?? 0) })}`}
             meta={mine ? t.ui.owedToYou : t.ui.youOwe}
             trailing={

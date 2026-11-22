@@ -5,8 +5,9 @@ import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCod
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
+import { unlock } from "@/lib/unlock-store";
 import { reloadApp } from "@/lib/reload";
-import { Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { glass, Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker, type IconName } from "@/ui";
 
 /**
  * F1 (under 2 minutes): meet Zaki and pick a language, then sign in with a code sent by email
@@ -23,7 +24,8 @@ export default function OnboardingScreen() {
 
   const finish = () => {
     prefs.set("onboarded", "1");
-    prefs.set("offer_tracker", "1");
+    // Chat first: a new user starts with Zaki only; the rest opens as it's needed.
+    unlock.startFresh();
     router.replace("/");
   };
 
@@ -75,8 +77,12 @@ export default function OnboardingScreen() {
         <View style={styles.points}>
           {point("chatbubble-ellipses-outline", t.ui.welcomePoint1)}
           {point("alarm-outline", t.ui.welcomePoint2)}
-          {point("people-outline", t.ui.welcomePoint3)}
+          {point("sparkles-outline", t.ui.welcomePoint3)}
         </View>
+        <Text variant="smallStrong" color={palette.inkSoft} align="center">
+          {t.ui.themeTitle}
+        </Text>
+        <ThemePicker />
         <Text variant="smallStrong" color={palette.inkSoft} align="center">
           {t.onboarding.pickLanguage}
         </Text>
@@ -147,11 +153,11 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, justifyContent: "center", padding: space.xl, gap: space.xl, maxWidth: 520, width: "100%", alignSelf: "center" },
   hero: { alignItems: "center", gap: space.md },
   lead: { maxWidth: 360 },
-  points: { gap: space.md, backgroundColor: palette.surface, borderRadius: radius.lg, padding: space.lg },
+  points: { ...glass, gap: space.md, borderRadius: radius.lg, padding: space.lg },
   point: { flexDirection: "row", alignItems: "center", gap: space.md },
   pointIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" },
   langs: { gap: space.sm },
   form: { gap: space.md },
-  input: { minHeight: 54, backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: palette.line, paddingHorizontal: space.lg, fontSize: 17, fontFamily: fonts.body, color: palette.ink },
+  input: { minHeight: 54, backgroundColor: palette.surfaceStrong, borderRadius: radius.md, borderWidth: 1, borderColor: palette.glassEdge, paddingHorizontal: space.lg, fontSize: 17, fontFamily: fonts.body, color: palette.ink },
   code: { fontSize: 24, fontFamily: fonts.display },
 });

@@ -134,6 +134,33 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     await app2.close();
   });
 
+  it("closes an item when the user says yes to Zaki's status check, without the model", async () => {
+    const { model, calls } = fakeModel([ok({ reply: ["ولا يهمك، أفكرك بكرة؟"] })]);
+    const app = appWith(model);
+    const user = await prisma.user.create({ data: { authId: `install:${installId}`, timezone: "Africa/Cairo" } });
+    const item = await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "call mum", remindAt: new Date(now.getTime() - 3 * 3600_000) } });
+    await prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text: "عملت «call mum»؟ 🙂", clientId: `status:item:${item.id}:x`, createdAt: new Date(now.getTime() - 3600_000) } });
+
+    const yes = await send(app, "اه خلصت");
+    expect(yes.body.replies.map((r) => r.text)).toEqual(["برافو عليك! علّمت «call mum» إنها خلصت ✅"]);
+    expect((await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).status).toBe("done");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("lets any other answer to a status check go to the model", async () => {
+    const { model, calls } = fakeModel([ok({ reply: ["ولا يهمك، أفكرك بكرة؟"] })]);
+    const app = appWith(model);
+    const user = await prisma.user.create({ data: { authId: `install:${installId}`, timezone: "Africa/Cairo" } });
+    const tracker = await prisma.tracker.create({ data: { userId: user.id, kind: "water" } });
+    await prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text: "شربت مية النهارده؟ 💧", clientId: `status:tracker:${tracker.id}:x`, createdAt: new Date(now.getTime() - 3600_000) } });
+
+    await send(app, "لسه والله");
+    expect(calls).toHaveLength(1);
+    expect(await prisma.trackerEntry.count()).toBe(0);
+    await send(app, "اه");
+    expect(await prisma.trackerEntry.count()).toBe(0); // the latest friend message is now the model's reply
+  });
+
   it("answers thanks without calling the model", async () => {
     const { model, calls } = fakeModel([]);
     const app = appWith(model);

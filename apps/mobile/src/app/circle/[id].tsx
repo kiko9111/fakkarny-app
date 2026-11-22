@@ -8,7 +8,7 @@ import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteC
 import { HttpError } from "@/sync/queue";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
-import { ask, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { glass, ask, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
 const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   face: { marginStart: -6, borderRadius: 20, borderWidth: 2, borderColor: palette.surface },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   post: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
-  postBody: { flex: 1, backgroundColor: palette.surface, borderRadius: 18, borderTopStartRadius: 6, padding: space.md, gap: 2 },
+  postBody: { ...glass, flex: 1, borderRadius: 18, borderTopStartRadius: 6, padding: space.md, gap: 2 },
   members: { paddingVertical: space.xs, gap: 0 },
   member: { flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md },
   memberLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
