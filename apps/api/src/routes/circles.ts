@@ -56,7 +56,7 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
   async function detail(req: FastifyRequest, circleId: string, user: User): Promise<CircleDetail | null> {
     const circle = await prisma.circle.findUnique({
       where: { id: circleId },
-      include: { members: { include: { user: { select: { name: true } } }, orderBy: { joinedAt: "asc" } } },
+      include: { members: { include: { user: { select: { name: true } } }, orderBy: [{ joinedAt: "asc" }, { role: "asc" }, { userId: "asc" }] } },
     });
     const me = circle?.members.find((m) => m.userId === user.id);
     if (!circle || !me) return null;
@@ -148,7 +148,7 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
       if (!target) return;
       await tx.circleMember.delete({ where: { circleId_userId: { circleId, userId } } });
       await tx.invite.updateMany({ where: { circleId, inviterId: userId, revokedAt: null }, data: { revokedAt: now() } });
-      const next = await tx.circleMember.findFirst({ where: { circleId }, orderBy: { joinedAt: "asc" } });
+      const next = await tx.circleMember.findFirst({ where: { circleId }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
       if (!next) await tx.circle.delete({ where: { id: circleId } });
       else if (target.role === "owner") await tx.circleMember.update({ where: { circleId_userId: { circleId, userId: next.userId } }, data: { role: "owner" } });
     });

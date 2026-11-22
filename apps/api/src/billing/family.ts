@@ -10,7 +10,7 @@ export async function coveredByFamilyPlan(prisma: PrismaClient, userId: string, 
     where: { kind: "family", members: { some: { userId } } },
     select: {
       members: {
-        orderBy: { joinedAt: "asc" },
+        orderBy: [{ joinedAt: "asc" }, { role: "asc" }, { userId: "asc" }],
         select: { userId: true, user: { select: { plan: true, planExpiresAt: true, planTier: true } } },
       },
     },
