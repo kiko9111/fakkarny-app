@@ -70,6 +70,8 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
         // Only with a body: Fastify rejects an empty body sent as JSON.
         ...(init.body ? { "content-type": "application/json" } : {}),
         [INSTALL_ID_HEADER]: await getInstallId(),
+        // Tells the server this build reads the newer message kinds ("upsell", "update").
+        "x-message-kinds": "2",
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },

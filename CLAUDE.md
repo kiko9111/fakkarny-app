@@ -257,6 +257,10 @@ Rules:
   InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in
   Settings; whoever owes them gets a "Pay with InstaPay" button that opens it, and the
   amount is shown to type there.
+- Old app builds: the first build rejects any message kind it does not know and its chat
+  sync then jams for good. `toWireMessage` sends "upsell" and "update" as "chat" unless
+  the request carries `x-message-kinds: 2` (sent by the app since Zaki M9). When adding a
+  message kind or any enum value the phone parses, gate it the same way.
 - The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`).
 - Family plan sharing: a member with an active plan of tier "family" covers the first 6
   people (payer included, by join time) of each family circle they are in

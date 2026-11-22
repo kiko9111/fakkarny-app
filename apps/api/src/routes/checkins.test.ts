@@ -123,7 +123,7 @@ describe.skipIf(!hasTestDb)("check-ins and family roles", () => {
     const ask = (who: P, target: P) => app.inject({ method: "POST", url: `/circles/${circle.id}/members/${target.id}/ask-checkin`, headers: who.h });
 
     expect((await ask(mona, dad)).statusCode).toBe(204);
-    const chat = ListMessagesResponse.parse((await app.inject({ method: "GET", url: "/messages", headers: dad.h })).json()).messages;
+    const chat = ListMessagesResponse.parse((await app.inject({ method: "GET", url: "/messages", headers: { ...dad.h, "x-message-kinds": "2" } })).json()).messages;
     expect(chat.at(-1)).toMatchObject({ role: "friend", kind: "update", text: "طمّن منى عليك. دوسة واحدة في «البيت» كفاية 💛" });
     await flush();
     expect(pushed).toHaveLength(1);
