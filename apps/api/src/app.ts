@@ -96,11 +96,11 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription, push: deps.push });
     app.register(billingRoutes, { prisma, authenticate, ...billing });
     app.register(referralRoutes, { prisma, authenticate, now: deps.now });
-    app.register(circleRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl, push: deps.push });
+    app.register(circleRoutes, { prisma, authenticate, now: deps.now, requireSubscription: billing.requireSubscription, publicUrl: deps.invites?.publicUrl, push: deps.push });
     app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
-    app.register(taskRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
+    app.register(taskRoutes, { prisma, authenticate, now: deps.now, requireSubscription: billing.requireSubscription, push: deps.push });
     app.register(trackerRoutes, { prisma, authenticate, now: deps.now });
     app.register(sessionRoutes, { prisma, authenticate, now: deps.now, model: deps.model, enabled: deps.sessionEnabled });
     app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });

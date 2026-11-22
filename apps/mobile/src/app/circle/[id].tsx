@@ -4,11 +4,11 @@ import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
-import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
-import { glass, ask, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
 const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -20,6 +20,7 @@ export default function CircleScreen() {
   const [failed, setFailed] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [feed, setFeed] = useState<CircleFeedResponse>({ posts: [], tasks: [] });
+  const [summary, setSummary] = useState<string[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -27,6 +28,7 @@ export default function CircleScreen() {
       setCircle(c);
       setFeed(f);
       setFailed(false);
+      setSummary(c.extras ? (await getCircleSummary(id).catch(() => null))?.lines ?? null : null);
     } catch {
       setFailed(true);
     }
@@ -121,6 +123,7 @@ export default function CircleScreen() {
   const label = (m: CircleMember) => (m.is_me ? t.ui.you : m.name ?? t.circles.noName);
   const joined = circle.open_invites.reduce((n, i) => n + i.joins, 0);
   const others = circle.members.length > 1;
+  const trialDays = circle.trial_until ? Math.max(0, Math.ceil((new Date(circle.trial_until).getTime() - Date.now()) / 86400_000)) : 0;
 
   return (
     <Screen>
@@ -151,6 +154,28 @@ export default function CircleScreen() {
           {plain(t.circles.inviteReward)}
         </Text>
       </Card>
+
+      <SectionHeader title={t.circles.summaryTitle} />
+      {circle.extras ? (
+        <Card>
+          <View style={styles.summaryHead}>
+            <ZakiAvatar size={32} />
+            {trialDays > 0 ? <Badge label={fill(t.circles.trialLeft, { n: trialDays })} tone="primary" /> : null}
+          </View>
+          {(summary ?? []).map((line) => (
+            <Text key={line} variant="body">
+              {line}
+            </Text>
+          ))}
+        </Card>
+      ) : (
+        <Card>
+          <Text variant="small" color={palette.inkSoft}>
+            {t.circles.summaryLocked}
+          </Text>
+          <Button label={t.circles.seePro} kind="tonal" size="sm" icon="sparkles-outline" onPress={() => router.push("/paywall")} style={styles.center2} />
+        </Card>
+      )}
 
       <SectionHeader title={t.ui.checkInPrompt} />
       <View style={styles.chips}>
@@ -236,6 +261,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: palette.bg, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
   center2: { alignSelf: "center" },
   hero: { gap: space.md },
+  summaryHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   heroHead: { flexDirection: "row", alignItems: "center", gap: space.md },
   faces: { flexDirection: "row", paddingStart: 6 },
   face: { marginStart: -6, borderRadius: 20, borderWidth: 2, borderColor: palette.surface },

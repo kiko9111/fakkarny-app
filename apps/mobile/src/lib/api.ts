@@ -21,6 +21,7 @@ import {
   type DaftarEntry,
   BillingOffersResponse,
   CircleResponse,
+  CircleSummary,
   CreateInviteResponse,
   InvitePreview,
   ListCirclesResponse,
@@ -186,6 +187,11 @@ export async function askCheckin(circleId: string, userId: string): Promise<void
   await request(`/circles/${circleId}/members/${userId}/ask-checkin`, { method: "POST" });
 }
 
+/** Zaki's weekly summary (an extra: 402 after the circle's trial without Pro). */
+export async function getCircleSummary(id: string): Promise<CircleSummary> {
+  return CircleSummary.parse(await request(`/circles/${id}/summary`));
+}
+
 export async function getCircle(id: string): Promise<CircleDetail> {
   return CircleResponse.parse(await request(`/circles/${id}`)).circle;
 }
@@ -262,6 +268,9 @@ const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Pr
 export const finishTask = taskAction("done");
 export const cancelTask = taskAction("cancel");
 export const nudgeTask = taskAction("nudge");
+export async function remindTask(id: string, remind_at: string | null): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/tasks/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) })).task;
+}
 
 // Trackers dashboard. Needs a connection; chat messages feed it on the server too.
 export async function listTrackers(): Promise<ListTrackersResponse> {

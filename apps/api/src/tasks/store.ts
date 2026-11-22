@@ -22,6 +22,9 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
     circle_name: t.circle.name,
     title: t.title,
     due_at: t.dueAt?.toISOString() ?? null,
+    remind_at: t.remindAt?.toISOString() ?? null,
+    homework: t.homework,
+    note: t.note,
     status: t.status,
     role,
     assigner_name: t.assigner.name,
@@ -80,7 +83,7 @@ export async function respond(prisma: PrismaClient, taskId: string, answer: "acc
     let t = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, include: withPeople });
     if (status === "accepted") {
       const item = await tx.item.create({
-        data: { userId: t.assigneeId, type: t.dueAt ? "reminder" : "task", title: t.title, dueAt: t.dueAt, remindAt: t.dueAt, createdAt: now },
+        data: { userId: t.assigneeId, type: t.dueAt || t.remindAt ? "reminder" : "task", title: t.title, dueAt: t.dueAt, remindAt: t.remindAt ?? t.dueAt, createdAt: now },
       });
       t = await tx.circleTask.update({ where: { id: t.id }, data: { itemId: item.id }, include: withPeople });
       await post(tx, t, "task_accepted", now);

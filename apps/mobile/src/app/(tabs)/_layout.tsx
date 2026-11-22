@@ -1,13 +1,19 @@
 import { Redirect, router, Tabs } from "expo-router";
-import { t } from "@/i18n";
+import { isRTL, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { useUnlocked } from "@/lib/unlock-store";
-import { fonts, glass, GlassHeader, glassBar, Icon, IconButton, palette, radius, withGround, type IconName } from "@/ui";
+import { ChatTabButton, fonts, glass, GlassHeader, glassBar, Icon, IconButton, palette, radius, withGround, type IconName } from "@/ui";
 
 const icon = (outline: IconName, filled: IconName) =>
   function TabIcon({ focused, color }: { focused: boolean; color: unknown }) {
     return <Icon name={focused ? filled : outline} size={24} color={String(color)} />;
   };
+
+// The chat is home: Android back from any tab returns to it, and the app opens on it.
+export const unstable_settings = { initialRouteName: "index" };
+
+/** Back to Zaki's chat, on every tab that is not the chat. */
+const backToChat = () => <IconButton name={isRTL ? "arrow-forward" : "arrow-back"} label={t.ui.backToChat} onPress={() => router.navigate("/")} />;
 
 /**
  * Up to five places: Zaki, your day, your people, the Daftar, and you. Chat first: a new user
@@ -32,6 +38,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenLayout={withGround}
+      backBehavior="initialRoute"
       screenOptions={{
         tabBarActiveTintColor: palette.primaryInk,
         tabBarInactiveTintColor: palette.inkFaint,
@@ -45,13 +52,23 @@ export default function TabsLayout() {
         headerTitleAlign: "left",
         headerTitleStyle: { fontFamily: fonts.display, fontSize: 26, color: palette.ink },
         sceneStyle: { backgroundColor: palette.bg },
+        headerLeft: backToChat,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: t.ui.tabZaki, tabBarIcon: icon("chatbubble-ellipses-outline", "chatbubble-ellipses") }} />
+      {/* Order puts the chat in the middle when every tab is open. */}
       <Tabs.Screen name="today" options={{ ...shown("today"), title: t.ui.tabToday, tabBarIcon: icon("sunny-outline", "sunny") }} />
       <Tabs.Screen name="circles" options={{ ...shown("people"), title: t.ui.tabPeople, tabBarIcon: icon("people-outline", "people") }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: t.ui.tabZaki,
+          headerLeft: () => null,
+          tabBarIcon: icon("chatbubble-ellipses-outline", "chatbubble-ellipses"),
+          tabBarButton: (props) => <ChatTabButton onPress={props.onPress} onLongPress={props.onLongPress} focused={props["aria-selected"] === true || props.accessibilityState?.selected === true} label={t.ui.tabZaki} />,
+        }}
+      />
       <Tabs.Screen name="money" options={{ ...shown("daftar"), title: t.ui.tabMoney, tabBarIcon: icon("book-outline", "book") }} />
-      <Tabs.Screen name="settings" options={{ ...(chatOnly ? { href: null, headerLeft: () => <IconButton name="arrow-back" label={t.ui.tabZaki} onPress={() => router.navigate("/")} /> } : {}), title: t.ui.tabMe, tabBarIcon: icon("person-circle-outline", "person-circle") }} />
+      <Tabs.Screen name="settings" options={{ ...(chatOnly ? { href: null } : {}), title: t.ui.tabMe, tabBarIcon: icon("person-circle-outline", "person-circle") }} />
       {/* Kept as routes (links and notifications open them), shown inside Today. */}
       <Tabs.Screen name="trackers" options={{ href: null, title: t.tabs.trackers }} />
       <Tabs.Screen name="upcoming" options={{ href: null, title: t.tabs.upcoming }} />

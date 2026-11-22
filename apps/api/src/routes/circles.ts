@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   CheckinKind,
   CheckinRequest,
+  circleExtras,
+  circleTrialUntil,
   CreateCircleRequest,
   FamilyRole,
   FamilyType,
@@ -14,6 +16,7 @@ import {
   type CircleDetail,
   type CircleInvite,
   type CircleResponse,
+  type CircleSummary,
   type CreateInviteResponse,
   type InvitePreview,
   type ListCirclesResponse,
@@ -26,9 +29,13 @@ import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
 import { CHECKIN_ASK_GAP_HOURS, checkinAskLine, postLine } from "../tasks/rules";
 import { langOf } from "../tasks/store";
+import { hasProAccess } from "../billing/family";
+import { summaryLines } from "../circles/summary";
 import { INVITE_VALID_DAYS, inviteShareText, inviteState, MAX_CIRCLE_MEMBERS, MAX_CIRCLES_PER_USER, newInviteCode } from "../circles/rules";
 
 export interface CircleRoutesOptions {
+  /** Off (stores not set up yet): every circle keeps its extras. */
+  requireSubscription?: boolean;
   prisma: PrismaClient;
   authenticate: preHandlerAsyncHookHandler;
   now?: () => Date;
@@ -54,6 +61,7 @@ export const inviteUrl = (base: string, code: string) => `${base}/i/${code}`;
 export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app, opts) => {
   const { prisma } = opts;
   const now = opts.now ?? (() => new Date());
+  const proFor = async (user: User): Promise<boolean> => !opts.requireSubscription || (await hasProAccess(prisma, user, now()));
   app.addHook("preHandler", opts.authenticate);
 
   const wireInvite = (req: FastifyRequest, i: Invite): CircleInvite => ({
@@ -81,6 +89,7 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
       const kind = p ? CheckinKind.safeParse(p.event.slice(8)) : null;
       return p && kind?.success ? { kind: kind.data, note: p.title, at: p.createdAt.toISOString() } : null;
     };
+    const pro = await proFor(user);
     return {
       id: circle.id,
       kind: circle.kind,
@@ -89,6 +98,8 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
       member_count: circle.members.length,
       family_type: FamilyType.nullable().catch(null).parse(circle.familyType),
       created_at: circle.createdAt.toISOString(),
+      trial_until: circleTrialUntil(circle.createdAt).toISOString(),
+      extras: circleExtras(circle.createdAt, pro, now()),
       members: circle.members.map((m) => ({
         user_id: m.userId,
         name: m.user.name,
@@ -108,6 +119,7 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
       include: { circle: { include: { _count: { select: { members: true } } } } },
       orderBy: { joinedAt: "asc" },
     });
+    const pro = await proFor(req.user);
     const circles: WireCircle[] = rows.map((m) => ({
       id: m.circle.id,
       kind: m.circle.kind,
@@ -116,8 +128,29 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
       member_count: m.circle._count.members,
       family_type: FamilyType.nullable().catch(null).parse(m.circle.familyType),
       created_at: m.circle.createdAt.toISOString(),
+      trial_until: circleTrialUntil(m.circle.createdAt).toISOString(),
+      extras: circleExtras(m.circle.createdAt, pro, now()),
     }));
     return { circles } satisfies ListCirclesResponse;
+  });
+
+  /** Zaki's weekly summary of the circle: an extra (the circle's trial, or Pro). Templates only. */
+  app.get("/circles/:id/summary", async (req, reply) => {
+    const params = IdParam.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_request" });
+    const circle = await prisma.circle.findFirst({ where: { id: params.data.id, members: { some: { userId: req.user.id } } }, include: { members: { include: { user: { select: { id: true, name: true } } } } } });
+    if (!circle) return reply.code(404).send({ error: "not_found" });
+    if (!circleExtras(circle.createdAt, await proFor(req.user), now())) return reply.code(402).send({ error: "circle_extras" });
+    const since = new Date(now().getTime() - 7 * 86400_000);
+    // Daftar entries stay out: only the two people in an entry ever see it.
+    const [done, open, checkins] = await Promise.all([
+      prisma.circleTask.findMany({ where: { circleId: circle.id, status: "done", doneAt: { gte: since } }, select: { assigneeId: true } }),
+      prisma.circleTask.count({ where: { circleId: circle.id, status: { in: ["pending", "accepted"] } } }),
+      prisma.circlePost.count({ where: { circleId: circle.id, event: { startsWith: "checkin:" }, createdAt: { gte: since } } }),
+    ]);
+    const names = new Map(circle.members.map((m) => [m.userId, m.user.name]));
+    const lines = summaryLines(langOf(req.user), { done: done.map((d) => names.get(d.assigneeId) ?? null), open, checkins });
+    return { lines, since: since.toISOString() } satisfies CircleSummary;
   });
 
   app.post("/circles", async (req, reply) => {

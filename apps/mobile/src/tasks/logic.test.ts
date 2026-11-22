@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueAt, dueChoices, iftarDate, sortTasks, taskActions } from "./logic";
+import { dueAt, dueChoices, firstLink, iftarDate, remindAt, remindChoices, sortTasks, taskActions } from "./logic";
 
 describe("task logic", () => {
   const t = (status: "pending" | "accepted" | "declined" | "done" | "cancelled", role: "assigner" | "assignee" | "watcher", can_nudge = false) => ({ status, role, can_nudge });
@@ -38,5 +38,25 @@ describe("task logic", () => {
     // On a Friday, "next Friday" is a week later, and month ends roll over.
     expect(iftarDate("friday", new Date(2027, 1, 12, 9, 0))).toBe("2027-02-19");
     expect(iftarDate("tomorrow", new Date(2027, 1, 28, 23, 30))).toBe("2027-03-01");
+  });
+});
+
+describe("reminder picks and homework links", () => {
+  const morning = new Date(2026, 10, 22, 10, 0);
+  it("offers 'an hour before' only with a deadline far enough away", () => {
+    expect(remindChoices(morning, null)).toEqual(["due", "hour", "evening", "morning"]);
+    expect(remindChoices(morning, new Date(2026, 10, 22, 18, 0).toISOString())).toContain("beforeDue");
+    expect(remindChoices(new Date(2026, 10, 22, 20, 0), null)).toEqual(["due", "hour", "morning"]);
+  });
+  it("turns a pick into a time", () => {
+    expect(remindAt("due", morning, null)).toBeNull();
+    expect(new Date(remindAt("evening", morning, null)!).getHours()).toBe(19);
+    const tomorrow = new Date(remindAt("morning", morning, null)!);
+    expect([tomorrow.getDate(), tomorrow.getHours()]).toEqual([23, 9]);
+    expect(new Date(remindAt("beforeDue", morning, new Date(2026, 10, 22, 18, 0).toISOString())!).getHours()).toBe(17);
+  });
+  it("finds the link in a homework note", () => {
+    expect(firstLink("صفحة 40 https://school.test/hw/12.")).toBe("https://school.test/hw/12");
+    expect(firstLink("حل التمارين")).toBeNull();
   });
 });

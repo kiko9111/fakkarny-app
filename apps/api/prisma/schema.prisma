@@ -376,6 +376,11 @@ model CircleTask {
   assigneeId  String     @map("assignee_id") @db.Uuid
   title       String
   dueAt       DateTime?  @map("due_at")
+  // When Zaki reminds the assignee: set by the assigner, changeable by the assignee. Null = at due_at.
+  remindAt    DateTime?  @map("remind_at")
+  // Homework (simple version): a description or link the child opens, then taps done.
+  homework    Boolean    @default(false)
+  note        String?
   status      TaskStatus @default(pending)
   // The assignee's own item, created when they accept. Marking it done finishes the task.
   itemId      String?    @unique @map("item_id") @db.Uuid

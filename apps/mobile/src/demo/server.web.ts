@@ -158,6 +158,9 @@ function seed(): State {
     circle_id: family.id,
     circle_name: family.name,
     due_at: null,
+    remind_at: null,
+    homework: false,
+    note: null,
     status: "pending",
     assigner_name: null,
     assignee_name: null,
@@ -219,6 +222,7 @@ function seed(): State {
     ],
     tasks: [
       task({ title: L("هات عيش وانت راجع", "Grab bread on your way home"), role: "assignee", assigner_name: L("ماما", "Mum"), assignee_name: null, due_at: atLocal(0, 21) }),
+      task({ title: L("واجب العربي: تعبير عن الشتا", "Arabic homework: a short essay on winter"), role: "assigner", assigner_name: null, assignee_name: L("عمر", "Omar"), status: "accepted", responded_at: inHours(-1), homework: true, note: L("صفحة 40 في الكتاب https://example.com/hw", "Page 40 in the book https://example.com/hw"), remind_at: atLocal(0, 18), due_at: atLocal(0, 21) }),
       task({ title: L("تحجز ميعاد الدكتور لبابا", "Book Dad's doctor appointment"), role: "assigner", assigner_name: null, assignee_name: L("سارة", "Sara"), status: "accepted", responded_at: inHours(-3), can_nudge: true }),
       task({
         title: L("يحجز الملعب يوم الجمعة", "Book the pitch for Friday"), role: "watcher", circle_id: friends.id, circle_name: friends.name,
@@ -281,6 +285,8 @@ const toCircle = (c: CircleRow): Circle => ({
   member_count: c.members.length,
   family_type: c.family_type,
   created_at: c.created_at,
+  trial_until: new Date(new Date(c.created_at).getTime() + 14 * 86400000).toISOString(),
+  extras: true,
 });
 const toDetail = (c: CircleRow): CircleDetail => ({ ...toCircle(c), members: c.members, open_invites: c.invites });
 const findCircle = (cid: string) => {
@@ -471,6 +477,17 @@ on("DELETE", "/circles/([^/]+)", (m) => {
   state.circles = state.circles.filter((c) => c.id !== m[1]);
   return null;
 });
+on("GET", "/circles/([^/]+)/summary", (m) => {
+  const c = findCircle(m[1]!);
+  const done = state.tasks.filter((t) => t.circle_id === c.id && t.status === "done").length;
+  return {
+    since: inHours(-24 * 7),
+    lines: [
+      L(`نجم الأسبوع: ${c.members[0]?.name ?? "حد من الدايرة"} 🌟`, `Star of the week: ${c.members[0]?.name ?? "someone in the circle"} 🌟`),
+      L(`${done} مهام خلصت الأسبوع ده`, `${done} tasks done this week`),
+    ],
+  };
+});
 on("GET", "/circles/([^/]+)/feed", (m) => {
   const c = findCircle(m[1]!);
   return { posts: c.posts, tasks: state.tasks.filter((t) => t.circle_id === c.id) };
@@ -528,6 +545,9 @@ on("POST", "/circles/([^/]+)/tasks", (m, b) => {
     circle_name: c.name,
     title: String(b.title ?? ""),
     due_at: (b.due_at as string | null) ?? null,
+    remind_at: (b.remind_at as string | null) ?? null,
+    homework: Boolean(b.homework),
+    note: (b.note as string | null) ?? null,
     status: "pending",
     role: "assigner",
     assigner_name: null,
@@ -538,6 +558,12 @@ on("POST", "/circles/([^/]+)/tasks", (m, b) => {
     done_at: null,
   };
   state.tasks.unshift(task);
+  return { task };
+});
+on("POST", "/tasks/([^/]+)/remind", (m, b) => {
+  const task = state.tasks.find((x) => x.id === m[1]);
+  if (!task) throw new DemoHttpError(404);
+  task.remind_at = (b.remind_at as string | null) ?? null;
   return { task };
 });
 on("POST", "/circles/([^/]+)/iftar", (m) => {

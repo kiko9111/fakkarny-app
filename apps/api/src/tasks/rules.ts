@@ -12,6 +12,8 @@ export const MAX_OPEN_PER_PAIR = 30;
 
 export const canRespond = (status: TaskStatus, role: TaskRole) => status === "pending" && role === "assignee";
 export const canFinish = (status: TaskStatus, role: TaskRole) => status === "accepted" && role === "assignee";
+/** The assigner picks the reminder time while asking; once it is theirs, the assignee decides. */
+export const canSetRemind = (status: TaskStatus, role: TaskRole) => (role === "assigner" && status === "pending") || (role === "assignee" && (status === "pending" || status === "accepted"));
 export const canCancel = (status: TaskStatus, role: TaskRole) => role === "assigner" && (status === "pending" || status === "accepted");
 
 /** Nudges go only to a task that is still open, and never in a burst. */

@@ -19,6 +19,11 @@ export const CircleTask = z.object({
   circle_name: z.string(),
   title: z.string(),
   due_at: Instant.nullable(),
+  /** When Zaki reminds the assignee (null = at due_at). The assigner sets it; the assignee may change it. */
+  remind_at: Instant.nullable().default(null),
+  /** Homework: a parent's description or link, opened by the child, who then taps done. */
+  homework: z.boolean().default(false),
+  note: z.string().nullable().default(null),
   status: TaskStatus,
   role: TaskRole,
   assigner_name: z.string().nullable(),
@@ -35,8 +40,15 @@ export const CreateTaskRequest = z.object({
   assignee_id: z.uuid(),
   title: z.string().trim().min(1).max(120),
   due_at: Instant.nullable().optional(),
+  remind_at: Instant.nullable().optional(),
+  homework: z.boolean().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
 });
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequest>;
+
+/** Change when Zaki reminds the assignee: the assigner while it is pending, the assignee any time it is open. */
+export const TaskRemindRequest = z.object({ remind_at: Instant.nullable() });
+export type TaskRemindRequest = z.infer<typeof TaskRemindRequest>;
 
 export const RespondTaskRequest = z.object({ answer: z.enum(["accept", "decline"]) });
 export type RespondTaskRequest = z.infer<typeof RespondTaskRequest>;
