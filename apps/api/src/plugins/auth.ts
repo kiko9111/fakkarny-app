@@ -106,6 +106,10 @@ export async function linkInstallToAccount(prisma: PrismaClient, installId: stri
     await tx.user.updateMany({ where: { referredById: install.id }, data: { referredById: account.id } });
     await tx.daftarEntry.updateMany({ where: { creatorId: install.id }, data: { creatorId: account.id } });
     await tx.daftarEntry.updateMany({ where: { otherUserId: install.id }, data: { otherUserId: account.id } });
+    await tx.circleTask.updateMany({ where: { assignerId: install.id }, data: { assignerId: account.id } });
+    await tx.circleTask.updateMany({ where: { assigneeId: install.id }, data: { assigneeId: account.id } });
+    await tx.circlePost.updateMany({ where: { actorId: install.id }, data: { actorId: account.id } });
+    await tx.circlePost.updateMany({ where: { targetId: install.id }, data: { targetId: account.id } });
     await tx.user.delete({ where: { id: install.id } });
     const bonus = [account.bonusProUntil, install.bonusProUntil].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
     return tx.user.update({

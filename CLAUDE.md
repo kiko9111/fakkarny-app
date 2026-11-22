@@ -196,6 +196,16 @@ Rules:
   returns the confirm link while pending and the gentle reminder only once confirmed.
   When something happens, Zaki tells the other side in their chat with a Message of
   kind "update" (no AI call, client_id `daftar:<id>:<event>`).
+- Assigned tasks (Zaki M5): tables circle_tasks and circle_posts, routes
+  apps/api/src/routes/tasks.ts, rules and wording in apps/api/src/tasks/rules.ts (pure),
+  writes in apps/api/src/tasks/store.ts. Accept first: a request is only between the two
+  people (chat line kind "update" + free push via proactive/notify.ts) until the assignee
+  says yes. On yes it becomes an Item of theirs (circle_tasks.item_id) and Zaki posts in
+  the circle. Marking that item done anywhere (PATCH /items, or in chat via
+  pipeline/apply.ts) finishes the task through `finishForItems`. Nudges are sent only
+  when the assigner asks (every 12 h, 3 per task). Circle posts are stored as an event
+  plus ids and written per reader language by `postLine`; never store model text there.
+  Arabic lines about another person avoid gendered verbs. All of this is free: no AI call.
   Records only: never hold or move money (Central Bank rules).
 - InstaPay: there is no public deep link that pre-fills an amount. Users paste their own
   InstaPay payment link (https://ipn.eg/…, validated by `parseInstapayLink`) in

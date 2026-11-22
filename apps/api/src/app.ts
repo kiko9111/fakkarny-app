@@ -20,6 +20,8 @@ import { circleRoutes } from "./routes/circles";
 import { invitePageRoutes } from "./routes/invite-page";
 import { daftarRoutes } from "./routes/daftar";
 import { daftarPageRoutes } from "./routes/daftar-page";
+import { taskRoutes } from "./routes/tasks";
+import type { PushSender } from "./proactive/push";
 
 export interface AppDeps {
   /** Omit to run without a database (only /health is served). */
@@ -34,6 +36,8 @@ export interface AppDeps {
   /** Invite links: where they point, and the store link offered after the web confirm. */
   invites?: { publicUrl?: string; storeUrl?: string };
   billing?: { requireSubscription: boolean; webhookAuth?: string; revenueCatSecretKey?: string; fetchImpl?: typeof fetch };
+  /** Free push for lines Zaki writes to other people (task requests, nudges). Off when absent. */
+  push?: PushSender;
   /** FR-15 dashboard password (HTTP Basic, user "admin"). The dashboard is off without it. */
   adminPassword?: string;
   /** Requests per minute per caller (default 120); false disables rate limiting. */
@@ -89,7 +93,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
-    app.register(itemRoutes, { prisma, authenticate });
+    app.register(taskRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
+    app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });

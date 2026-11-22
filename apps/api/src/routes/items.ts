@@ -3,12 +3,15 @@ import { z } from "zod";
 import { PatchItemRequest, type ItemResponse, type ListItemsResponse, type ListMemoriesResponse } from "@fakkarni/shared";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import type { preHandlerAsyncHookHandler } from "fastify";
+import { pushNotices } from "../proactive/notify";
+import type { PushSender } from "../proactive/push";
 import { toWireItem, toWireMemory } from "../serialize";
+import { finishForItems } from "../tasks/store";
 
 const IdParam = z.object({ id: z.uuid() });
 const ListQuery = z.object({ status: z.enum(["open", "done", "cancelled"]).optional() });
 
-export const itemRoutes: FastifyPluginAsync<{ prisma: PrismaClient; authenticate: preHandlerAsyncHookHandler }> = async (app, { prisma, authenticate }) => {
+export const itemRoutes: FastifyPluginAsync<{ prisma: PrismaClient; authenticate: preHandlerAsyncHookHandler; now?: () => Date; push?: PushSender }> = async (app, { prisma, authenticate, now = () => new Date(), push }) => {
   app.addHook("preHandler", authenticate);
 
   app.get("/items", async (req, reply) => {
@@ -33,11 +36,16 @@ export const itemRoutes: FastifyPluginAsync<{ prisma: PrismaClient; authenticate
     if (body.data.title) data.title = body.data.title;
     if (body.data.status) {
       data.status = body.data.status;
-      data.doneAt = body.data.status === "done" ? new Date() : null;
+      data.doneAt = body.data.status === "done" ? now() : null;
     }
     if (body.data.due_at !== undefined) data.dueAt = body.data.due_at ? new Date(body.data.due_at) : null;
     if (body.data.remind_at !== undefined) data.remindAt = body.data.remind_at ? new Date(body.data.remind_at) : null;
-    const item = await prisma.item.update({ where: { id: existing.id }, data });
+    // A task someone asked for: finishing the item tells them, and the circle, that it is done.
+    const { item, notices } = await prisma.$transaction(async (tx) => ({
+      item: await tx.item.update({ where: { id: existing.id }, data }),
+      notices: body.data.status === "done" ? await finishForItems(tx, [existing.id], now()) : [],
+    }));
+    void pushNotices(prisma, push, notices, app.log);
     await prisma.event.create({ data: { userId: req.user.id, name: "item_edited_by_user", propsJson: { fields: Object.keys(body.data) } } });
     const res: ItemResponse = { item: toWireItem(item) };
     return res;

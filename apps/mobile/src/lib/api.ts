@@ -1,6 +1,11 @@
 import Constants from "expo-constants";
 import {
   AcceptInviteResponse,
+  CircleFeedResponse,
+  ListTasksResponse,
+  TaskResponse,
+  type CircleTask,
+  type CreateTaskRequest,
   DaftarResponse,
   ListDaftarResponse,
   type CreateDaftarRequest,
@@ -197,3 +202,25 @@ export async function settleDaftar(id: string): Promise<DaftarEntry> {
 export async function cancelDaftar(id: string): Promise<void> {
   await request(`/daftar/${id}/cancel`, { method: "POST" });
 }
+
+// Assigned tasks: ask someone in a circle; they accept first. Needs a connection.
+export async function listTasks(): Promise<CircleTask[]> {
+  return ListTasksResponse.parse(await request("/tasks")).tasks;
+}
+
+export async function getCircleFeed(circleId: string): Promise<CircleFeedResponse> {
+  return CircleFeedResponse.parse(await request(`/circles/${circleId}/feed`));
+}
+
+export async function createTask(circleId: string, body: CreateTaskRequest): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/circles/${circleId}/tasks`, { method: "POST", body: JSON.stringify(body) })).task;
+}
+
+export async function respondTask(id: string, answer: "accept" | "decline"): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/tasks/${id}/respond`, { method: "POST", body: JSON.stringify({ answer }) })).task;
+}
+
+const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Promise<CircleTask> => TaskResponse.parse(await request(`/tasks/${id}/${verb}`, { method: "POST" })).task;
+export const finishTask = taskAction("done");
+export const cancelTask = taskAction("cancel");
+export const nudgeTask = taskAction("nudge");

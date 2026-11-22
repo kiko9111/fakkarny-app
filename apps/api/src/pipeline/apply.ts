@@ -1,6 +1,7 @@
 import type { FriendResponse } from "@fakkarni/shared";
 import type { Item, Memory, Message, Prisma, PrismaClient, User } from "../generated/prisma/client";
 import { localToUtc } from "../lib/time";
+import { finishForItems } from "../tasks/store";
 
 type Tx = Prisma.TransactionClient;
 
@@ -98,6 +99,8 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
         if (u.repeat_every_minutes) data.repeatEveryMinutes = u.repeat_every_minutes;
         items.push(await tx.item.update({ where: { id: u.id }, data }));
       }
+      // "خلصتها" in chat also finishes a task a circle member asked for.
+      await finishForItems(tx, input.response.update_items.filter((u) => u.status === "done" && owned.has(u.id)).map((u) => u.id), now);
     }
 
     for (const m of input.response.save_memories) {
