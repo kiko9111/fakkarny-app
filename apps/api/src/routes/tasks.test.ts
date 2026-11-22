@@ -58,7 +58,7 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect(res.statusCode).toBe(201);
     return TaskResponse.parse(res.json()).task;
   };
-  const chat = async (h: H) => ListMessagesResponse.parse((await app.inject({ method: "GET", url: "/messages", headers: h })).json()).messages;
+  const chat = async (h: H) => ListMessagesResponse.parse((await app.inject({ method: "GET", url: "/messages", headers: { ...h, "x-message-kinds": "2" } })).json()).messages;
   const items = async (h: H) => ListItemsResponse.parse((await app.inject({ method: "GET", url: "/items", headers: h })).json()).items;
   const feed = async (h: H, circleId: string) => CircleFeedResponse.parse((await app.inject({ method: "GET", url: `/circles/${circleId}/feed`, headers: h })).json());
   const flush = () => new Promise((r) => setTimeout(r, 50));

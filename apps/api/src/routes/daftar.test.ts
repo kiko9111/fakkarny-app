@@ -35,7 +35,7 @@ describe.skipIf(!hasTestDb)("shared Daftar", () => {
     return DaftarResponse.parse(res.json());
   };
   const list = async (h: H) => ListDaftarResponse.parse((await app.inject({ method: "GET", url: "/daftar", headers: h })).json()).entries;
-  const chat = async (h: H) => ListMessagesResponse.parse((await app.inject({ method: "GET", url: "/messages", headers: h })).json()).messages;
+  const chat = async (h: H) => ListMessagesResponse.parse((await app.inject({ method: "GET", url: "/messages", headers: { ...h, "x-message-kinds": "2" } })).json()).messages;
   const form = { "content-type": "application/x-www-form-urlencoded" };
   const codeOf = (url: string | null) => url!.split("/d/")[1]!;
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { INSTALL_ID_HEADER, MeResponse } from "@fakkarni/shared";
 import { buildApp } from "../app";
+import { KINDS_HEADER } from "../serialize";
 import { FREE_AI_FIRST_WEEK_PER_DAY, FREE_AI_PER_DAY } from "../billing/plan";
 import { createConversationPipeline } from "../pipeline/conversation";
 import type { FriendModel } from "../ai/model";
@@ -49,12 +50,29 @@ describe.skipIf(!hasTestDb)("subscriptions (FR-9)", () => {
 
   const text = (n: number) => `fakarny bokra a3ady 3la mama ${n}`;
   const sendText = (id: string, t: string) =>
-    app.inject({ method: "POST", url: "/messages", headers, payload: { client_id: id, text: t, created_at: new Date().toISOString() } });
+    app.inject({ method: "POST", url: "/messages", headers: { ...headers, [KINDS_HEADER]: "2" }, payload: { client_id: id, text: t, created_at: new Date().toISOString() } });
   const ageUser = async (days: number) => {
     const user = await prisma.user.findFirstOrThrow();
     await prisma.user.update({ where: { id: user.id }, data: { createdAt: new Date(Date.now() - days * 86_400_000) } });
     return user;
   };
+
+  it("sends the Pro nudge as a plain chat message to an old app build, on send, retry and list", async () => {
+    await sendText("first", text(0));
+    await ageUser(30);
+    for (let i = 1; i <= FREE_AI_PER_DAY - 1; i++) await sendText(`c${i}`, text(i));
+    const old = { client_id: "over", text: text(98), created_at: new Date().toISOString() };
+    const sent = await app.inject({ method: "POST", url: "/messages", headers, payload: old });
+    expect(sent.json().replies[0].kind).toBe("chat");
+    expect(sent.json().replies[0].text).toContain("زكي برو");
+    const retry = await app.inject({ method: "POST", url: "/messages", headers, payload: old });
+    expect(retry.json().replies[0].kind).toBe("chat");
+    const list = await app.inject({ method: "GET", url: "/messages", headers });
+    expect(list.json().messages.map((m: { kind: string }) => m.kind)).not.toContain("upsell");
+    const fresh = await app.inject({ method: "GET", url: "/messages", headers: { ...headers, [KINDS_HEADER]: "2" } });
+    expect(fresh.json().messages.map((m: { kind: string }) => m.kind)).toContain("upsell");
+    expect(await prisma.message.count({ where: { kind: "upsell" } })).toBe(1);
+  });
 
   it("never locks chat: after the free AI messages Zaki nudges to Pro once, and rules replies stay free", async () => {
     await sendText("first", text(0));

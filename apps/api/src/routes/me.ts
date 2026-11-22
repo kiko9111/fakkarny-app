@@ -6,7 +6,7 @@ import { coveredByFamilyPlan } from "../billing/family";
 import { isValidTimeZone } from "../lib/time";
 import { linkInstallToAccount, type AuthConfig } from "../plugins/auth";
 import { toWireEntry, withPeople as daftarPeople } from "../daftar/store";
-import { toWireItem, toWireMemory, toWireMessage, toWireUser } from "../serialize";
+import { readsNewKinds, toWireItem, toWireMemory, toWireMessage, toWireUser } from "../serialize";
 
 export interface MeRoutesOptions {
   prisma: PrismaClient;
@@ -80,7 +80,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
       user: toWireUser(req.user),
-      messages: messages.map(toWireMessage),
+      messages: messages.map((m) => toWireMessage(m, readsNewKinds(req))),
       items: items.map(toWireItem),
       memories: memories.map(toWireMemory),
       summaries: summaries.map((s) => ({ period_start: s.periodStart.toISOString(), period_end: s.periodEnd.toISOString(), text: s.text })),

@@ -12,14 +12,23 @@ import type { Item, Memory, Message, User } from "./generated/prisma/client";
 const iso = (d: Date) => d.toISOString();
 const isoOrNull = (d: Date | null) => (d ? d.toISOString() : null);
 
-export function toWireMessage(m: Message): WireMessage {
+/** Header the app sends once it understands the message kinds added after the first build. */
+export const KINDS_HEADER = "x-message-kinds";
+/** True when the caller's app can read "upsell" and "update" messages. */
+export const readsNewKinds = (req: { headers: Record<string, unknown> }) => req.headers[KINDS_HEADER] === "2";
+
+/**
+ * The first app build rejects any message kind it does not know, which jams its whole
+ * chat sync. Unless the caller says it reads the newer kinds, they go out as plain "chat".
+ */
+export function toWireMessage(m: Message, newKinds = false): WireMessage {
   return {
     id: m.id,
     user_id: m.userId,
     role: m.role,
     text: m.text,
     client_id: m.clientId,
-    kind: m.kind,
+    kind: !newKinds && (m.kind === "upsell" || m.kind === "update") ? "chat" : m.kind,
     created_at: iso(m.createdAt),
   };
 }

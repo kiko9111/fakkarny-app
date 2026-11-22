@@ -10,7 +10,7 @@ import { coveredByFamilyPlan } from "../billing/family";
 import { dailyAiAllowance } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
 import type { preHandlerAsyncHookHandler } from "fastify";
-import { toWireItem, toWireMemory, toWireMessage } from "../serialize";
+import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../serialize";
 
 export interface MessageRoutesOptions {
   prisma: PrismaClient;
@@ -52,11 +52,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     });
     if (existing) {
       const res: PostMessageResponse = {
-        message: toWireMessage(existing),
+        message: toWireMessage(existing, readsNewKinds(req)),
         replies: (await prisma.message.findMany({
           where: { userId: user.id, clientId: { startsWith: `${existing.clientId}:reply:` } },
           orderBy: { clientId: "asc" },
-        })).map(toWireMessage),
+        })).map((m) => toWireMessage(m, readsNewKinds(req))),
         items: (await prisma.item.findMany({ where: { sourceMessageId: existing.id } })).map(toWireItem),
         memories: [],
         duplicate: true,
@@ -100,8 +100,8 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
     const result = await pipeline({ prisma, user, message, now: now(), aiAllowance });
     const res: PostMessageResponse = {
-      message: toWireMessage(message),
-      replies: result.replies.map(toWireMessage),
+      message: toWireMessage(message, readsNewKinds(req)),
+      replies: result.replies.map((m) => toWireMessage(m, readsNewKinds(req))),
       items: result.items.map(toWireItem),
       memories: result.memories.map(toWireMemory),
       duplicate: false,
@@ -118,7 +118,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       orderBy: { createdAt: "asc" },
       take: q.data.limit,
     });
-    const res: ListMessagesResponse = { messages: rows.map(toWireMessage) };
+    const res: ListMessagesResponse = { messages: rows.map((m) => toWireMessage(m, readsNewKinds(req))) };
     return res;
   });
 };
