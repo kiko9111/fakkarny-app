@@ -84,6 +84,12 @@ export function postLine(lang: Lang, event: string, actor: string | null | undef
   }
   if (event === "rsvp:yes") return lang === "en" ? `${a}: I'm coming, inshallah ✋` : `${a}: جاي إن شاء الله ✋`;
   if (event === "rsvp:no") return lang === "en" ? `${a}: I can't make it this time 💛` : `${a}: مش هقدر المرة دي 💛`;
+  if (event === "book_entry") {
+    // title = "book name|amount"
+    const [book = "", amount = "0"] = (title ?? "").split("|");
+    const n = Number(amount).toLocaleString("en-US", { maximumFractionDigits: 2 });
+    return lang === "en" ? `${a} added EGP ${n} to “${book}” 🧾` : `${a}: ${n} جنيه في «${book}» 🧾`;
+  }
   if (event === "tracker_goal") {
     // title = "kind|custom name|streak"
     const [kind = "custom", name = "", streakText = "0"] = (title ?? "").split("|");

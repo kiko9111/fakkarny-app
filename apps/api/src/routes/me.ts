@@ -65,7 +65,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -76,6 +76,11 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.tracker.findMany({ where, include: { entries: { orderBy: { at: "asc" } } }, orderBy: { createdAt: "asc" } }),
       prisma.circlePost.findMany({ where: { actorId: id, event: { startsWith: "checkin:" } }, orderBy: { createdAt: "asc" } }),
       prisma.reflectSession.findMany({ where, include: { messages: { orderBy: { createdAt: "asc" } } }, orderBy: { startedAt: "asc" } }),
+      prisma.moneySection.findMany({
+        where: { OR: [{ ownerId: id, circleId: null }, { entries: { some: { userId: id } } }] },
+        include: { entries: { where: { userId: id }, orderBy: { at: "asc" } } },
+        orderBy: { createdAt: "asc" },
+      }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -93,6 +98,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       checkins: checkins.map((c) => ({ kind: c.event.slice(8), note: c.title, at: c.createdAt.toISOString() })),
       tasks: tasks.map((t) => ({ title: t.title, role: t.assignerId === id ? "assigner" : "assignee", status: t.status, due_at: t.dueAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
       trackers: trackers.map((t) => ({ kind: t.kind, name: t.name, goal: t.goal === null ? null : Number(t.goal), entries: t.entries.map((e) => ({ amount: Number(e.amount), source: e.source, at: e.at.toISOString() })) })),
+      money: money.map((s) => ({ name: s.name, kind: s.kind, budget: s.budget === null ? null : Number(s.budget), shared: Boolean(s.circleId), entries: s.entries.map((e) => ({ amount: Number(e.amount), note: e.note, at: e.at.toISOString() })) })),
     };
     return res;
   });
@@ -110,6 +116,11 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       for (const { circleId } of owned) {
         const next = await tx.circleMember.findFirst({ where: { circleId, userId: { not: user.id } }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
         if (next) await tx.circleMember.update({ where: { circleId_userId: { circleId, userId: next.userId } }, data: { role: "owner" } });
+      }
+      // Shared books they started stay with the circle: the next member looks after them.
+      for (const book of await tx.moneySection.findMany({ where: { ownerId: user.id, circleId: { not: null } }, select: { id: true, circleId: true } })) {
+        const next = await tx.circleMember.findFirst({ where: { circleId: book.circleId!, userId: { not: user.id } }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
+        if (next) await tx.moneySection.update({ where: { id: book.id }, data: { ownerId: next.userId } });
       }
       const alone = await tx.circle.findMany({ where: { members: { some: { userId: user.id }, every: { userId: user.id } } }, select: { id: true } });
       if (alone.length) await tx.circle.deleteMany({ where: { id: { in: alone.map((c) => c.id) } } });

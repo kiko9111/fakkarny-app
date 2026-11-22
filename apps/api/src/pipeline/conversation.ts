@@ -9,6 +9,7 @@ import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./cont
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
+import { moneyFastPath } from "../money/store";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 
@@ -84,6 +85,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (tracked && !closesReminder) {
       await event(prisma, user.id, "reply_fast_path", { tracker: true });
       return applyActions(prisma, { user, message, replies: [tracked.text], response: EMPTY_ACTIONS, now, ...(tracked.upsell ? { replyKind: "upsell" as const } : {}) });
+    }
+
+    // 1a'. Expenses and income by rules: "دفعت 300 بنزين" goes to a Daftar section. No AI call.
+    const money = crisisKeyword || tracked ? null : await moneyFastPath(prisma, user, message.text, script, now);
+    if (money) {
+      await event(prisma, user.id, "reply_fast_path", { money: true });
+      const result = await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now });
+      return { ...result, notices: [...(result.notices ?? []), ...money.notices.filter((n) => n.userId !== user.id)] };
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never

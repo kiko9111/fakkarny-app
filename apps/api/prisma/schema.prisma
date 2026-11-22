@@ -165,6 +165,8 @@ model User {
   tasksGiven      CircleTask[]     @relation("TaskAssigner")
   tasksTaken      CircleTask[]     @relation("TaskAssignee")
   trackers        Tracker[]
+  moneySections   MoneySection[]
+  moneyEntries    MoneyEntry[]
   sessionConsent  SessionConsent?
   reflectSessions ReflectSession[]
 
@@ -289,12 +291,13 @@ model Circle {
   familyType  String?    @map("family_type")
   createdAt   DateTime   @default(now()) @map("created_at")
 
-  members  CircleMember[]
-  invites  Invite[]
-  daftar   DaftarEntry[]
-  tasks    CircleTask[]
-  posts    CirclePost[]
-  trackers Tracker[]
+  members       CircleMember[]
+  invites       Invite[]
+  daftar        DaftarEntry[]
+  tasks         CircleTask[]
+  posts         CirclePost[]
+  trackers      Tracker[]
+  moneySections MoneySection[]
 
   @@map("circles")
 }
@@ -503,4 +506,47 @@ model ReflectMessage {
 
   @@index([sessionId, createdAt])
   @@map("reflect_messages")
+}
+
+/// Wider Daftar: the user's own expense / income sections, or a circle's shared book.
+/// Records only (Central Bank rules): Zaki never holds or moves money.
+model MoneySection {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  // Set for a circle's shared book: every member can read it and add to it.
+  circleId  String?  @map("circle_id") @db.Uuid
+  name      String
+  // "expense" | "income" (validated by shared MoneyKind)
+  kind      String   @default("expense")
+  budget    Decimal? @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner   User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  circle  Circle?      @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  entries MoneyEntry[]
+
+  @@index([ownerId])
+  @@index([circleId])
+  @@map("money_sections")
+}
+
+model MoneyEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  sectionId String   @map("section_id") @db.Uuid
+  // Who paid (or received) it.
+  userId    String   @map("user_id") @db.Uuid
+  amount    Decimal  @db.Decimal(12, 2)
+  note      String?
+  // Shared books: the user ids it is split among, evenly. Empty for a personal section.
+  split     String[] @default([])
+  // "app" or "chat" (logged by rules from a message)
+  source    String   @default("app")
+  at        DateTime @default(now())
+
+  section MoneySection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId, at])
+  @@index([userId])
+  @@map("money_entries")
 }

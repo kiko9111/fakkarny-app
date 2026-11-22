@@ -7,6 +7,8 @@ const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, 
 import { nextOccurrences } from "@fakkarni/shared";
 import { detectScript, replyLang, type ReplyLang } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
+import { monthGift } from "../money/gift";
+import { GIFT_FROM_HOUR, GIFT_UNTIL_HOUR, previousMonth } from "../money/rules";
 import { COOLDOWN_DAYS, planStatusCheck, statusClientId, trackerAskDue, type StatusCheck } from "./status";
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
@@ -205,6 +207,23 @@ async function statusCheckFor(prisma: PrismaClient, user: User, now: Date): Prom
   });
 }
 
+/** Zaki's end-of-month gift: on the 1st, late morning, once, when last month had any money logged. */
+export async function sendMonthGift(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  const local = toLocalIso(now, user.timezone);
+  const hour = Number(local.slice(11, 13));
+  if (local.slice(8, 10) !== "01" || hour < GIFT_FROM_HOUR || hour >= GIFT_UNTIL_HOUR) return false;
+  const month = previousMonth(local.slice(0, 7));
+  const clientId = `gift:${month}`;
+  if (await deps.prisma.message.findFirst({ where: { userId: user.id, clientId }, select: { id: true } })) return false;
+  const gift = await monthGift(deps.prisma, user, now, month);
+  if (!gift.lines.length) return false;
+  const text = gift.lines.join("\n");
+  await deps.prisma.message.createMany({ data: [{ userId: user.id, role: "friend", kind: "update", text, clientId, createdAt: now }], skipDuplicates: true });
+  await deps.prisma.event.create({ data: { userId: user.id, name: "month_gift", propsJson: {} } });
+  await pushToUser(deps, user, gift.lines[0]!, "update");
+  return true;
+}
+
 /** Tracker questions at the times the user picked in the builder. Template words, no AI call. */
 export async function askTrackers(deps: TickDeps, user: User, now: Date): Promise<boolean> {
   const trackers = await deps.prisma.tracker.findMany({
@@ -279,7 +298,8 @@ export async function runTick(deps: TickDeps, now = new Date()): Promise<number>
   for (const user of users) {
     try {
       await postDueReminders(deps.prisma, user, now);
-      if (await askTrackers(deps, user, now)) sent++;
+      if (await sendMonthGift(deps, user, now)) sent++;
+      else if (await askTrackers(deps, user, now)) sent++;
       else if (await runForUser(deps, user, now)) sent++;
     } catch (err) {
       deps.log?.error({ err: (err as Error).name, userId: user.id }, "proactive message failed");
