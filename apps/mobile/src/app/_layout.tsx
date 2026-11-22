@@ -26,6 +26,7 @@ export default function RootLayout() {
         <Stack.Screen name="circle/[id]" options={{ title: "" }} />
         <Stack.Screen name="invite/index" options={{ presentation: "modal", title: t.circles.codeTitle }} />
         <Stack.Screen name="invite/[code]" options={{ title: "" }} />
+        <Stack.Screen name="tracker/new" options={{ presentation: "modal", title: t.trackers.newTitle }} />
         <Stack.Screen name="task/new" options={{ presentation: "modal", title: t.tasks.newTitle }} />
         <Stack.Screen name="daftar/new" options={{ presentation: "modal", title: t.daftar.newTitle }} />
         <Stack.Screen name="daftar/[code]" options={{ title: t.daftar.title }} />

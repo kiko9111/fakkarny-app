@@ -164,6 +164,7 @@ model User {
   daftarOther   DaftarEntry[] @relation("DaftarOther")
   tasksGiven    CircleTask[] @relation("TaskAssigner")
   tasksTaken    CircleTask[] @relation("TaskAssignee")
+  trackers      Tracker[]
 
   @@index([referredById])
   @@map("users")
@@ -404,4 +405,35 @@ model CirclePost {
 
   @@index([circleId, createdAt])
   @@map("circle_posts")
+}
+
+/// One thing the user follows (water, prayer, spending…). Kinds and their defaults live in
+/// packages/shared/src/trackers.ts. Free users keep one; Pro has no limit.
+model Tracker {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  kind      String
+  name      String?
+  goal      Decimal? @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries TrackerEntry[]
+
+  @@index([userId])
+  @@map("trackers")
+}
+
+model TrackerEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  trackerId String   @map("tracker_id") @db.Uuid
+  amount    Decimal  @db.Decimal(12, 2)
+  // "tap" (the dashboard) or "chat" (a message Zaki read by rules).
+  source    String
+  at        DateTime @default(now())
+
+  tracker Tracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+
+  @@index([trackerId, at])
+  @@map("tracker_entries")
 }

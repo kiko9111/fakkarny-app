@@ -5,6 +5,7 @@ import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
 import { isValidTimeZone } from "../lib/time";
 import { linkInstallToAccount, type AuthConfig } from "../plugins/auth";
+import { toWireEntry, withPeople as daftarPeople } from "../daftar/store";
 import { toWireItem, toWireMemory, toWireMessage, toWireUser } from "../serialize";
 
 export interface MeRoutesOptions {
@@ -63,11 +64,16 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   /** F10/FR-13 export: everything we hold about the user, as JSON. */
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
-    const [messages, items, memories, summaries] = await Promise.all([
+    const id = req.user.id;
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.summary.findMany({ where, orderBy: { periodEnd: "asc" } }),
+      prisma.circleMember.findMany({ where, include: { circle: true }, orderBy: { joinedAt: "asc" } }),
+      prisma.daftarEntry.findMany({ where: { OR: [{ creatorId: id }, { otherUserId: id }] }, include: daftarPeople, orderBy: { createdAt: "asc" } }),
+      prisma.circleTask.findMany({ where: { OR: [{ assignerId: id }, { assigneeId: id }] }, orderBy: { createdAt: "asc" } }),
+      prisma.tracker.findMany({ where, include: { entries: { orderBy: { at: "asc" } } }, orderBy: { createdAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -76,6 +82,13 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       items: items.map(toWireItem),
       memories: memories.map(toWireMemory),
       summaries: summaries.map((s) => ({ period_start: s.periodStart.toISOString(), period_end: s.periodEnd.toISOString(), text: s.text })),
+      circles: circles.map((m) => ({ name: m.circle.name, kind: m.circle.kind, role: m.role, joined_at: m.joinedAt.toISOString() })),
+      daftar: daftar.map((e) => {
+        const w = toWireEntry(e, id, "");
+        return { other_name: w.other_name, direction: w.direction, amount: w.amount, currency: w.currency, note: w.note, status: w.status, created_at: w.created_at };
+      }),
+      tasks: tasks.map((t) => ({ title: t.title, role: t.assignerId === id ? "assigner" : "assignee", status: t.status, due_at: t.dueAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
+      trackers: trackers.map((t) => ({ kind: t.kind, name: t.name, goal: t.goal === null ? null : Number(t.goal), entries: t.entries.map((e) => ({ amount: Number(e.amount), source: e.source, at: e.at.toISOString() })) })),
     };
     return res;
   });

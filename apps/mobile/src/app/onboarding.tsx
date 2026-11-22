@@ -23,6 +23,7 @@ export default function OnboardingScreen() {
 
   const finish = () => {
     prefs.set("onboarded", "1");
+    prefs.set("offer_tracker", "1");
     router.replace("/");
   };
 

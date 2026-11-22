@@ -8,6 +8,7 @@ import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
+import { trackerFastPath } from "../trackers/store";
 import type { MessagePipeline } from "./types";
 
 const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "save_memories"> = {
@@ -63,6 +64,13 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (canned) {
       await event(prisma, user.id, "reply_fast_path", {});
       return applyActions(prisma, { user, message, replies: [canned], response: EMPTY_ACTIONS, now });
+    }
+
+    // 1a. Trackers by rules: "شربت مية" logs, "تابع معايا المية" starts one. No AI, no allowance used.
+    const tracked = crisisKeyword ? null : await trackerFastPath(prisma, user, message.text, script, now);
+    if (tracked) {
+      await event(prisma, user.id, "reply_fast_path", { tracker: true });
+      return applyActions(prisma, { user, message, replies: [tracked.text], response: EMPTY_ACTIONS, now, ...(tracked.upsell ? { replyKind: "upsell" as const } : {}) });
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count; crisis is never blocked.

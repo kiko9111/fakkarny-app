@@ -14,10 +14,16 @@ export default function TabsLayout() {
     prefs.set("pending_invite", null);
     return <Redirect href={{ pathname: "/invite/[code]", params: { code: pendingInvite } }} />;
   }
+  // Right after sign-up: offer the first tracker (Zaki's gift), once.
+  if (prefs.get("offer_tracker") === "1") {
+    prefs.set("offer_tracker", null);
+    return <Redirect href={{ pathname: "/tracker/new", params: { first: "1" } }} />;
+  }
   return (
     <Tabs screenOptions={{ tabBarActiveTintColor: colors.accent, tabBarHideOnKeyboard: true }}>
       <Tabs.Screen name="index" options={{ title: t.tabs.chat, tabBarIcon: icon("💬") }} />
       <Tabs.Screen name="circles" options={{ title: t.tabs.circles, tabBarIcon: icon("🫶") }} />
+      <Tabs.Screen name="trackers" options={{ title: t.tabs.trackers, tabBarIcon: icon("📊") }} />
       <Tabs.Screen name="upcoming" options={{ title: t.tabs.upcoming, tabBarIcon: icon("📅") }} />
       <Tabs.Screen name="money" options={{ title: t.tabs.money, tabBarIcon: icon("💰") }} />
       <Tabs.Screen name="settings" options={{ title: t.tabs.settings, tabBarIcon: icon("⚙️") }} />
