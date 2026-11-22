@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DebtDirection, ItemStatus, ItemType, MemoryKind } from "./enums";
+import { AppAction } from "./chat-actions";
 
 /**
  * The structured output of one Claude call (PRD §6 "Response tool schema").
@@ -56,6 +57,8 @@ export const FriendResponse = z.object({
   create_items: z.array(CreateItemAction).default([]),
   update_items: z.array(UpdateItemAction).default([]),
   save_memories: z.array(SaveMemoryAction).default([]),
+  /** Things to do in the app: money, trackers, circles (chat-actions.ts). At most 3 a turn. */
+  app_actions: z.array(AppAction).max(3).default([]),
   crisis: z.boolean().default(false),
 });
 export type FriendResponse = z.infer<typeof FriendResponse>;

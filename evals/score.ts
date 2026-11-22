@@ -1,5 +1,7 @@
 import { z } from "zod";
-import type { FriendResponse } from "@fakkarni/shared";
+import type { FriendResponse as FullResponse } from "@fakkarni/shared";
+/** What the model returns; app_actions may be missing (older fakes, tests). */
+type FriendResponse = Omit<FullResponse, "app_actions"> & { app_actions?: FullResponse["app_actions"] };
 
 /** One eval case (one line of evals/cases/*.jsonl). */
 const ItemType = z.enum(["task", "reminder", "note", "list_item", "debt"]);
@@ -22,6 +24,29 @@ export const ExpectedItem = z.object({
     .optional(),
 });
 
+/** What a case expects in app_actions; every given field must match. */
+export const ExpectedAction = z.object({
+  kind: z.string(),
+  amount: z.number().optional(),
+  money_kind: z.enum(["expense", "income"]).optional(),
+  tracker_kind: z.string().optional(),
+  /** Any of these substrings in the section / tracker / circle / person / name / title / text. */
+  name_any: z.array(z.string()).optional(),
+  section_any: z.array(z.string()).optional(),
+  person_any: z.array(z.string()).optional(),
+  circle_any: z.array(z.string()).optional(),
+  ask_times: z.array(z.string()).optional(),
+  /** True when the action must leave the section empty (catch-all). */
+  no_section: z.boolean().optional(),
+});
+
+/** What the user has in the app for this case (IN THE APP in the context). */
+export const CaseApp = z.object({
+  circles: z.array(z.object({ name: z.string(), kind: z.enum(["friends", "family"]).default("family"), members: z.array(z.string()) })).default([]),
+  sections: z.array(z.object({ name: z.string(), kind: z.enum(["expense", "income"]).default("expense"), budget: z.number().optional(), circle: z.string().optional() })).default([]),
+  trackers: z.array(z.object({ kind: z.string(), name: z.string().optional(), goal: z.number().optional() })).default([]),
+});
+
 export const EvalCase = z.object({
   id: z.string(),
   tz: z.string().default("Africa/Cairo"),
@@ -42,8 +67,11 @@ export const EvalCase = z.object({
       }),
     )
     .default([]),
+  app: CaseApp.optional(),
   message: z.string(),
   expect: z.object({
+    /** Expected app_actions. Absent = the model must not act in the app for this message. */
+    actions: z.array(ExpectedAction).optional(),
     /** How the USER writes. The friend answers arabic and franco in Arabic letters, english in English. */
     script: z.enum(["arabic", "franco", "english"]),
     items: z.array(ExpectedItem),
@@ -82,6 +110,20 @@ function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["creat
     if (!anyIn(`${got.debt.person} ${got.title}`, exp.debt.person_any)) return false;
     if (got.debt.amount !== exp.debt.amount || got.debt.direction !== exp.debt.direction) return false;
   }
+  return true;
+}
+
+function matchAction(exp: z.infer<typeof ExpectedAction>, got: NonNullable<FriendResponse["app_actions"]>[number]): boolean {
+  if (got.kind !== exp.kind) return false;
+  if (exp.amount !== undefined && got.amount !== exp.amount) return false;
+  if (exp.money_kind && (got.money_kind ?? "expense") !== exp.money_kind) return false;
+  if (exp.tracker_kind && (got.tracker_kind ?? "custom") !== exp.tracker_kind) return false;
+  if (exp.name_any && !anyIn(`${got.name ?? ""} ${got.title ?? ""} ${got.text ?? ""} ${got.tracker ?? ""} ${got.section ?? ""}`, exp.name_any)) return false;
+  if (exp.section_any && !anyIn(got.section ?? "", exp.section_any)) return false;
+  if (exp.no_section && got.section) return false;
+  if (exp.person_any && !anyIn(got.person ?? "", exp.person_any)) return false;
+  if (exp.circle_any && !anyIn(got.circle ?? "", exp.circle_any)) return false;
+  if (exp.ask_times && JSON.stringify([...(got.ask_times ?? [])].sort()) !== JSON.stringify([...exp.ask_times].sort())) return false;
   return true;
 }
 
@@ -125,6 +167,14 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
   }
 
   if (c.expect.no_memories && out.save_memories.length) problems.push(`saved a memory for small talk: ${JSON.stringify(out.save_memories)}`);
+
+  const gotActions = [...(out.app_actions ?? [])];
+  for (const exp of c.expect.actions ?? []) {
+    const i = gotActions.findIndex((got) => matchAction(exp, got));
+    if (i === -1) problems.push(`missing app action ${JSON.stringify(exp)}`);
+    else gotActions.splice(i, 1);
+  }
+  if (gotActions.length) problems.push(`extra app actions ${JSON.stringify(gotActions)}`);
 
   const wantCrisis = c.expect.crisis ?? false;
   if (out.crisis !== wantCrisis) problems.push(`crisis ${out.crisis} ≠ ${wantCrisis}`);

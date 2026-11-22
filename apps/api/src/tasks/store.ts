@@ -3,7 +3,7 @@ import type { CirclePost, CircleTask, Prisma, PrismaClient, User } from "../gene
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
 import { zakiCommentLine } from "../circles/zaki";
-import { canNudge, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
+import { canNudge, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Person = Pick<User, "id" | "name" | "language">;
@@ -181,4 +181,27 @@ export async function nudge(prisma: PrismaClient, t: TaskWithPeople, now: Date):
     await tx.event.create({ data: { userId: t.assignerId, name: "task_nudged", propsJson: { status: t.status } } });
     return { task, notices: [notice] };
   });
+}
+
+/**
+ * Ask a circle member to do something (accept first: only the two people hear about it until
+ * the assignee says yes). Used by POST /circles/:id/tasks and by the chat (chat/actions.ts).
+ */
+export async function assignTask(
+  prisma: PrismaClient,
+  input: { circleId: string; assignerId: string; assigneeId: string; title: string; dueAt: Date | null; remindAt: Date | null; homework: boolean; note: string | null },
+  now: Date,
+): Promise<Outcome | "not_members" | "too_many"> {
+  if (input.assignerId === input.assigneeId) return "not_members";
+  // Both people have to be in the circle.
+  const members = await prisma.circleMember.count({ where: { circleId: input.circleId, userId: { in: [input.assignerId, input.assigneeId] } } });
+  if (members !== 2) return "not_members";
+  const open = await prisma.circleTask.count({ where: { assignerId: input.assignerId, assigneeId: input.assigneeId, status: { in: ["pending", "accepted"] } } });
+  if (open >= MAX_OPEN_PER_PAIR) return "too_many";
+  const task = await prisma.circleTask.create({
+    data: { circleId: input.circleId, assignerId: input.assignerId, assigneeId: input.assigneeId, title: input.title, dueAt: input.dueAt, remindAt: input.remindAt, homework: input.homework, note: input.note, createdAt: now },
+    include: withPeople,
+  });
+  await prisma.event.create({ data: { userId: input.assignerId, name: "task_assigned", propsJson: { has_due: Boolean(task.dueAt), has_remind: Boolean(task.remindAt), homework: task.homework } } });
+  return { task, notices: await announce(prisma, task, now) };
 }

@@ -401,6 +401,23 @@ Rules:
   and @Zaki (in a comment or POST /circles/:id/zaki): remind everyone (once per 3 h),
   ask check-ins, summary (extras), help. Zaki's comments store an event key
   (`zaki:<kind>|data`) rendered per reader by `zakiCommentLine`; no AI call. Not a group chat.
+- Chat actions (owner ask, 2026-11-22: "the chat must add to Daftar, circles and trackers"): the
+  model returns `app_actions` (packages/shared/src/chat-actions.ts: log_money, create_section,
+  set_budget, create_tracker, log_tracker, update_tracker, create_circle, assign_task, ask_circle;
+  max 3). It names things and the server resolves the names (`matchByName` / `foldName` in
+  apps/api/src/chat/cards.ts) against the "IN THE APP" block of the context. apps/api/src/chat/actions.ts
+  runs them after apply, never on a crisis turn, and stores cards on the reply
+  (messages.actions_json; wire `Message.actions`: id/kind/status/label/route). The user's own things
+  happen at once; anything that reaches other people (assign_task, ask_circle, logging into a shared
+  book, also from the money fast path) is a pending card holding resolved ids in a server-only
+  `payload`, confirmed by tapping (POST /messages/:id/actions/:actionId {confirm}) or by a plain chat
+  yes/no (`isConfirm` / `isCancel`, conversation step 0a, within 6 h). The answer reply carries the
+  same card id so the phone updates the old card (apps/mobile/src/db/messages.ts). Card wording lives
+  in `LABEL` (cards.ts), never model text. Phone: SQLite v4 `actions_json`, src/chat/ActionCards.tsx.
+- Understanding: persona 2026-11-23.1 adds "Understanding the user" (typos, short replies, two
+  readings) and the app_actions rules with examples. evals/cases/understanding.jsonl (act-*, und-*)
+  checks app actions too (`expect.actions`; extra actions count as a problem). Not yet measured
+  with a model key.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

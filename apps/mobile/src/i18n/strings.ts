@@ -12,6 +12,10 @@ const arEG = {
     pending: "مستني النت",
     failed: "مااتبعتش",
     saved: "اتحفظ",
+    actionSend: "ابعت",
+    actionAdd: "ضيف",
+    actionCancel: "لأ، بلاش",
+    actionOffline: "محتاج نت عشان أعمل ده.",
     quickReplies: ["عندي إيه الأسبوع ده؟", "فكّرني بحاجة", "يومي كان عامل إزاي؟"],
   },
   saved: {
@@ -551,6 +555,10 @@ const en: DeepStringShape<Strings> = {
     pending: "Waiting for internet",
     failed: "Not sent",
     saved: "Saved",
+    actionSend: "Send",
+    actionAdd: "Add",
+    actionCancel: "No, cancel",
+    actionOffline: "I need internet to do this.",
     quickReplies: ["What do I have this week?", "Remind me of something", "How was my day?"],
   },
   saved: {

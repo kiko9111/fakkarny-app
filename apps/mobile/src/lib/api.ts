@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
 import {
+  Message as WireMessage,
   AcceptInviteResponse,
   SessionMessage,
   SessionResponse,
@@ -114,6 +115,12 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
 
 export async function postMessage(body: PostMessageRequest): Promise<PostMessageResponse> {
   return PostMessageResponse.parse(await request("/messages", { method: "POST", body: JSON.stringify(body) }));
+}
+
+/** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */
+export async function actOnChatAction(messageId: string, actionId: string, confirm: boolean): Promise<WireMessage> {
+  const res = (await request(`/messages/${encodeURIComponent(messageId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify({ confirm }) })) as { message: unknown };
+  return WireMessage.parse(res.message);
 }
 
 export async function patchItem(id: string, body: PatchItemRequest): Promise<Item> {

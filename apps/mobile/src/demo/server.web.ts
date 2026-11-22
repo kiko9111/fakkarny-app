@@ -373,7 +373,75 @@ const msg = (role: "user" | "friend", text: string, client_id: string, kind: Mes
   client_id,
   kind,
   created_at: iso(now()),
+  actions: [],
 });
+
+// ---------- Zaki's action cards (what he does in the app from the chat) ----------
+type DemoCard = Message["actions"][number];
+/** Pending cards by id: what happens on Send. */
+const cardJobs = new Map<string, { messageId: string; run: () => { label: string; route: string | null } }>();
+const card = (kind: string, status: DemoCard["status"], label: string, route: string | null = null): DemoCard => ({ id: id(), kind, status, label, route });
+
+function answerCard(m: Message, cardId: string, confirm: boolean): DemoCard | null {
+  const i = m.actions.findIndex((c) => c.id === cardId);
+  const c = m.actions[i];
+  if (!c) return null;
+  if (c.status !== "pending") return c;
+  const job = cardJobs.get(cardId);
+  cardJobs.delete(cardId);
+  const next: DemoCard = confirm && job ? { ...c, status: "done", ...job.run() } : { ...c, status: "cancelled", label: L("اتلغت", "Cancelled") };
+  m.actions = m.actions.map((x) => (x.id === cardId ? next : x));
+  return next;
+}
+
+/** A few phrases the preview acts on, the way the real Zaki does with the model. */
+function demoActions(text: string): { reply: string; cards: DemoCard[]; jobs: [string, () => { label: string; route: string | null }][] } | null {
+  const t = text.trim();
+  // "قول لمنى تجيب عيش" / "ask Omar to bring the cake": a task for a circle member, after a Send.
+  const ask = /^(?:قول|قولي|اطلب من|ask|tell)\s+(?:لـ\s*|ل)?(\S+)\s+(?:to\s+|ي|ت)?(.+)$/i.exec(t);
+  if (ask) {
+    const name = ask[1]!.replace(/^ل/, "");
+    for (const c of state.circles) {
+      const who = c.members.find((x) => x.name && (x.name === name || x.name.includes(name) || name.includes(x.name)));
+      if (!who || who.user_id === ME) continue;
+      const title = ask[2]!.trim();
+      const pending = card("assign_task", "pending", L(`أطلب من ${who.name} (${c.name}): «${title}»؟`, `Ask ${who.name} (${c.name}): “${title}”?`), `/circle/${c.id}`);
+      return {
+        reply: L(`أبعتها لـ${who.name}؟`, `Shall I send it to ${who.name}?`),
+        cards: [pending],
+        jobs: [[pending.id, () => ({ label: L(`اتبعتت لـ ${who.name}: «${title}». هتتسجل أول ما الموافقة توصل.`, `Sent to ${who.name}: “${title}”. It's theirs once they say yes.`), route: `/circle/${c.id}` })]],
+      };
+    }
+  }
+  // "اعملي قسم للجيم ميزانيته 500" / "make a section for the gym, budget 500"
+  const section = /(?:اعمل|اعملي|عملي|make|create)\s+(?:لي\s+|me\s+)?(?:a\s+|new\s+)?(?:قسم|section)\s+(?:جديد\s+)?(?:لل|ل|for\s+(?:my\s+|the\s+)?)?([^\d\s]+)(?:\D*(\d+))?/i.exec(t);
+  if (section) {
+    const name = section[1]!.trim();
+    const budget = section[2] ? Number(section[2]) : null;
+    const row: SectionRow = { id: id(), name, kind: "expense", budget, circle_id: null, entries: [] };
+    money().push(row);
+    const label = L(`قسم جديد «${name}»${budget ? ` · ميزانية ${budget} جنيه في الشهر` : ""}`, `New section “${name}”${budget ? ` · budget EGP ${budget} a month` : ""}`);
+    return { reply: L(`تمام، عملتلك قسم «${name}» 👌`, `Done, “${name}” is ready 👌`), cards: [card("create_section", "done", label, `/money/${row.id}`)], jobs: [] };
+  }
+  // "دفعت 300 في مصاريف البيت": a shared book, so ask first.
+  const spent = /(?:دفعت|صرفت|spent|paid)\s+(\d+)\s*(?:جنيه\s*)?(?:على|علي|في|on|for|in)\s*(.+)$/i.exec(t);
+  if (spent) {
+    const book = money().find((x) => x.circle_id && (spent[2]!.includes(x.name) || x.name.includes(spent[2]!.trim())));
+    if (book) {
+      const amount = Number(spent[1]);
+      const pending = card("log_money", "pending", L(`أضيف ${amount} جنيه في الدفتر المشترك «${book.name}»؟ كل اللي فيه هيشوفوها.`, `Add EGP ${amount} to the shared book “${book.name}”? Everyone in it will see it.`), `/money/${book.id}`);
+      return {
+        reply: L("ده دفتر مشترك، أضيفها؟", "That's a shared book, shall I add it?"),
+        cards: [pending],
+        jobs: [[pending.id, () => {
+          book.entries.push({ id: id(), amount, note: null, at: iso(now()), payer: null, mine: true, split: 3 });
+          return { label: L(`مصروف ${amount} جنيه في «${book.name}»`, `Spent EGP ${amount} in “${book.name}”`), route: `/money/${book.id}` };
+        }]],
+      };
+    }
+  }
+  return null;
+}
 
 // ---------- the router ----------
 type Handler = (m: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => unknown;
@@ -421,6 +489,24 @@ on("POST", "/messages", (_m, b) => {
     state.messages.push(userMsg, done);
     return { message: userMsg, replies: [done], items: [pending], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
   }
+  // A plain yes or no to Zaki's waiting cards.
+  const lastFriend = [...state.messages].reverse().find((x) => x.role === "friend");
+  const waiting = lastFriend?.actions.filter((c) => c.status === "pending") ?? [];
+  const no = /^(?:لا|لأ|بلاش|no|cancel|la2)(?:\s|$)/i.test(text.trim());
+  const yes = isPlainYes(text) || /^(?:اه\s+)?(?:ابعت|ابعتها|ضيف|ضيفها|ماشي|send|add|ok)(?:\s|$)/i.test(text.trim());
+  if (lastFriend && waiting.length && (yes || no)) {
+    const answered = waiting.map((c) => answerCard(lastFriend, c.id, !no)).filter((c): c is DemoCard => !!c);
+    const done = { ...msg("friend", no ? L("تمام، لغيتها.", "Okay, cancelled.") : L("تمام، عملتها ✅", "Done ✅"), `${clientId}:reply:0`), actions: answered };
+    state.messages.push(userMsg, done);
+    return { message: userMsg, replies: [done], items: [], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+  }
+  const acted = demoActions(text);
+  if (acted) {
+    const done = { ...msg("friend", acted.reply, `${clientId}:reply:0`), actions: acted.cards };
+    for (const [cardId, run] of acted.jobs) cardJobs.set(cardId, { messageId: done.id, run });
+    state.messages.push(userMsg, done);
+    return { message: userMsg, replies: [done], items: [], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+  }
   // "دفعت 300 بنزين": logged to a spending section by rules, as on the server.
   const spent = /(?:^|\s)(?:دفعت|صرفت|اشتريت|spent|paid)\s+(\d+)\s*(?:جنيه\s*)?(?:على|علي|في|on|for)?\s*(.*)$/i.exec(text.trim());
   if (spent && !/سلف|عليا|ليا|owe|lent|[?؟]/.test(text)) {
@@ -464,6 +550,12 @@ on("POST", "/messages", (_m, b) => {
   }
   state.messages.push(userMsg, ...replies);
   return { message: userMsg, replies, items, memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+});
+
+on("POST", "/messages/([^/]+)/actions/([^/]+)", (m, b) => {
+  const found = state.messages.find((x) => x.id === m[1]);
+  if (!found || !answerCard(found, m[2]!, b.confirm === true)) throw new DemoHttpError(404);
+  return { message: found };
 });
 
 // Items

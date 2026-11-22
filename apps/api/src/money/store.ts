@@ -3,6 +3,8 @@ import { Prisma, type MoneyEntry, type MoneySection, type PrismaClient, type Use
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
 import type { ReplyLang } from "../pipeline/rules";
+import { randomUUID } from "node:crypto";
+import { LABEL, type StoredCard } from "../chat/cards";
 import { budgetCrossed, budgetLine, loggedMoneyLine, matchMoneyLog, monthOf, monthRange, pickSection, shareOf } from "./rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -117,7 +119,12 @@ export function bookLine(lang: ReplyLang, payer: string | null, book: string, am
     : `${who}: ${num(amount)} جنيه في «${book}». نصيبك ${num(share)}.`;
 }
 
-const CATCH_ALL: Record<"expense" | "income", Record<ReplyLang, string>> = {
+const SHARED_ASK: Record<ReplyLang, string> = {
+  arabic: "دي في الدفتر المشترك، أضيفها؟ كل اللي فيه هيشوفوها.",
+  english: "That one goes in a shared book. Add it? Everyone in it will see it.",
+};
+
+export const CATCH_ALL: Record<"expense" | "income", Record<ReplyLang, string>> = {
   expense: { arabic: "مصاريف", english: "Expenses" },
   income: { arabic: "دخل", english: "Income" },
 };
@@ -127,7 +134,7 @@ const CATCH_ALL: Record<"expense" | "income", Record<ReplyLang, string>> = {
  * is the one named in the message, else where this note went last time, else the only one of
  * that kind, else a catch-all the user can rename. Shared books are only picked by name.
  */
-export async function moneyFastPath(prisma: PrismaClient, user: User, text: string, lang: ReplyLang, now: Date): Promise<{ text: string; notices: Notice[] } | null> {
+export async function moneyFastPath(prisma: PrismaClient, user: User, text: string, lang: ReplyLang, now: Date): Promise<{ text: string; notices: Notice[]; cards?: StoredCard[] } | null> {
   const hit = matchMoneyLog(text);
   if (!hit) return null;
   const rows = await prisma.moneySection.findMany({ where: visibleTo(user.id), include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 200 });
@@ -142,6 +149,19 @@ export async function moneyFastPath(prisma: PrismaClient, user: User, text: stri
     picked ??
     own.find((s) => s.kind === hit.kind && (s.name === CATCH_ALL[hit.kind].arabic || s.name === CATCH_ALL[hit.kind].english)) ??
     (await prisma.moneySection.create({ data: { ownerId: user.id, name, kind: hit.kind, createdAt: now }, include: { circle: { select: { name: true } } } }));
+  if (section.circleId) {
+    // A shared book tells everyone in it: Zaki asks first (a card with Add / Cancel).
+    const card: StoredCard = {
+      id: randomUUID(),
+      kind: "log_money",
+      status: "pending",
+      label: LABEL.moneyAsk(lang, hit.amount, section.name, section.circle?.name ?? null),
+      route: `/money/${section.id}`,
+      lang,
+      payload: { kind: "log_money", sectionId: section.id, amount: hit.amount, note: hit.note, moneyKind: hit.kind },
+    };
+    return { text: SHARED_ASK[lang], notices: [], cards: [card] };
+  }
   const added = await addEntry(prisma, section, user, { amount: hit.amount, note: hit.note, source: "chat" }, now);
   await prisma.event.create({ data: { userId: user.id, name: "money_logged", propsJson: { via: "chat", shared: Boolean(section.circleId) } } });
   return { text: loggedMoneyLine(lang, section.name, hit.amount, added.monthTotal, hit.kind), notices: added.notices };

@@ -197,6 +197,9 @@ model Message {
   clientId  String      @map("client_id") // generated on the phone; makes sync idempotent
   kind      MessageKind @default(chat)
   createdAt DateTime    @default(now()) @map("created_at")
+  /// Zaki's action cards under this reply (chat/actions.ts): label, status, route, and the
+  /// resolved payload of a card waiting for the user's OK. The payload never goes on the wire.
+  actionsJson Json?     @map("actions_json")
 
   user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceItems Item[]

@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS } from "./schema";
-import { LIST_MESSAGES_SQL, PENDING_MESSAGES_SQL } from "./sql";
+import { LIST_MESSAGES_SQL, MESSAGES_WITH_CARD_SQL, PENDING_MESSAGES_SQL, UPSERT_SERVER_MESSAGE_SQL } from "./sql";
 
 function freshDb() {
   const db = new DatabaseSync(":memory:");
@@ -33,5 +33,22 @@ describe("chat SQL against a real SQLite", () => {
     insert.run("b", "user", "waiting", "2026-11-20T10:00:01.000Z", "pending");
     const rows = db.prepare(PENDING_MESSAGES_SQL).all() as { client_id: string }[];
     expect(rows.map((r) => r.client_id)).toEqual(["b"]);
+  });
+
+  it("stores a reply's action cards and takes newer ones without losing them", () => {
+    const { db } = freshDb();
+    const upsert = db.prepare(UPSERT_SERVER_MESSAGE_SQL);
+    const at = "2026-11-20T10:00:00.000Z";
+    const pending = JSON.stringify([{ id: "card-1", kind: "assign_task", status: "pending", label: "Ask Mona?", route: null }]);
+    upsert.run("r1", "s1", "friend", "chat", "Shall I?", at, pending);
+    upsert.run("r1", "s1", "friend", "chat", "Shall I?", at, null); // a pull without cards keeps them
+    const row = () => (db.prepare("SELECT actions_json, text FROM messages WHERE client_id = 'r1'").all() as { actions_json: string; text: string }[])[0]!;
+    expect(JSON.parse(row().actions_json)[0].status).toBe("pending");
+    upsert.run("r1", "s1", "friend", "chat", "changed text", at, pending.replace("pending", "done"));
+    expect(JSON.parse(row().actions_json)[0].status).toBe("done");
+    expect(row().text).toBe("Shall I?");
+    upsert.run("r2", "s2", "friend", "chat", "Done", at, null);
+    const found = db.prepare(MESSAGES_WITH_CARD_SQL).all("%card-1%", "r2") as { client_id: string }[];
+    expect(found.map((r) => r.client_id)).toEqual(["r1"]);
   });
 });
