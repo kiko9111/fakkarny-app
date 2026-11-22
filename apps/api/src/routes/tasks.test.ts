@@ -145,6 +145,25 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect((await post(mona, `/tasks/${task.id}/nudge`)).statusCode).toBe(409);
   });
 
+  it("lets the assigner pick the reminder time and the assignee change it; homework carries its note", async () => {
+    const mama = await signedIn("ماما");
+    const omar = await signedIn("عمر");
+    const circleId = await circleOf(mama, omar);
+    const task = await assign(mama, circleId, { assignee_id: omar.id, title: "واجب الحساب", homework: true, note: "https://school.test/hw/12 صفحة 40", due_at: "2026-11-22T18:00:00.000Z", remind_at: "2026-11-22T15:00:00.000Z" });
+    expect(task).toMatchObject({ homework: true, note: "https://school.test/hw/12 صفحة 40", remind_at: "2026-11-22T15:00:00.000Z" });
+
+    await post(omar, `/tasks/${task.id}/respond`, { answer: "accept" });
+    expect((await items(omar)).find((i) => i.title === "واجب الحساب")).toMatchObject({ type: "reminder", remind_at: "2026-11-22T15:00:00.000Z" });
+
+    // Once accepted, only Omar moves it, and his own reminder moves with it.
+    expect((await post(mama, `/tasks/${task.id}/remind`, { remind_at: "2026-11-22T16:00:00.000Z" })).statusCode).toBe(409);
+    const moved = TaskResponse.parse((await post(omar, `/tasks/${task.id}/remind`, { remind_at: "2026-11-22T16:30:00.000Z" })).json()).task;
+    expect(moved.remind_at).toBe("2026-11-22T16:30:00.000Z");
+    expect((await items(omar)).find((i) => i.title === "واجب الحساب")!.remind_at).toBe("2026-11-22T16:30:00.000Z");
+
+    expect(TaskResponse.parse((await post(omar, `/tasks/${task.id}/done`)).json()).task.status).toBe("done");
+  });
+
   it("nudges only when the assigner asks, at most every 12 hours and three times", async () => {
     const mona = await signedIn("منى");
     const ahmed = await signedIn("أحمد");

@@ -9,6 +9,7 @@ import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./cont
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
+import { moneyFastPath } from "../money/store";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 
@@ -84,6 +85,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (tracked && !closesReminder) {
       await event(prisma, user.id, "reply_fast_path", { tracker: true });
       return applyActions(prisma, { user, message, replies: [tracked.text], response: EMPTY_ACTIONS, now, ...(tracked.upsell ? { replyKind: "upsell" as const } : {}) });
+    }
+
+    // 1a'. Expenses and income by rules: "دفعت 300 بنزين" goes to a Daftar section. No AI call.
+    const money = crisisKeyword || tracked ? null : await moneyFastPath(prisma, user, message.text, script, now);
+    if (money) {
+      await event(prisma, user.id, "reply_fast_path", { money: true });
+      const result = await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now });
+      return { ...result, notices: [...(result.notices ?? []), ...money.notices.filter((n) => n.userId !== user.id)] };
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never
@@ -192,7 +201,7 @@ async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"
   const tracker = await prisma.tracker.findFirst({ where: { id: pending.id, userId: user.id } });
   const step = tracker ? TRACKER_TEMPLATES[tracker.kind as TrackerKind]?.step : 0;
   if (!tracker || !step) return { pending: true };
-  await logEntry(prisma, tracker.id, step, "chat", now);
+  await logEntry(prisma, tracker, step, "chat", now, user.timezone);
   await event(prisma, user.id, "status_answered", { subject: "tracker", via: "rules" });
   const line = loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), step);
   return { pending: true, result: await applyActions(prisma, { user, message, replies: [line], response: EMPTY_ACTIONS, now }) };

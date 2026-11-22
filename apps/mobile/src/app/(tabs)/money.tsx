@@ -10,13 +10,16 @@ import { t } from "@/i18n";
 import { listDaftar } from "@/lib/api";
 import { summarizeDebts } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
-import { Button, Card, EmptyState, Icon, ListRow, Note, palette, PersonAvatar, radius, Screen, SectionHeader, space, Text } from "@/ui";
+import { SpendView } from "@/money/SpendView";
+import { Button, Card, Chip, EmptyState, Icon, ListRow, Note, palette, PersonAvatar, radius, Screen, SectionHeader, space, Text } from "@/ui";
 
 /**
  * The Daftar: what both sides agreed on (shared, confirmed by link) with the balance on top,
  * then the user's private notes of who owes what (FR-12), which can be sent to confirm.
  */
 export default function MoneyScreen() {
+  const [view, setView] = useState<"spend" | "debts">("spend");
+  const [reloadKey, setReloadKey] = useState(0);
   const { items, refreshing, refresh, complete } = useItems(listDebts);
   const { owedToMe, iOwe } = summarizeDebts(items);
   const [shared, setShared] = useState<DaftarEntry[] | null>(null);
@@ -50,8 +53,21 @@ export default function MoneyScreen() {
       onRefresh={() => {
         void refresh();
         void loadShared();
+        setReloadKey((k) => k + 1);
       }}
     >
+      <View style={styles.switch}>
+        <Chip icon="receipt-outline" label={t.book.tabSpend} selected={view === "spend"} onPress={() => setView("spend")} />
+        <Chip icon="swap-horizontal-outline" label={t.book.tabDebts} selected={view === "debts"} onPress={() => setView("debts")} />
+      </View>
+      {view === "spend" ? <SpendView reloadKey={reloadKey} /> : debts()}
+    </Screen>
+  );
+
+  // A plain render helper (not a component), so the cards keep their state across renders.
+  function debts() {
+    return (
+      <>
       <Text variant="small" color={palette.inkSoft}>
         {t.ui.moneyLine}
       </Text>
@@ -126,11 +142,13 @@ export default function MoneyScreen() {
           />
         )),
       )}
-    </Screen>
-  );
+      </>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
+  switch: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   totals: { flexDirection: "row", gap: space.md },
   total: { flex: 1, borderRadius: radius.lg, padding: space.lg, gap: 2 },
   totalHead: { flexDirection: "row", alignItems: "center", gap: 6 },

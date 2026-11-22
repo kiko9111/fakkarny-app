@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { ExportResponse, ListTrackersResponse, MeResponse, TrackerResponse } from "@fakkarni/shared";
+import { CircleFeedResponse, CircleResponse, CreateInviteResponse, ExportResponse, ListTrackersResponse, MeResponse, SharedTrackersResponse, TrackerResponse } from "@fakkarni/shared";
 import { buildApp } from "../app";
 import { trackerFastPath } from "../trackers/store";
 import { hasTestDb, resetDb, testPrisma } from "../../test/db";
@@ -32,6 +32,38 @@ describe.skipIf(!hasTestDb)("trackers", () => {
   const post = (h: H, url: string, payload?: object) => app.inject({ method: "POST", url, headers: h, ...(payload ? { payload } : {}) });
   const list = async (h: H) => ListTrackersResponse.parse((await app.inject({ method: "GET", url: "/trackers", headers: h })).json());
   const user = (id: string) => prisma.user.findUniqueOrThrow({ where: { id } });
+
+  it("builds a tracker with any name, ask times and a circle, and the circle sees its progress", async () => {
+    const mona = await signedIn();
+    const omar = await signedIn();
+    const circle = CircleResponse.parse((await post(mona.h, "/circles", { kind: "friends", name: "نادي القراية" })).json()).circle;
+    const { invite } = CreateInviteResponse.parse((await post(mona.h, `/circles/${circle.id}/invites`)).json());
+    await post(omar.h, `/invites/${invite.code}/accept`);
+
+    const made = await post(mona.h, "/trackers", { kind: "custom", name: "القراية", goal: 10, unit_label: "صفحات", ask_times: ["21:00", "08:30", "21:00"], circle_id: circle.id });
+    expect(made.statusCode).toBe(201);
+    const reading = TrackerResponse.parse(made.json()).tracker;
+    expect(reading).toMatchObject({ name: "القراية", goal: 10, unit_label: "صفحات", ask_times: ["08:30", "21:00"], circle_id: circle.id, circle_name: "نادي القراية" });
+    expect(reading.month).toHaveLength(30);
+
+    // A money tracker is never shared, and nor is any tracker with a circle the owner isn't in.
+    expect((await post(omar.h, "/trackers", { kind: "spending", circle_id: circle.id })).statusCode).toBe(400);
+
+    await post(mona.h, `/trackers/${reading.id}/entries`, { amount: 6 });
+    await post(mona.h, `/trackers/${reading.id}/entries`, { amount: 4 });
+    await post(mona.h, `/trackers/${reading.id}/entries`, { amount: 2 });
+    const shared = SharedTrackersResponse.parse((await app.inject({ method: "GET", url: `/circles/${circle.id}/trackers`, headers: omar.h })).json()).trackers;
+    expect(shared).toEqual([expect.objectContaining({ name: "القراية", owner_name: "منى", is_mine: false, today: 12, streak: 1 })]);
+    // Reaching the goal is posted once.
+    const posts = CircleFeedResponse.parse((await app.inject({ method: "GET", url: `/circles/${circle.id}/feed`, headers: omar.h })).json()).posts;
+    expect(posts.filter((p) => p.text.includes("القراية"))).toHaveLength(1);
+    expect(posts[0]!.text).toContain("هدف النهارده في «القراية» اتقفل 🎯");
+
+    // Stop sharing and change the times.
+    const patched = TrackerResponse.parse((await app.inject({ method: "PATCH", url: `/trackers/${reading.id}`, headers: mona.h, payload: { circle_id: null, ask_times: ["20:00"] } })).json()).tracker;
+    expect(patched).toMatchObject({ circle_id: null, ask_times: ["20:00"] });
+    expect(SharedTrackersResponse.parse((await app.inject({ method: "GET", url: `/circles/${circle.id}/trackers`, headers: omar.h })).json()).trackers).toEqual([]);
+  });
 
   it("gives a free user one tracker, counts taps in local days, and can undo", async () => {
     const { h } = await signedIn();

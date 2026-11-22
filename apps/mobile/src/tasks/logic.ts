@@ -43,3 +43,35 @@ export function iftarDate(pick: IftarDay, now: Date): string {
   const two = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
 }
+
+/** When Zaki reminds the other person. "due" = at the deadline (or no reminder time of its own). */
+export type RemindChoice = "due" | "hour" | "evening" | "morning" | "beforeDue";
+
+/** The picks that make sense now: an evening only while it is still ahead, "an hour before" only with a deadline. */
+export function remindChoices(now: Date, due: string | null): RemindChoice[] {
+  const out: RemindChoice[] = ["due", "hour"];
+  if (now.getHours() < 19) out.push("evening");
+  out.push("morning");
+  if (due && new Date(due).getTime() - 3_600_000 > now.getTime() + 30 * 60_000) out.push("beforeDue");
+  return out;
+}
+
+/** A reminder pick → an instant (phone's own time zone), or null for "with the deadline". */
+export function remindAt(choice: RemindChoice, now: Date, due: string | null): string | null {
+  const d = new Date(now);
+  if (choice === "due") return null;
+  if (choice === "hour") return new Date(now.getTime() + 3_600_000).toISOString();
+  if (choice === "beforeDue") return due ? new Date(new Date(due).getTime() - 3_600_000).toISOString() : null;
+  if (choice === "evening") d.setHours(19, 0, 0, 0);
+  else {
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+  }
+  return d.toISOString();
+}
+
+/** The first web link in a homework note, so the child can open it with one tap. */
+export function firstLink(note: string | null | undefined): string | null {
+  const m = note?.match(/https?:\/\/[^\s<>"']+/i);
+  return m ? m[0].replace(/[.,;:!?)\]]+$/, "") : null;
+}

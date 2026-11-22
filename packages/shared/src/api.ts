@@ -135,5 +135,9 @@ export const ExportResponse = z.object({
   checkins: z.array(z.object({ kind: z.string(), note: z.string().nullable(), at: z.string() })).default([]),
   tasks: z.array(z.object({ title: z.string(), role: z.string(), status: z.string(), due_at: z.string().nullable(), created_at: z.string() })).default([]),
   trackers: z.array(z.object({ kind: z.string(), name: z.string().nullable(), goal: z.number().nullable(), entries: z.array(z.object({ amount: z.number(), source: z.string(), at: z.string() })) })).default([]),
+  /** Expense / income sections: the user's own, and the shared books they wrote in (their own entries only). */
+  /** Comments the user wrote in circle feeds. */
+  feed_comments: z.array(z.object({ text: z.string(), at: z.string() })).default([]),
+  money: z.array(z.object({ name: z.string(), kind: z.string(), budget: z.number().nullable(), shared: z.boolean(), entries: z.array(z.object({ amount: z.number(), note: z.string().nullable(), at: z.string() })) })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

@@ -4,7 +4,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { CircleMember, FamilyType } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
-import { dueAt, dueChoices, type DueChoice } from "@/tasks/logic";
+import { dueAt, dueChoices, remindAt, remindChoices, type DueChoice, type RemindChoice } from "@/tasks/logic";
 import { Button, Chip, EmptyState, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /**
@@ -18,8 +18,13 @@ export default function NewTaskScreen() {
   const [familyType, setFamilyType] = useState<FamilyType | null>(null);
   const [title, setTitle] = useState("");
   const [due, setDue] = useState<DueChoice>("none");
+  const [remind, setRemind] = useState<RemindChoice>("due");
+  const [homework, setHomework] = useState(false);
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [choices] = useState(() => dueChoices(new Date()));
+  const dueIso = dueAt(due, new Date());
+  const reminds = remindChoices(new Date(), dueIso);
 
   useEffect(() => {
     getCircle(circle)
@@ -37,7 +42,16 @@ export default function NewTaskScreen() {
     if (!ready || busy || !who) return;
     setBusy(true);
     try {
-      await createTask(circle, { assignee_id: who, title: title.trim(), due_at: dueAt(due, new Date()) });
+      const now = new Date();
+      const dueAtIso = dueAt(due, now);
+      await createTask(circle, {
+        assignee_id: who,
+        title: title.trim(),
+        due_at: dueAtIso,
+        remind_at: remindAt(reminds.includes(remind) ? remind : "due", now, dueAtIso),
+        homework,
+        note: homework && note.trim() ? note.trim() : null,
+      });
       router.back();
     } catch {
       notify(t.tasks.failed, "error");
@@ -64,7 +78,11 @@ export default function NewTaskScreen() {
               <Chip key={m.user_id} icon="person-outline" label={m.name ?? t.circles.noName} selected={who === m.user_id} onPress={() => setWho(m.user_id)} />
             ))}
           </View>
-          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={t.tasks.what} maxLength={120} />
+          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={homework ? t.tasks.homeworkIdea : t.tasks.what} maxLength={120} />
+          <View style={styles.row}>
+            <Chip icon="school-outline" label={t.tasks.homeworkToggle} selected={homework} onPress={() => setHomework((h) => !h)} />
+          </View>
+          {homework ? <TextField label={t.tasks.homeworkNote} value={note} onChangeText={setNote} placeholder="https://…" maxLength={500} multiline /> : null}
           {familyType && !title.trim() ? (
             <>
               {label(t.family.ideasTitle)}
@@ -79,6 +97,12 @@ export default function NewTaskScreen() {
           <View style={styles.row}>
             {choices.map((c) => (
               <Chip key={c} label={t.tasks.due[c]} selected={due === c} onPress={() => setDue(c)} />
+            ))}
+          </View>
+          {label(t.tasks.remindWhen)}
+          <View style={styles.row}>
+            {reminds.map((c) => (
+              <Chip key={c} icon={c === "due" ? undefined : "alarm-outline"} label={t.tasks.remind[c]} selected={remind === c} onPress={() => setRemind(c)} />
             ))}
           </View>
           <Button label={t.tasks.send} icon="send" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />

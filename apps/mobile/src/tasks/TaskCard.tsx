@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import type { CircleTask, TaskStatus } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
-import { cancelTask, finishTask, nudgeTask, respondTask } from "@/lib/api";
+import { router } from "expo-router";
+import { HttpError } from "@/sync/queue";
+import { cancelTask, finishTask, nudgeTask, remindTask, respondTask } from "@/lib/api";
 import { pullItems } from "@/sync/items";
-import { Badge, Button, Card, confirm, Icon, notify, palette, space, Text } from "@/ui";
-import { taskActions, type TaskAction } from "./logic";
+import { Badge, Button, Card, Chip, confirm, Icon, notify, palette, space, Text } from "@/ui";
+import { firstLink, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
 const TONE: Record<TaskStatus, "neutral" | "ok" | "warn" | "danger" | "primary"> = { pending: "warn", accepted: "primary", declined: "neutral", done: "ok", cancelled: "neutral" };
@@ -15,6 +17,7 @@ const ACTION_ICON: Partial<Record<TaskAction, "checkmark" | "close" | "notificat
 /** One assigned task with the actions this person can take. `onChanged` reloads the list. */
 export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const work = async (fn: () => Promise<unknown>, after?: string) => {
     setBusy(true);
@@ -24,8 +27,12 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
       void pullItems();
       if (after) notify(after);
       onChanged();
-    } catch {
-      notify(t.tasks.failed, "error");
+    } catch (err) {
+      // More nudges after a circle's trial are a Pro extra.
+      if (err instanceof HttpError && err.status === 402) {
+        notify(t.circles.extrasNeeded, "info");
+        router.push("/paywall");
+      } else notify(t.tasks.failed, "error");
     } finally {
       setBusy(false);
     }
@@ -39,6 +46,15 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
     return void work(() => respondTask(task.id, action));
   };
 
+  const open = task.status === "pending" || task.status === "accepted";
+  // Mirrors the server: the assigner while pending, the assignee while it is open.
+  const canRemind = (task.role === "assigner" && task.status === "pending") || (task.role === "assignee" && open);
+  const pickRemind = (c: RemindChoice) => {
+    setPicking(false);
+    void work(() => remindTask(task.id, remindAt(c, new Date(), task.due_at)), t.tasks.remindChanged);
+  };
+  const link = firstLink(task.note);
+
   const assigner = task.assigner_name ?? t.circles.noName;
   const assignee = task.assignee_name ?? t.circles.noName;
   const who = task.role === "assignee" ? fill(t.tasks.fromLine, { name: assigner }) : task.role === "assigner" ? fill(t.tasks.toLine, { name: assignee }) : fill(t.tasks.watchLine, { assignee, assigner });
@@ -49,6 +65,7 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
         <Text variant="bodyStrong" color={task.status === "done" ? palette.inkFaint : palette.ink} style={[styles.title, task.status === "done" && styles.struck]}>
           {task.title}
         </Text>
+        {task.homework ? <Badge label={t.tasks.homework} tone="primary" /> : null}
         <Badge label={t.tasks.status[task.status]} tone={TONE[task.status]} />
       </View>
       <View style={styles.meta}>
@@ -65,11 +82,36 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
           </Text>
         </View>
       ) : null}
+      {task.remind_at && open ? (
+        <View style={styles.meta}>
+          <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.inkSoft}>
+            {fill(t.tasks.remindLine, { when: when(task.remind_at) })}
+          </Text>
+        </View>
+      ) : null}
+      {task.homework && task.note ? (
+        <View style={styles.meta}>
+          <Icon name="school-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.ink} style={styles.flex}>
+            {task.note}
+          </Text>
+        </View>
+      ) : null}
+      {link ? <Button label={t.tasks.openLink} size="sm" kind="outline" icon="open-outline" onPress={() => void Linking.openURL(link)} /> : null}
+      {picking ? (
+        <View style={styles.actions}>
+          {remindChoices(new Date(), task.due_at).map((c) => (
+            <Chip key={c} icon="alarm-outline" label={t.tasks.remind[c]} onPress={() => pickRemind(c)} />
+          ))}
+        </View>
+      ) : null}
       {actions.length ? (
         <View style={styles.actions}>
           {actions.map((a, n) => (
             <Button key={a} label={t.tasks.actions[a]} size="sm" icon={ACTION_ICON[a]} kind={n === 0 ? "filled" : a === "cancel" ? "danger" : "outline"} disabled={busy} onPress={() => run(a)} />
           ))}
+          {canRemind && !picking ? <Button label={t.tasks.changeRemind} size="sm" kind="text" icon="alarm-outline" disabled={busy} onPress={() => setPicking(true)} /> : null}
         </View>
       ) : null}
     </Card>

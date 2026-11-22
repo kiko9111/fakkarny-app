@@ -99,6 +99,11 @@ export default function RootLayout() {
             options={{ presentation: "modal", title: t.tasks.newTitle }}
           />
           <Stack.Screen
+            name="money/new"
+            options={{ presentation: "modal", title: t.book.newTitle }}
+          />
+          <Stack.Screen name="money/[id]" options={{ title: "" }} />
+          <Stack.Screen
             name="daftar/new"
             options={{ presentation: "modal", title: t.daftar.newTitle }}
           />

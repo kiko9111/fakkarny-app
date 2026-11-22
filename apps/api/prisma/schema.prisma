@@ -119,53 +119,57 @@ enum MemoryKind {
 }
 
 model User {
-  id               String          @id @default(uuid()) @db.Uuid
-  authId           String          @unique @map("auth_id") // Supabase Auth user id
-  name             String?
-  language         Language        @default(ar_EG)
-  timezone         String          @default("Africa/Cairo") // IANA
-  wakeTime         String          @default("07:00") @map("wake_time") // HH:MM local
-  sleepTime        String          @default("23:00") @map("sleep_time") // HH:MM local
-  tone             Tone            @default(balanced)
-  checkinIntervalH CheckinInterval @default(h2) @map("checkin_interval_h")
-  ignoredCheckins  Int             @default(0) @map("ignored_checkins")
-  plan             Plan            @default(none)
-  planExpiresAt    DateTime?       @map("plan_expires_at")
-  planTier         PlanTier        @default(pro) @map("plan_tier")
+  id                 String          @id @default(uuid()) @db.Uuid
+  authId             String          @unique @map("auth_id") // Supabase Auth user id
+  name               String?
+  language           Language        @default(ar_EG)
+  timezone           String          @default("Africa/Cairo") // IANA
+  wakeTime           String          @default("07:00") @map("wake_time") // HH:MM local
+  sleepTime          String          @default("23:00") @map("sleep_time") // HH:MM local
+  tone               Tone            @default(balanced)
+  checkinIntervalH   CheckinInterval @default(h2) @map("checkin_interval_h")
+  ignoredCheckins    Int             @default(0) @map("ignored_checkins")
+  plan               Plan            @default(none)
+  planExpiresAt      DateTime?       @map("plan_expires_at")
+  planTier           PlanTier        @default(pro) @map("plan_tier")
   // Store product id of the current plan (founders' offer is detected from it).
-  planProductId    String?         @map("plan_product_id")
+  planProductId      String?         @map("plan_product_id")
   // Pro days earned by inviting friends (7 per friend, at most 28 a calendar month).
-  bonusProUntil    DateTime?       @map("bonus_pro_until")
-  referralCode     String?         @unique @map("referral_code")
-  referredById     String?         @map("referred_by_id") @db.Uuid
-  referralRewardedAt DateTime?     @map("referral_rewarded_at")
+  bonusProUntil      DateTime?       @map("bonus_pro_until")
+  referralCode       String?         @unique @map("referral_code")
+  referredById       String?         @map("referred_by_id") @db.Uuid
+  referralRewardedAt DateTime?       @map("referral_rewarded_at")
   // The user's own InstaPay payment link (https://ipn.eg/…), shown to people who owe them.
-  instapayLink     String?         @map("instapay_link")
+  instapayLink       String?         @map("instapay_link")
   // F5: skip the indirect hint and always send the clear reminder.
-  alwaysDirect     Boolean         @default(false) @map("always_direct")
+  alwaysDirect       Boolean         @default(false) @map("always_direct")
   // Proactive-message bookkeeping (M4).
-  lastMorningAt    DateTime?       @map("last_morning_at")
-  lastNightAt      DateTime?       @map("last_night_at")
-  lastCheckinAt    DateTime?       @map("last_checkin_at")
-  lastUserMessageAt DateTime?      @map("last_user_message_at")
-  slowdownNoticed  Boolean         @default(false) @map("slowdown_noticed")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  lastActiveAt     DateTime?       @map("last_active_at")
+  lastMorningAt      DateTime?       @map("last_morning_at")
+  lastNightAt        DateTime?       @map("last_night_at")
+  lastCheckinAt      DateTime?       @map("last_checkin_at")
+  lastUserMessageAt  DateTime?       @map("last_user_message_at")
+  slowdownNoticed    Boolean         @default(false) @map("slowdown_noticed")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  lastActiveAt       DateTime?       @map("last_active_at")
 
-  devices   Device[]
-  messages  Message[]
-  items     Item[]
-  memories  Memory[]
-  summaries Summary[]
-  events    Event[]
-  circles   CircleMember[]
-  invitesSent Invite[] @relation("InviteInviter")
-  daftarCreated DaftarEntry[] @relation("DaftarCreator")
-  daftarOther   DaftarEntry[] @relation("DaftarOther")
-  tasksGiven    CircleTask[] @relation("TaskAssigner")
-  tasksTaken    CircleTask[] @relation("TaskAssignee")
-  trackers      Tracker[]
-  sessionConsent SessionConsent?
+  devices         Device[]
+  messages        Message[]
+  items           Item[]
+  memories        Memory[]
+  summaries       Summary[]
+  events          Event[]
+  circles         CircleMember[]
+  invitesSent     Invite[]         @relation("InviteInviter")
+  daftarCreated   DaftarEntry[]    @relation("DaftarCreator")
+  daftarOther     DaftarEntry[]    @relation("DaftarOther")
+  tasksGiven      CircleTask[]     @relation("TaskAssigner")
+  tasksTaken      CircleTask[]     @relation("TaskAssignee")
+  trackers        Tracker[]
+  moneySections   MoneySection[]
+  moneyEntries    MoneyEntry[]
+  postReactions   PostReaction[]
+  postComments    PostComment[]
+  sessionConsent  SessionConsent?
   reflectSessions ReflectSession[]
 
   @@index([referredById])
@@ -203,29 +207,29 @@ model Message {
 }
 
 model Item {
-  id              String         @id @default(uuid()) @db.Uuid
-  userId          String         @map("user_id") @db.Uuid
-  type            ItemType
-  title           String
-  dueAt           DateTime?      @map("due_at")
+  id                 String         @id @default(uuid()) @db.Uuid
+  userId             String         @map("user_id") @db.Uuid
+  type               ItemType
+  title              String
+  dueAt              DateTime?      @map("due_at")
   // Not in the PRD §6 table, but needed by the response schema (remind_at_local)
   // and by F5 escalation (important items get the clear version at due time).
-  remindAt        DateTime?      @map("remind_at")
-  important       Boolean        @default(false)
+  remindAt           DateTime?      @map("remind_at")
+  important          Boolean        @default(false)
   // F5: the friend's indirect question shown in the local reminder notification.
-  nudge           String?
-  status          ItemStatus     @default(open)
-  debtPerson      String?        @map("debt_person")
-  debtAmount      Decimal?       @map("debt_amount") @db.Decimal(12, 2)
-  debtDirection   DebtDirection? @map("debt_direction")
-  followUpAt      DateTime?      @map("follow_up_at")
-  followedUpAt    DateTime?      @map("followed_up_at")
+  nudge              String?
+  status             ItemStatus     @default(open)
+  debtPerson         String?        @map("debt_person")
+  debtAmount         Decimal?       @map("debt_amount") @db.Decimal(12, 2)
+  debtDirection      DebtDirection? @map("debt_direction")
+  followUpAt         DateTime?      @map("follow_up_at")
+  followedUpAt       DateTime?      @map("followed_up_at")
   // Repeating reminder: minutes between occurrences; remindAt moves forward each time.
-  repeatEveryMinutes Int?        @map("repeat_every_minutes")
-  sourceMessageId String?        @map("source_message_id") @db.Uuid
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  doneAt          DateTime?      @map("done_at")
+  repeatEveryMinutes Int?           @map("repeat_every_minutes")
+  sourceMessageId    String?        @map("source_message_id") @db.Uuid
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  doneAt             DateTime?      @map("done_at")
 
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceMessage Message? @relation(fields: [sourceMessageId], references: [id], onDelete: SetNull)
@@ -289,22 +293,24 @@ model Circle {
   familyType  String?    @map("family_type")
   createdAt   DateTime   @default(now()) @map("created_at")
 
-  members CircleMember[]
-  invites Invite[]
-  daftar  DaftarEntry[]
-  tasks   CircleTask[]
-  posts   CirclePost[]
+  members       CircleMember[]
+  invites       Invite[]
+  daftar        DaftarEntry[]
+  tasks         CircleTask[]
+  posts         CirclePost[]
+  trackers      Tracker[]
+  moneySections MoneySection[]
 
   @@map("circles")
 }
 
 model CircleMember {
-  circleId String     @map("circle_id") @db.Uuid
-  userId   String     @map("user_id") @db.Uuid
-  role     CircleRole @default(member)
+  circleId   String     @map("circle_id") @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  role       CircleRole @default(member)
   // The member's own place in a family circle (shared FamilyRole). Optional.
-  familyRole String?  @map("family_role")
-  joinedAt DateTime   @default(now()) @map("joined_at")
+  familyRole String?    @map("family_role")
+  joinedAt   DateTime   @default(now()) @map("joined_at")
 
   circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -339,24 +345,24 @@ model Invite {
 /// Shared Daftar: a debt between two people, recorded only. Zaki never holds or moves money.
 /// The creator sends a link; the other person confirms on the web with nothing to install.
 model DaftarEntry {
-  id          String        @id @default(uuid()) @db.Uuid
-  code        String        @unique
-  creatorId   String        @map("creator_id") @db.Uuid
+  id           String        @id @default(uuid()) @db.Uuid
+  code         String        @unique
+  creatorId    String        @map("creator_id") @db.Uuid
   // Optional: the circle this belongs to. Only the two people involved ever see the entry.
-  circleId    String?       @map("circle_id") @db.Uuid
+  circleId     String?       @map("circle_id") @db.Uuid
   // The other person: a name the creator typed, linked to an account once they open it in the app.
-  otherName   String        @map("other_name")
-  otherUserId String?       @map("other_user_id") @db.Uuid
+  otherName    String        @map("other_name")
+  otherUserId  String?       @map("other_user_id") @db.Uuid
   // From the creator's side: owed_to_me = the other person owes the creator.
-  direction   DebtDirection
-  amount      Decimal       @db.Decimal(12, 2)
-  currency    String        @default("EGP")
-  note        String?
-  status      DaftarStatus  @default(pending)
-  respondedAt DateTime?     @map("responded_at")
-  respondedVia String?      @map("responded_via") // "web" | "app"
-  settledAt   DateTime?     @map("settled_at")
-  createdAt   DateTime      @default(now()) @map("created_at")
+  direction    DebtDirection
+  amount       Decimal       @db.Decimal(12, 2)
+  currency     String        @default("EGP")
+  note         String?
+  status       DaftarStatus  @default(pending)
+  respondedAt  DateTime?     @map("responded_at")
+  respondedVia String?       @map("responded_via") // "web" | "app"
+  settledAt    DateTime?     @map("settled_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
 
   creator User    @relation("DaftarCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   other   User?   @relation("DaftarOther", fields: [otherUserId], references: [id], onDelete: SetNull)
@@ -376,6 +382,11 @@ model CircleTask {
   assigneeId  String     @map("assignee_id") @db.Uuid
   title       String
   dueAt       DateTime?  @map("due_at")
+  // When Zaki reminds the assignee: set by the assigner, changeable by the assignee. Null = at due_at.
+  remindAt    DateTime?  @map("remind_at")
+  // Homework (simple version): a description or link the child opens, then taps done.
+  homework    Boolean    @default(false)
+  note        String?
   status      TaskStatus @default(pending)
   // The assignee's own item, created when they accept. Marking it done finishes the task.
   itemId      String?    @unique @map("item_id") @db.Uuid
@@ -407,10 +418,43 @@ model CirclePost {
   title     String?
   createdAt DateTime @default(now()) @map("created_at")
 
-  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  circle    Circle         @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  reactions PostReaction[]
+  comments  PostComment[]
 
   @@index([circleId, createdAt])
   @@map("circle_posts")
+}
+
+/// One reaction per member per feed item (a fixed set of keys, see shared REACTION_KEYS).
+model PostReaction {
+  postId    String   @map("post_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  key       String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CirclePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@map("post_reactions")
+}
+
+/// A short comment on a feed item. userId null = Zaki answering an @Zaki ask: then `zakiEvent`
+/// holds a template key and the line is written per reader language (never model text).
+model PostComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  text      String?
+  zakiEvent String?  @map("zaki_event")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CirclePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("post_comments")
 }
 
 /// One thing the user follows (water, prayer, spending…). Kinds and their defaults live in
@@ -423,9 +467,15 @@ model Tracker {
   goal      Decimal? @db.Decimal(12, 2)
   // "ramadan" for trackers added by the Ramadan pack: free, outside the 1-tracker limit.
   pack      String?
+  // Tracker builder: local "HH:MM" times Zaki asks, the user's word for one step, and the
+  // circle it is shared with (members see its progress; never a money tracker).
+  askTimes  String[] @default([]) @map("ask_times")
+  unitLabel String?  @map("unit_label")
+  circleId  String?  @map("circle_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
   user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  circle  Circle?        @relation(fields: [circleId], references: [id], onDelete: SetNull)
   entries TrackerEntry[]
 
   @@index([userId])
@@ -477,18 +527,61 @@ model ReflectSession {
 }
 
 model ReflectMessage {
-  id        String   @id @default(uuid()) @db.Uuid
-  sessionId String   @map("session_id") @db.Uuid
-  role      String // "user" | "zaki"
-  text      String
+  id           String    @id @default(uuid()) @db.Uuid
+  sessionId    String    @map("session_id") @db.Uuid
+  role         String // "user" | "zaki"
+  text         String
   // One small step Zaki suggested with this message, if any.
   stepTitle    String?   @map("step_title")
   stepAt       DateTime? @map("step_at")
   stepAccepted Boolean   @default(false) @map("step_accepted")
-  createdAt DateTime @map("created_at")
+  createdAt    DateTime  @map("created_at")
 
   session ReflectSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
   @@map("reflect_messages")
+}
+
+/// Wider Daftar: the user's own expense / income sections, or a circle's shared book.
+/// Records only (Central Bank rules): Zaki never holds or moves money.
+model MoneySection {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  // Set for a circle's shared book: every member can read it and add to it.
+  circleId  String?  @map("circle_id") @db.Uuid
+  name      String
+  // "expense" | "income" (validated by shared MoneyKind)
+  kind      String   @default("expense")
+  budget    Decimal? @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner   User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  circle  Circle?      @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  entries MoneyEntry[]
+
+  @@index([ownerId])
+  @@index([circleId])
+  @@map("money_sections")
+}
+
+model MoneyEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  sectionId String   @map("section_id") @db.Uuid
+  // Who paid (or received) it.
+  userId    String   @map("user_id") @db.Uuid
+  amount    Decimal  @db.Decimal(12, 2)
+  note      String?
+  // Shared books: the user ids it is split among, evenly. Empty for a personal section.
+  split     String[] @default([])
+  // "app" or "chat" (logged by rules from a message)
+  source    String   @default("app")
+  at        DateTime @default(now())
+
+  section MoneySection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId, at])
+  @@index([userId])
+  @@map("money_entries")
 }

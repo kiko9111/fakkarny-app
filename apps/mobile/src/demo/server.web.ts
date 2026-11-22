@@ -9,6 +9,8 @@ import {
   type DaftarEntry,
   type Item,
   type Memory,
+  type MoneySection,
+  type SectionDetail,
   type Message,
   type Session,
   type SessionMessage,
@@ -66,7 +68,12 @@ interface TrackerRow {
   pack: "ramadan" | null;
   /** Last 7 local days, oldest first; index 6 is today. */
   week: number[];
+  /** Days 1..23 before the week, oldest first (the month graph is these plus `week`). */
+  earlier?: number[];
   total: number;
+  ask_times?: string[];
+  unit_label?: string | null;
+  circle_id?: string | null;
   created_at: string;
 }
 interface SessionData {
@@ -85,10 +92,34 @@ interface State {
   session: SessionData;
   messages: Message[];
   served_morning: boolean;
+  /** Spending sections (older saved demos have none: seeded on first use). */
+  money?: SectionRow[];
   /** Item id of the status check Zaki just asked about (shows the "did Youssef pay you back?" flow). */
   pending_status?: string | null;
   status_asked?: boolean;
   language: string;
+}
+
+const feedPost = (text: string, created_at: string, over: Partial<CirclePost> = {}): CirclePost => ({
+  id: id(),
+  text,
+  created_at,
+  kind: null,
+  my_rsvp: null,
+  reactions: [],
+  my_reaction: null,
+  comments: [],
+  comment_count: 0,
+  ...over,
+});
+
+interface SectionRow {
+  id: string;
+  name: string;
+  kind: "expense" | "income";
+  budget: number | null;
+  circle_id: string | null;
+  entries: { id: string; amount: number; note: string | null; at: string; payer: string | null; mine: boolean; split: number }[];
 }
 
 const member = (user_id: string, name: string | null, extra: Partial<CircleMember> = {}): CircleMember => ({
@@ -138,8 +169,12 @@ function seed(): State {
     ],
     invites: [],
     posts: [
-      { id: id(), text: L("ماما طلبت من سارة تحجز ميعاد الدكتور، وسارة وافقت 👍", "Mum asked Sara to book the doctor, and Sara said yes 👍"), created_at: inHours(-3), kind: null, my_rsvp: null },
-      { id: id(), text: L("بابا قال إنه تمام ✅", "Dad says he's fine ✅"), created_at: inHours(-5), kind: null, my_rsvp: null },
+      feedPost(L("ماما طلبت من سارة تحجز ميعاد الدكتور، وسارة وافقت 👍", "Mum asked Sara to book the doctor, and Sara said yes 👍"), inHours(-3), {
+        reactions: [{ key: "heart", count: 2 }, { key: "clap", count: 1 }],
+        comments: [{ id: id(), author_name: L("بابا", "Dad"), is_mine: false, is_zaki: false, text: L("تسلمي يا سارة 💛", "Thank you Sara 💛"), created_at: inHours(-2) }],
+        comment_count: 1,
+      }),
+      feedPost(L("بابا: أنا تمام 💛", "Dad: I'm okay 💛"), inHours(-5), { reactions: [{ key: "pray", count: 3 }] }),
     ],
   };
   const friends: CircleRow = {
@@ -150,7 +185,7 @@ function seed(): State {
     created_at: inHours(-24 * 12),
     members: [member(OMAR, L("عمر", "Omar"), { role: "owner" }), member(ME, null), member(MARIAM, L("مريم", "Mariam")), member(YOUSSEF, L("يوسف", "Youssef"))],
     invites: [],
-    posts: [{ id: id(), text: L("يوسف خلّص «يحجز الملعب يوم الجمعة» 🎉", "Youssef finished “book the pitch for Friday” 🎉"), created_at: inHours(-20), kind: null, my_rsvp: null }],
+    posts: [feedPost(L("تمّت: يحجز الملعب يوم الجمعة ✅ تسلم الإيد يا يوسف!", "Youssef finished: book the pitch for Friday ✅ Thank you, Youssef!"), inHours(-20), { reactions: [{ key: "strong", count: 2 }] })],
   };
 
   const task = (over: Partial<CircleTask> & Pick<CircleTask, "title" | "role">): CircleTask => ({
@@ -158,6 +193,9 @@ function seed(): State {
     circle_id: family.id,
     circle_name: family.name,
     due_at: null,
+    remind_at: null,
+    homework: false,
+    note: null,
     status: "pending",
     assigner_name: null,
     assignee_name: null,
@@ -219,6 +257,7 @@ function seed(): State {
     ],
     tasks: [
       task({ title: L("هات عيش وانت راجع", "Grab bread on your way home"), role: "assignee", assigner_name: L("ماما", "Mum"), assignee_name: null, due_at: atLocal(0, 21) }),
+      task({ title: L("واجب العربي: تعبير عن الشتا", "Arabic homework: a short essay on winter"), role: "assigner", assigner_name: null, assignee_name: L("عمر", "Omar"), status: "accepted", responded_at: inHours(-1), homework: true, note: L("صفحة 40 في الكتاب https://example.com/hw", "Page 40 in the book https://example.com/hw"), remind_at: atLocal(0, 18), due_at: atLocal(0, 21) }),
       task({ title: L("تحجز ميعاد الدكتور لبابا", "Book Dad's doctor appointment"), role: "assigner", assigner_name: null, assignee_name: L("سارة", "Sara"), status: "accepted", responded_at: inHours(-3), can_nudge: true }),
       task({
         title: L("يحجز الملعب يوم الجمعة", "Book the pitch for Friday"), role: "watcher", circle_id: friends.id, circle_name: friends.name,
@@ -226,7 +265,7 @@ function seed(): State {
       }),
     ],
     trackers: [
-      { id: id(), kind: "water", name: null, goal: 8, pack: null, week: week([6, 8, 7, 8, 5, 8, 5]), total: 47, created_at: inHours(-24 * 6) },
+      { id: id(), kind: "water", name: null, goal: 8, pack: null, week: week([6, 8, 7, 8, 5, 8, 5]), earlier: [4, 6, 8, 8, 5, 7, 8, 3, 6, 8, 8, 8, 7, 6, 5, 8, 8, 4, 6, 7, 8, 8, 6], total: 47, ask_times: ["13:00", "18:00"], created_at: inHours(-24 * 6) },
     ],
     session: { consented: false, open: null, moods: [{ at: inHours(-24 * 5), mood: 3 }, { at: inHours(-24 * 2), mood: 4 }] },
     messages: [],
@@ -281,6 +320,8 @@ const toCircle = (c: CircleRow): Circle => ({
   member_count: c.members.length,
   family_type: c.family_type,
   created_at: c.created_at,
+  trial_until: new Date(new Date(c.created_at).getTime() + 14 * 86400000).toISOString(),
+  extras: true,
 });
 const toDetail = (c: CircleRow): CircleDetail => ({ ...toCircle(c), members: c.members, open_invites: c.invites });
 const findCircle = (cid: string) => {
@@ -311,6 +352,11 @@ function toTracker(r: TrackerRow): Tracker {
     total: r.total,
     streak,
     pack: r.pack,
+    month: [...(r.earlier ?? Array<number>(23).fill(0)), ...r.week],
+    ask_times: r.ask_times ?? [],
+    unit_label: r.unit_label ?? null,
+    circle_id: r.circle_id ?? null,
+    circle_name: state.circles.find((c) => c.id === r.circle_id)?.name ?? null,
     created_at: r.created_at,
   };
 }
@@ -374,6 +420,21 @@ on("POST", "/messages", (_m, b) => {
     const done = msg("friend", pending.type === "debt" ? L("حلو أوي! علّمتها إنها اتسدّت ✅", "Love that! Marked it as settled ✅") : L(`برافو عليك! علّمت «${pending.title}» إنها خلصت ✅`, `Nice one! Marked “${pending.title}” as done ✅`), `${clientId}:reply:0`);
     state.messages.push(userMsg, done);
     return { message: userMsg, replies: [done], items: [pending], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+  }
+  // "دفعت 300 بنزين": logged to a spending section by rules, as on the server.
+  const spent = /(?:^|\s)(?:دفعت|صرفت|اشتريت|spent|paid)\s+(\d+)\s*(?:جنيه\s*)?(?:على|علي|في|on|for)?\s*(.*)$/i.exec(text.trim());
+  if (spent && !/سلف|عليا|ليا|owe|lent|[?؟]/.test(text)) {
+    const amount = Number(spent[1]);
+    const note = spent[2]?.trim() || null;
+    const sections = money().filter((x) => x.kind === "expense" && !x.circle_id);
+    const target = sections.find((x) => note && (note.includes(x.name) || x.entries.some((e) => e.note === note))) ?? sections[0];
+    if (target) {
+      target.entries.push({ id: id(), amount, note, at: iso(now()), payer: null, mine: true, split: 1 });
+      const total = target.entries.reduce((n, e) => n + e.amount, 0);
+      const done = msg("friend", L(`سجّلت ${amount} جنيه في «${target.name}». الشهر ده لحد دلوقتي: ${total.toLocaleString("en-US")}.`, `Logged EGP ${amount} in “${target.name}”. This month so far: ${total.toLocaleString("en-US")}.`), `${clientId}:reply:0`);
+      state.messages.push(userMsg, done);
+      return { message: userMsg, replies: [done], items: [], memories: [], duplicate: false, ai_allowance: { limit: null, used: 0 } };
+    }
   }
   const reply = zakiReply(text, {
     name: state.user.name,
@@ -471,9 +532,78 @@ on("DELETE", "/circles/([^/]+)", (m) => {
   state.circles = state.circles.filter((c) => c.id !== m[1]);
   return null;
 });
+on("GET", "/circles/([^/]+)/summary", (m) => {
+  const c = findCircle(m[1]!);
+  const done = state.tasks.filter((t) => t.circle_id === c.id && t.status === "done").length;
+  return {
+    since: inHours(-24 * 7),
+    lines: [
+      L(`نجم الأسبوع: ${c.members[0]?.name ?? "حد من الدايرة"} 🌟`, `Star of the week: ${c.members[0]?.name ?? "someone in the circle"} 🌟`),
+      L(`${done} مهام خلصت الأسبوع ده`, `${done} tasks done this week`),
+    ],
+  };
+});
 on("GET", "/circles/([^/]+)/feed", (m) => {
   const c = findCircle(m[1]!);
   return { posts: c.posts, tasks: state.tasks.filter((t) => t.circle_id === c.id) };
+});
+const findPost = (cid: string, pid: string) => {
+  const p = findCircle(cid).posts.find((x) => x.id === pid);
+  if (!p) throw new DemoHttpError(404);
+  // Posts saved by an older preview lack the feed fields.
+  p.reactions ??= [];
+  p.comments ??= [];
+  p.comment_count ??= p.comments.length;
+  return p;
+};
+on("POST", "/circles/([^/]+)/posts/([^/]+)/react", (m, b) => {
+  const p = findPost(m[1]!, m[2]!);
+  const key = (b.key as string | null) ?? null;
+  const bump = (k: string, by: number) => {
+    const r = p.reactions.find((x) => x.key === k);
+    if (r) r.count += by;
+    else if (by > 0) p.reactions.push({ key: k, count: by });
+    p.reactions = p.reactions.filter((x) => x.count > 0);
+  };
+  if (p.my_reaction) bump(p.my_reaction, -1);
+  if (key) bump(key, 1);
+  p.my_reaction = key;
+  return { post: p };
+});
+const ZAKI_HELP = L(
+  "أقدر هنا أفكّر الكل بحاجة («زكي فكّر الكل بغدا الجمعة»)، أو أعمل ملخّص الأسبوع، أو أطلب من الكل يطمّنوا 💛",
+  "Here I can remind everyone of something (“Zaki, remind everyone about Friday lunch”), give the week's summary, or ask everyone to check in 💛",
+);
+const zakiDemoAnswer = (c: CircleRow, text: string) => {
+  const others = c.members.filter((x) => !x.is_me).length;
+  if (/فكر|فكّر|ذكّر|remind/i.test(text)) return L(`تمام، فكّرت ${others} في الدايرة في الشات بتاعهم 💛`, `Done, I reminded ${others} people in their chats 💛`);
+  if (/ملخص|ملخّص|الأسبوع|summary|week/i.test(text)) return L("خلّصتوا 3 مهام الأسبوع ده 🎉\n4 طمّنوا بعض الأسبوع ده 🤍", "You finished 3 tasks together this week 🎉\n4 check-ins to put each other's minds at ease 🤍");
+  if (/طمن|طمّن|check/i.test(text)) return L(`سألت ${others} في الدايرة يطمّنوكم بدوسة 💛`, `I asked ${others} people to check in with one tap 💛`);
+  return ZAKI_HELP;
+};
+const zakiComment = (text: string) => ({ id: id(), author_name: null, is_mine: false, is_zaki: true, text, created_at: iso(new Date(now().getTime() + 1)) });
+on("POST", "/circles/([^/]+)/posts/([^/]+)/comments", (m, b) => {
+  const c = findCircle(m[1]!);
+  const p = findPost(m[1]!, m[2]!);
+  const text = String(b.text ?? "");
+  p.comments.push({ id: id(), author_name: state.user.name, is_mine: true, is_zaki: false, text, created_at: iso(now()) });
+  if (/^\s*@?\s*(زكي|zaki)/i.test(text)) p.comments.push(zakiComment(zakiDemoAnswer(c, text)));
+  p.comment_count = p.comments.length;
+  return { post: p };
+});
+on("DELETE", "/circles/([^/]+)/comments/([^/]+)", (m) => {
+  for (const p of findCircle(m[1]!).posts) {
+    p.comments = (p.comments ?? []).filter((x) => x.id !== m[2]);
+    p.comment_count = p.comments.length;
+  }
+  return null;
+});
+on("POST", "/circles/([^/]+)/zaki", (m, b) => {
+  const c = findCircle(m[1]!);
+  const text = String(b.text ?? "").replace(/^\s*@?\s*(زكي|zaki)\s*[،,:]?\s*/i, "");
+  const p = feedPost(L(`${state.user.name ?? "إنت"} لزكي: «${text}»`, `${state.user.name ?? "You"} to Zaki: “${text}”`), iso(now()), { comments: [zakiComment(zakiDemoAnswer(c, text))], comment_count: 1 });
+  c.posts.unshift(p);
+  return { post: p };
 });
 on("PATCH", "/circles/([^/]+)/members/([^/]+)", (m, b) => {
   const c = findCircle(m[1]!);
@@ -528,6 +658,9 @@ on("POST", "/circles/([^/]+)/tasks", (m, b) => {
     circle_name: c.name,
     title: String(b.title ?? ""),
     due_at: (b.due_at as string | null) ?? null,
+    remind_at: (b.remind_at as string | null) ?? null,
+    homework: Boolean(b.homework),
+    note: (b.note as string | null) ?? null,
     status: "pending",
     role: "assigner",
     assigner_name: null,
@@ -540,9 +673,15 @@ on("POST", "/circles/([^/]+)/tasks", (m, b) => {
   state.tasks.unshift(task);
   return { task };
 });
+on("POST", "/tasks/([^/]+)/remind", (m, b) => {
+  const task = state.tasks.find((x) => x.id === m[1]);
+  if (!task) throw new DemoHttpError(404);
+  task.remind_at = (b.remind_at as string | null) ?? null;
+  return { task };
+});
 on("POST", "/circles/([^/]+)/iftar", (m) => {
   const c = findCircle(m[1]!);
-  c.posts.unshift({ id: id(), text: L("كريم عازمكم على الفطار 🌙", "Kareem invites you all to iftar 🌙"), created_at: iso(now()), kind: "iftar", my_rsvp: true });
+  c.posts.unshift(feedPost(L("كريم عازمكم على الفطار 🌙", "Kareem invites you all to iftar 🌙"), iso(now()), { kind: "iftar", my_rsvp: true }));
   return null;
 });
 on("POST", "/circles/([^/]+)/posts/([^/]+)/rsvp", (m, b) => {
@@ -643,7 +782,19 @@ on("POST", "/trackers", (_m, b) => {
   if (!state.user.pro && own >= 1) throw new DemoHttpError(402);
   const kind = b.kind as TrackerKind;
   const tpl = TRACKER_TEMPLATES[kind];
-  const row: TrackerRow = { id: id(), kind, name: (b.name as string) ?? null, goal: (b.goal as number) ?? tpl.goal, pack: null, week: [0, 0, 0, 0, 0, 0, 0], total: 0, created_at: iso(now()) };
+  const row: TrackerRow = {
+    id: id(),
+    kind,
+    name: (b.name as string) ?? null,
+    goal: (b.goal as number) ?? tpl.goal,
+    pack: null,
+    week: [0, 0, 0, 0, 0, 0, 0],
+    total: 0,
+    ask_times: (b.ask_times as string[]) ?? [],
+    unit_label: (b.unit_label as string) ?? null,
+    circle_id: (b.circle_id as string) ?? null,
+    created_at: iso(now()),
+  };
   state.trackers.push(row);
   return { tracker: toTracker(row) };
 });
@@ -661,6 +812,23 @@ on("POST", "/trackers/([^/]+)/undo", (m) => {
   r.total = Math.max(0, r.total - step);
   return { tracker: toTracker(r) };
 });
+on("PATCH", "/trackers/([^/]+)", (m, b) => {
+  const r = findTracker(m[1]!);
+  if (Array.isArray(b.ask_times)) r.ask_times = b.ask_times as string[];
+  if (b.circle_id !== undefined) r.circle_id = (b.circle_id as string | null) ?? null;
+  return { tracker: toTracker(r) };
+});
+on("GET", "/circles/([^/]+)/trackers", (m) => {
+  const c = findCircle(m[1]!);
+  const mine = state.trackers.filter((r) => r.circle_id === c.id).map((r) => {
+    const tr = toTracker(r);
+    return { id: tr.id, owner_name: null, is_mine: true, kind: tr.kind, name: tr.name, unit_label: tr.unit_label, goal: tr.goal, today: tr.today, streak: tr.streak, week: tr.week };
+  });
+  const theirs = c.kind === "friends" && c.members.length > 2
+    ? [{ id: "demo-shared-1", owner_name: c.members.find((x) => !x.is_me)?.name ?? null, is_mine: false, kind: "gym" as const, name: null, unit_label: null, goal: 1, today: 1, streak: 4, week: [1, 0, 1, 1, 1, 1, 1] }]
+    : [];
+  return { trackers: [...theirs, ...mine] };
+});
 on("DELETE", "/trackers/([^/]+)", (m) => {
   state.trackers = state.trackers.filter((t) => t.id !== m[1]);
   return null;
@@ -668,6 +836,80 @@ on("DELETE", "/trackers/([^/]+)", (m) => {
 on("POST", "/trackers/ramadan-pack", () => {
   throw new DemoHttpError(409);
 });
+
+// Wider Daftar
+const money = (): SectionRow[] => {
+  if (!state.money) {
+    const family = state.circles.find((c) => c.kind === "family");
+    const e = (amount: number, note: string | null, hoursAgo: number, payer: string | null = null, split = 1) => ({ id: id(), amount, note, at: inHours(-hoursAgo), payer, mine: payer === null, split });
+    state.money = [
+      { id: id(), name: L("العربية", "Car"), kind: "expense", budget: 1500, circle_id: null, entries: [e(500, L("بنزين", "fuel"), 30), e(350, L("صيانة", "service"), 120), e(420, L("بنزين", "fuel"), 200)] },
+      { id: id(), name: L("الأكل", "Food"), kind: "expense", budget: 3000, circle_id: null, entries: [e(1200, L("سوبر ماركت", "groceries"), 50), e(600, L("أكل بره", "eating out"), 10)] },
+      { id: id(), name: L("المرتب", "Salary"), kind: "income", budget: null, circle_id: null, entries: [e(9000, null, 400)] },
+      ...(family
+        ? [{ id: id(), name: L("مصاريف البيت", "House expenses"), kind: "expense" as const, budget: null, circle_id: family.id, entries: [e(300, L("خضار", "vegetables"), 20, L("ماما", "Mum"), 3), e(120, L("عيش", "bread"), 5, null, 3)] }]
+        : []),
+    ];
+  }
+  return state.money;
+};
+const toSection = (r: SectionRow): MoneySection => {
+  const total = r.entries.reduce((n, x) => n + x.amount, 0);
+  const share = r.circle_id ? r.entries.reduce((n, x) => n + x.amount / x.split, 0) : total;
+  return { id: r.id, name: r.name, kind: r.kind, budget: r.budget, circle_id: r.circle_id, circle_name: state.circles.find((c) => c.id === r.circle_id)?.name ?? null, is_owner: true, month_total: total, my_share: Math.round(share * 100) / 100, created_at: inHours(-24 * 30) };
+};
+const findSection = (sid: string) => {
+  const r = money().find((x) => x.id === sid);
+  if (!r) throw new DemoHttpError(404);
+  return r;
+};
+on("GET", "/money", () => {
+  const sections = money().map(toSection);
+  const sum = (k: string) => sections.filter((x) => x.kind === k).reduce((n, x) => n + x.my_share, 0);
+  return { month: iso(now()).slice(0, 7), sections, totals: { expense: sum("expense"), income: sum("income") } };
+});
+on("POST", "/money/sections", (_m, b) => {
+  const r: SectionRow = { id: id(), name: String(b.name ?? ""), kind: b.kind === "income" ? "income" : "expense", budget: (b.budget as number | null) ?? null, circle_id: (b.circle_id as string | null) ?? null, entries: [] };
+  money().push(r);
+  return { section: toSection(r) };
+});
+on("GET", "/money/sections/([^/]+)", (m): SectionDetail => {
+  const r = findSection(m[1]!);
+  const c = state.circles.find((x) => x.id === r.circle_id);
+  const share = toSection(r).my_share;
+  const paid = r.entries.filter((x) => x.mine).reduce((n, x) => n + x.amount, 0);
+  const owe = Math.round((share - paid) * 100) / 100;
+  const other = r.entries.find((x) => !x.mine)?.payer ?? null;
+  return {
+    section: toSection(r),
+    entries: [...r.entries].sort((a, b2) => b2.at.localeCompare(a.at)).map((x) => ({ id: x.id, section_id: r.id, amount: x.amount, note: x.note, at: x.at, payer_name: x.payer, is_mine: x.mine, split_count: x.split })),
+    settle: c && owe > 0 ? [{ from_name: null, to_name: other, amount: owe, from_me: true, to_me: false }] : [],
+    members: c ? c.members.map((x) => ({ user_id: x.user_id, name: x.name, is_me: x.is_me })) : [],
+  };
+});
+on("DELETE", "/money/sections/([^/]+)", (m) => {
+  state.money = money().filter((x) => x.id !== m[1]);
+  return null;
+});
+on("POST", "/money/sections/([^/]+)/entries", (m, b) => {
+  const r = findSection(m[1]!);
+  const split = r.circle_id ? (Array.isArray(b.split) ? b.split.length : state.circles.find((c) => c.id === r.circle_id)?.members.length ?? 1) : 1;
+  r.entries.push({ id: id(), amount: Number(b.amount), note: (b.note as string | null) ?? null, at: iso(now()), payer: null, mine: true, split });
+  return { section: toSection(r) };
+});
+on("DELETE", "/money/entries/([^/]+)", (m) => {
+  for (const r of money()) r.entries = r.entries.filter((x) => x.id !== m[1]);
+  return null;
+});
+on("GET", "/money/gift", () => ({
+  month: "2026-10",
+  expense: 6200,
+  income: 9000,
+  lines: L(
+    "🎁 هدية آخر الشهر من زكي: ملخّص أكتوبر|صرفت 6,200 جنيه في الشهر.|ودخلك 9,000 جنيه.|يعني فضل معاك 2,800 🌟 برافو عليك!|أكبر قسم: «الأكل» بـ2,900.|كل الأقسام فضلت جوه الميزانية 👏|شهر جديد، بداية جديدة. أنا معاك 💛",
+    "🎁 Zaki's end-of-month gift: your October in a nutshell|You spent EGP 6,200 this month.|Your income was EGP 9,000.|That leaves EGP 2,800 🌟 Well done!|Biggest section: “Food” at 2,900.|Every section stayed within budget 👏|New month, fresh start. I'm with you 💛",
+  ).split("|"),
+}));
 
 // Session
 const HELPLINE = L("لو حاسس إنك مش بخير خالص، كلّم الخط الساخن للصحة النفسية ١٦٣٢٨ (مجاني).", "If you feel really unwell, call the mental health line 16328 (free, Egypt).");

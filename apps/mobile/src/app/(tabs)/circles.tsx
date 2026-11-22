@@ -2,12 +2,12 @@ import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import type { Circle } from "@fakkarni/shared";
-import { fill, groupCircles } from "@/circles/logic";
+import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
 import { listCircles } from "@/lib/api";
 import { Button, IconTile, ListRow, Note, palette, Screen, SectionHeader, space, Text } from "@/ui";
 
-/** The Family and Friends spaces: the user's circles, and the way into creating or joining one. */
+/** The user's circles (family, friends, work, any group), and the way into creating or joining one. */
 export default function CirclesScreen() {
   const [circles, setCircles] = useState<Circle[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -29,7 +29,6 @@ export default function CirclesScreen() {
     }, [load]),
   );
 
-  const { family, friends } = groupCircles(circles ?? []);
   const row = (c: Circle) => (
     <ListRow
       key={c.id}
@@ -40,16 +39,7 @@ export default function CirclesScreen() {
     />
   );
 
-  const section = (kind: "family" | "friends", list: Circle[]) => (
-    <>
-      <SectionHeader title={kind === "family" ? t.ui.family : t.ui.friends} action={t.ui.newCircle} onAction={() => router.push({ pathname: "/circle/new", params: { kind } })} />
-      {list.map(row)}
-      {circles !== null && list.length === 0 ? (
-        <Button label={kind === "family" ? t.circles.newFamily : t.circles.newFriends} kind="outline" icon="add" block onPress={() => router.push({ pathname: "/circle/new", params: { kind } })} />
-      ) : null}
-    </>
-  );
-
+  const newCircle = () => router.push("/circle/new");
   return (
     <Screen
       refreshing={refreshing}
@@ -67,8 +57,14 @@ export default function CirclesScreen() {
           <Button label={t.circles.retry} kind="text" size="sm" onPress={() => void load()} />
         </View>
       ) : null}
-      {section("family", family)}
-      {section("friends", friends)}
+      <SectionHeader title={t.circles.yours} action={t.ui.newCircle} onAction={newCircle} />
+      {(circles ?? []).map(row)}
+      {circles !== null && circles.length === 0 ? (
+        <Text variant="small" color={palette.inkSoft}>
+          {t.circles.emptyYours}
+        </Text>
+      ) : null}
+      {circles !== null ? <Button label={t.circles.newTitle} kind={circles.length ? "outline" : "filled"} icon="add" block onPress={newCircle} /> : null}
       <Button label={t.ui.haveCode} kind="text" icon="key-outline" onPress={() => router.push("/invite")} style={styles.code} />
     </Screen>
   );

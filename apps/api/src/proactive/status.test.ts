@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { localToUtc } from "../lib/time";
-import { isPlainYes, parseStatusClientId, pendingStatus, planStatusCheck, statusClientId, type StatusInput, type StatusItem } from "./status";
+import { isPlainYes, parseStatusClientId, pendingStatus, planStatusCheck, statusClientId, trackerAskDue, trackerQuestion, type StatusInput, type StatusItem } from "./status";
 
 const at = (local: string) => localToUtc(local, "Africa/Cairo");
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -80,5 +80,28 @@ describe("status checks", () => {
   it("reads only a plain yes as yes", () => {
     for (const yes of ["اه", "آه خلصت ✅", "ايوه الحمد لله", "خلصتها يا زكي", "yes", "Yep, done!", "I did it", "شربت"]) expect(isPlainYes(yes), yes).toBe(true);
     for (const no of ["لا", "لسه", "مش لسه", "not yet", "no", "yes but tomorrow I need to call her again", "i did not", "ok", "شكرا", "خلصت نص الشغل بس"]) expect(isPlainYes(no), no).toBe(false);
+  });
+});
+
+describe("tracker questions at the user's own times", () => {
+  const tz = "Africa/Cairo";
+  // 2026-11-22 20:05 Cairo = 18:05 UTC
+  const now = new Date("2026-11-22T18:05:00Z");
+  const reading = { id: "11111111-1111-1111-1111-111111111111", kind: "custom", name: "القراية", askTimes: ["20:00"], goal: 1, today: 0 };
+  it("asks within half an hour of the picked time, once", () => {
+    const check = trackerAskDue([reading], now, tz, "07:00", "23:00", []);
+    expect(check).toEqual({ subject: `tracker:${reading.id}`, text: { arabic: "عملت «القراية» النهارده؟ 🌟", english: "Did you do “القراية” today? 🌟" } });
+    expect(trackerAskDue([reading], now, tz, "07:00", "23:00", [{ subject: `tracker:${reading.id}`, at: new Date("2026-11-22T18:01:00Z") }])).toBeNull();
+    // Yesterday's question at the same time does not count.
+    expect(trackerAskDue([reading], now, tz, "07:00", "23:00", [{ subject: `tracker:${reading.id}`, at: new Date("2026-11-21T18:01:00Z") }])).not.toBeNull();
+  });
+  it("skips a met goal, a time long past, and sleeping hours", () => {
+    expect(trackerAskDue([{ ...reading, today: 1 }], now, tz, "07:00", "23:00", [])).toBeNull();
+    expect(trackerAskDue([{ ...reading, askTimes: ["19:00"] }], now, tz, "07:00", "23:00", [])).toBeNull();
+    expect(trackerAskDue([{ ...reading, askTimes: ["20:00"] }], now, tz, "07:00", "19:00", [])).toBeNull();
+  });
+  it("uses the template question for known kinds", () => {
+    expect(trackerQuestion({ kind: "water", name: null }).arabic).toBe("شربت مية النهارده؟ 💧");
+    expect(trackerQuestion({ kind: "spending", name: null }).english).toContain("How much did you spend");
   });
 });

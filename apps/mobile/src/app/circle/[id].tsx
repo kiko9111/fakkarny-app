@@ -1,14 +1,16 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember } from "@fakkarni/shared";
+import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
-import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
-import { glass, ask, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { AskZakiBox, FeedPost } from "@/circles/FeedPost";
+import { TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
+import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
 const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -20,13 +22,17 @@ export default function CircleScreen() {
   const [failed, setFailed] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [feed, setFeed] = useState<CircleFeedResponse>({ posts: [], tasks: [] });
+  const [summary, setSummary] = useState<string[] | null>(null);
+  const [trackers, setTrackers] = useState<SharedTracker[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [c, f] = await Promise.all([getCircle(id), getCircleFeed(id)]);
+      const [c, f, tr] = await Promise.all([getCircle(id), getCircleFeed(id), getCircleTrackers(id).catch(() => [])]);
       setCircle(c);
       setFeed(f);
+      setTrackers(tr);
       setFailed(false);
+      setSummary(c.extras ? (await getCircleSummary(id).catch(() => null))?.lines ?? null : null);
     } catch {
       setFailed(true);
     }
@@ -121,6 +127,7 @@ export default function CircleScreen() {
   const label = (m: CircleMember) => (m.is_me ? t.ui.you : m.name ?? t.circles.noName);
   const joined = circle.open_invites.reduce((n, i) => n + i.joins, 0);
   const others = circle.members.length > 1;
+  const trialDays = circle.trial_until ? Math.max(0, Math.ceil((new Date(circle.trial_until).getTime() - Date.now()) / 86400_000)) : 0;
 
   return (
     <Screen>
@@ -152,12 +159,69 @@ export default function CircleScreen() {
         </Text>
       </Card>
 
+      <SectionHeader title={t.circles.summaryTitle} />
+      {circle.extras ? (
+        <Card>
+          <View style={styles.summaryHead}>
+            <ZakiAvatar size={32} />
+            {trialDays > 0 ? <Badge label={fill(t.circles.trialLeft, { n: trialDays })} tone="primary" /> : null}
+          </View>
+          {(summary ?? []).map((line) => (
+            <Text key={line} variant="body">
+              {line}
+            </Text>
+          ))}
+        </Card>
+      ) : (
+        <Card>
+          <Text variant="small" color={palette.inkSoft}>
+            {t.circles.summaryLocked}
+          </Text>
+          <Button label={t.circles.seePro} kind="tonal" size="sm" icon="sparkles-outline" onPress={() => router.push("/paywall")} style={styles.center2} />
+        </Card>
+      )}
+
       <SectionHeader title={t.ui.checkInPrompt} />
       <View style={styles.chips}>
         {checkinOrder(circle.family_type).map((kind) => (
           <Chip key={kind} label={plain(t.family.checkins[kind])} icon={CHECKIN_ICON[kind]} tone="family" onPress={() => void sendCheckin(kind)} />
         ))}
       </View>
+
+      <SectionHeader title={t.ui.feedTitle} />
+      <Card>
+        <AskZakiBox
+          onAsk={async (text) => {
+            try {
+              const post = await askZakiInCircle(id, text);
+              setFeed((f) => ({ ...f, posts: [post, ...f.posts] }));
+            } catch {
+              notify(t.tasks.failed, "error");
+            }
+          }}
+        />
+      </Card>
+      {feed.posts.length === 0 ? (
+        <Text variant="small" color={palette.inkSoft} align="center">
+          {t.ui.feedEmpty}
+        </Text>
+      ) : null}
+      {feed.posts.slice(0, 30).map((p) => (
+        <FeedPost
+          key={p.id}
+          circleId={id}
+          post={p}
+          onChange={(next) => setFeed((f) => ({ ...f, posts: f.posts.map((x) => (x.id === next.id ? next : x)) }))}
+          extra={
+            p.kind === "iftar" ? (
+              <View style={styles.chips}>
+                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => void act(() => answerInvite(id, p.id, true), false)} />
+                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => void act(() => answerInvite(id, p.id, false), false)} />
+              </View>
+            ) : undefined
+          }
+        />
+      ))}
 
       <SectionHeader title={t.ui.tasksTitle} action={others ? plain(t.tasks.ask) : undefined} onAction={() => router.push({ pathname: "/task/new", params: { circle: id } })} />
       {feed.tasks.length === 0 ? (
@@ -172,26 +236,33 @@ export default function CircleScreen() {
         <TaskCard key={task.id} task={task} onChanged={() => void load()} />
       ))}
 
-      {isRamadanSeason(new Date()) && others ? <Button label={plain(t.ramadan.iftar)} kind="outline" icon="moon-outline" block onPress={askIftarDay} /> : null}
-
-      {feed.posts.length ? <SectionHeader title={t.ui.zakiPosts} /> : null}
-      {feed.posts.slice(0, 20).map((p) => (
-        <View key={p.id} style={styles.post}>
-          <ZakiAvatar size={28} />
-          <View style={styles.postBody}>
-            <Text variant="body">{p.text}</Text>
-            <Text variant="caption" color={palette.inkFaint}>
-              {ago(p.created_at)}
-            </Text>
-            {p.kind === "iftar" ? (
-              <View style={styles.chips}>
-                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => void act(() => answerInvite(id, p.id, true), false)} />
-                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => void act(() => answerInvite(id, p.id, false), false)} />
+      <SectionHeader title={t.trackers.circleTitle} action={t.trackers.circleAdd} onAction={() => router.push({ pathname: "/tracker/new", params: { circle: id } })} />
+      {trackers.length === 0 ? (
+        <Card>
+          <Text variant="small" color={palette.inkSoft} align="center">
+            {t.trackers.circleEmpty}
+          </Text>
+        </Card>
+      ) : (
+        <Card style={styles.members}>
+          {trackers.map((tr, n) => (
+            <View key={tr.id} style={[styles.member, n > 0 && styles.memberLine]}>
+              <IconTile name={TRACKER_ICON[tr.kind]} />
+              <View style={styles.flex}>
+                <Text variant="bodyStrong">{trackerName(tr)}</Text>
+                <Text variant="small" color={palette.inkSoft}>
+                  {[tr.is_mine ? t.trackers.mine : tr.owner_name ?? t.circles.noName, tr.goal ? fill(t.trackers.ofGoalToday, { n: tr.today, goal: tr.goal }) : fill(t.trackers.today, { n: tr.today })].join(" · ")}
+                </Text>
               </View>
-            ) : null}
-          </View>
-        </View>
-      ))}
+              {tr.streak >= 2 ? <Badge label={fill(t.ui.streakDays, { n: tr.streak })} tone="ok" /> : null}
+            </View>
+          ))}
+        </Card>
+      )}
+
+      <Button label={t.circles.bookAction} kind="outline" icon="receipt-outline" block onPress={() => router.push({ pathname: "/money/new", params: { circle: id } })} />
+
+      {isRamadanSeason(new Date()) && others ? <Button label={plain(t.ramadan.iftar)} kind="outline" icon="moon-outline" block onPress={askIftarDay} /> : null}
 
       <SectionHeader title={t.ui.people} />
       <Card style={styles.members}>
@@ -236,6 +307,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: palette.bg, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
   center2: { alignSelf: "center" },
   hero: { gap: space.md },
+  summaryHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   heroHead: { flexDirection: "row", alignItems: "center", gap: space.md },
   faces: { flexDirection: "row", paddingStart: 6 },
   face: { marginStart: -6, borderRadius: 20, borderWidth: 2, borderColor: palette.surface },

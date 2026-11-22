@@ -17,6 +17,8 @@ export function dayBefore(key: string, back: number): string {
 export interface TrackerStats {
   today: number;
   week: number[];
+  /** The last 30 days, oldest first (the graph). */
+  month: number[];
   streak: number;
 }
 
@@ -37,5 +39,6 @@ export function trackerStats(entries: readonly EntryPoint[], tz: string, now: Da
   if (opts.streaks) {
     for (let back = met(0) ? 0 : 1; back < 366 && met(back); back++) streak++;
   }
-  return { today: sum(0), week: [6, 5, 4, 3, 2, 1, 0].map(sum), streak };
+  const back = (n: number) => Array.from({ length: n }, (_, i) => n - 1 - i);
+  return { today: sum(0), week: back(7).map(sum), month: back(30).map(sum), streak };
 }
