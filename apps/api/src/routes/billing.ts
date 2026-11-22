@@ -68,13 +68,21 @@ export const billingRoutes: FastifyPluginAsync<BillingOptions> = async (app, opt
     if (!parsed.success) return reply.code(502).send({ error: "billing_unavailable" });
     const next = planFromSubscriber(parsed.data, new Date());
     const user = await prisma.user.update({ where: { id: req.user.id }, data: planData(next) });
+    // Keeps the founders' count right even if the webhook is late or missed.
+    if (next.productId?.toLowerCase().includes("founder")) await prisma.event.create({ data: { userId: user.id, name: "subscription_event", propsJson: { type: "refresh", plan: next.plan, tier: next.tier, product: next.productId } } });
     const out: MeResponse = { user: toWireUser(user) };
     return out;
   });
 
   /** What the paywall may offer right now: the founders' offer is for the first 1,000 buyers. */
   app.get("/billing/offers", { preHandler: opts.authenticate }, async () => {
-    const founders = await prisma.user.count({ where: { planProductId: { contains: "founder", mode: "insensitive" } } });
+    // A founders' place stays taken after its buyer switches plans: count everyone who ever
+    // had the product (webhook events), not only who has it now.
+    const [now, ever] = await Promise.all([
+      prisma.user.findMany({ where: { planProductId: { contains: "founder", mode: "insensitive" } }, select: { id: true } }),
+      prisma.event.findMany({ where: { name: "subscription_event", propsJson: { path: ["product"], string_contains: "founder" } }, select: { userId: true }, distinct: ["userId"] }),
+    ]);
+    const founders = new Set([...now.map((u) => u.id), ...ever.map((e) => e.userId)]).size;
     const res: BillingOffersResponse = { founders_left: Math.max(0, FOUNDERS_LIMIT - founders) };
     return res;
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_KINDS, matchTrackCommand, matchTrackerLog } from "./match";
+import { ALL_KINDS, matchTrackCommand, matchTrackerLog, titleMatchesKind } from "./match";
 
 const log = (text: string) => matchTrackerLog(text, ALL_KINDS);
 
@@ -22,6 +22,15 @@ describe("tracker chat rules", () => {
     expect(log("صمت النهارده")).toEqual({ kind: "fasting", amount: 1 });
     expect(log("اتصدقت بـ 50 جنيه")).toEqual({ kind: "charity", amount: 50 });
     expect(log("donated 100 today")).toEqual({ kind: "charity", amount: 100 });
+  });
+
+  it("needs the tracked thing itself named, and only matches kinds the user follows", () => {
+    for (const text of ["شربت كوباية شاي", "had a cup of coffee with Sara", "read 30 pages of my novel", "قريت 20 صفحة من الرواية"]) expect(log(text)).toBeNull();
+    expect(matchTrackerLog("قريت وردي", ["quran"])).toEqual({ kind: "quran", amount: 1 });
+    expect(matchTrackerLog("شربت مية", ["medicine"])).toBeNull();
+    expect(matchTrackerLog("خدت الدوا", ["water", "medicine"])).toEqual({ kind: "medicine", amount: 1 });
+    expect(titleMatchesKind("الدوا بتاع الضغط", "medicine")).toBe(true);
+    expect(titleMatchesKind("اتصل بماما", "medicine")).toBe(false);
   });
 
   it("leaves plans, reminders, questions, negations and debts to the model", () => {

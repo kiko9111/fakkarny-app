@@ -32,6 +32,7 @@ export interface ApplyResult {
   replies: Message[];
   items: Item[];
   memories: Memory[];
+  notices: { userId: string; text: string }[];
 }
 
 /**
@@ -44,6 +45,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
 
   return prisma.$transaction(async (tx: Tx) => {
     const items: Item[] = [];
+    let notices: { userId: string; text: string }[] = [];
     const memories: Memory[] = [];
 
     for (const c of input.response.create_items) {
@@ -100,7 +102,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
         items.push(await tx.item.update({ where: { id: u.id }, data }));
       }
       // "خلصتها" in chat also finishes a task a circle member asked for.
-      await finishForItems(tx, input.response.update_items.filter((u) => u.status === "done" && owned.has(u.id)).map((u) => u.id), now);
+      notices = await finishForItems(tx, input.response.update_items.filter((u) => u.status === "done" && owned.has(u.id)).map((u) => u.id), now);
     }
 
     for (const m of input.response.save_memories) {
@@ -131,7 +133,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
       );
     }
 
-    return { replies, items, memories };
+    return { replies, items, memories, notices };
   });
 }
 

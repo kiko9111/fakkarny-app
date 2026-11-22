@@ -48,7 +48,7 @@ describe.skipIf(!hasTestDb)("subscriptions (FR-9)", () => {
     await prisma.$disconnect();
   });
 
-  const text = (n: number) => `fakarny bokra a3ady 3la mama ${n}`;
+  const text = (n: number) => `ana 3adeet 3la mama el naharda ${n}`;
   const sendText = (id: string, t: string) =>
     app.inject({ method: "POST", url: "/messages", headers: { ...headers, [KINDS_HEADER]: "2" }, payload: { client_id: id, text: t, created_at: new Date().toISOString() } });
   const ageUser = async (days: number) => {
@@ -101,6 +101,18 @@ describe.skipIf(!hasTestDb)("subscriptions (FR-9)", () => {
     const crisis = await sendText("crisis", "عايز اموت");
     expect(crisis.json().replies[0].kind).toBe("chat");
     expect(aiCalls).toBe(FREE_AI_PER_DAY);
+
+    // Distress without a crisis keyword still gets a real answer, not the Pro nudge.
+    const low = await sendText("low", "مبقتش قادر خلاص ومخنوق");
+    expect(low.json().replies[0].kind).toBe("chat");
+    // Reminders stay free: asking for one, and the notification's Done / Later lines.
+    const remind = await sendText("remind", "fakarny bokra a3ady 3la mama");
+    expect(remind.json().replies[0].kind).toBe("chat");
+    const doneLine = await sendText("done", "خلصت «الدوا» ✅");
+    expect(doneLine.json().replies[0].kind).toBe("chat");
+    expect(aiCalls).toBe(FREE_AI_PER_DAY + 3);
+    // ...and those calls don't eat into the allowance.
+    expect(doneLine.json().ai_allowance).toEqual({ limit: FREE_AI_PER_DAY, used: FREE_AI_PER_DAY });
     expect((await app.inject({ method: "GET", url: "/messages", headers })).statusCode).toBe(200);
   });
 

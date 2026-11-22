@@ -6,7 +6,7 @@ import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt"
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
-import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksLikeCrisis, replyLang, type ReplyLang } from "./rules";
+import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { trackerFastPath } from "../trackers/store";
 import type { MessagePipeline } from "./types";
@@ -23,6 +23,11 @@ const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "sav
  */
 /** PRD §7 cost lever: a soft daily cap for heavy chatters (messages still saved, AI paused). */
 export const DAILY_MESSAGE_CAP = 150;
+/**
+ * Reminder messages past the free allowance still reach the model ("reminders stay free"),
+ * up to this many a day, so the bypass can't become unlimited free chat.
+ */
+export const FREE_REMINDER_CALLS_PER_DAY = 20;
 
 const CAP_REPLY: Record<ReplyLang, string> = {
   arabic: "وصلنا لحد الكلام بتاع النهارده 😅 هفضل فاكر كل اللي تبعته، ونكمل كلامنا عادي بكرة.",
@@ -68,19 +73,32 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // 1a. Trackers by rules: "شربت مية" logs, "تابع معايا المية" starts one. No AI, no allowance used.
     const tracked = crisisKeyword ? null : await trackerFastPath(prisma, user, message.text, script, now);
-    if (tracked) {
+    const closesReminder = tracked?.closesReminder === true;
+    if (tracked && !closesReminder) {
       await event(prisma, user.id, "reply_fast_path", { tracker: true });
       return applyActions(prisma, { user, message, replies: [tracked.text], response: EMPTY_ACTIONS, now, ...(tracked.upsell ? { replyKind: "upsell" as const } : {}) });
     }
 
-    // 1b. Free AI allowance. Rule-answered messages above don't count; crisis is never blocked.
+    // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never
+    // blocked (the model must see it, to answer with care and flag a crisis), and reminder
+    // work (asking for one, Done / Later) stays free up to a daily guard.
     const limit = aiAllowance ?? null;
     let used = 0;
+    let freeCall: "distress" | "reminder" | null = null;
     if (limit !== null) {
       used = await prisma.event.count({
         where: { userId: user.id, name: "ai_call", createdAt: { gte: dayStart }, propsJson: { path: ["purpose"], equals: "chat" } },
       });
-      if (used >= limit && !crisisKeyword) {
+      if (used >= limit) {
+        if (crisisKeyword || looksDistressed(message.text)) freeCall = "distress";
+        else if (closesReminder || looksLikeReminderWork(message.text)) {
+          const freeToday = await prisma.event.count({
+            where: { userId: user.id, name: "ai_call", createdAt: { gte: dayStart }, propsJson: { path: ["free"], equals: "reminder" } },
+          });
+          if (freeToday < FREE_REMINDER_CALLS_PER_DAY) freeCall = "reminder";
+        }
+      }
+      if (used >= limit && !freeCall) {
         const toldToday = await prisma.event.count({ where: { userId: user.id, name: "ai_allowance_hit", createdAt: { gte: dayStart } } });
         await event(prisma, user.id, "ai_allowance_hit", { limit });
         const reply = toldToday === 0 ? ALLOWANCE_FIRST[script] : ALLOWANCE_AGAIN[script];
@@ -127,7 +145,9 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     if (usage) {
       await event(prisma, user.id, "ai_call", {
-        purpose: "chat",
+        // Calls let through past the allowance don't count against it.
+        purpose: freeCall ? "chat_free" : "chat",
+        ...(freeCall ? { free: freeCall } : {}),
         model: FRIEND_MODEL,
         persona: PERSONA_VERSION,
         ...usage,
@@ -141,7 +161,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 5. Rolling summary in the background; never blocks the reply.
     void summarizeIfNeeded(prisma, model, user).catch((err) => log?.warn({ err: errorSummary(err) }, "summary failed"));
 
-    return { ...applied, aiAllowance: { limit, used: used + (usage ? 1 : 0) } };
+    return { ...applied, aiAllowance: { limit, used: used + (usage && !freeCall ? 1 : 0) } };
   };
 }
 

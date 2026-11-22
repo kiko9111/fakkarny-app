@@ -100,7 +100,21 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   /** FR-13: account deletion removes all data immediately (well inside the 24 h target). */
   app.delete("/me", async (req, reply) => {
     const user = req.user;
-    await prisma.user.delete({ where: { id: user.id } }); // cascades to every table
+    await prisma.$transaction(async (tx) => {
+      // Circle posts point at users by plain id (no foreign key), so remove the user's own
+      // words (check-in notes, iftar notes, RSVPs) and posts about them here.
+      await tx.circlePost.deleteMany({ where: { OR: [{ actorId: user.id }, { targetId: user.id }] } });
+      // Circles they own pass to the longest-standing member, as when an owner leaves;
+      // a circle left with nobody in it goes too.
+      const owned = await tx.circleMember.findMany({ where: { userId: user.id, role: "owner" }, select: { circleId: true } });
+      for (const { circleId } of owned) {
+        const next = await tx.circleMember.findFirst({ where: { circleId, userId: { not: user.id } }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
+        if (next) await tx.circleMember.update({ where: { circleId_userId: { circleId, userId: next.userId } }, data: { role: "owner" } });
+      }
+      const alone = await tx.circle.findMany({ where: { members: { some: { userId: user.id }, every: { userId: user.id } } }, select: { id: true } });
+      if (alone.length) await tx.circle.deleteMany({ where: { id: { in: alone.map((c) => c.id) } } });
+      await tx.user.delete({ where: { id: user.id } }); // cascades to every other table
+    });
     if (user.authId.startsWith("supabase:") && opts.deleteAuthUser) {
       try {
         await opts.deleteAuthUser(user.authId.slice("supabase:".length));

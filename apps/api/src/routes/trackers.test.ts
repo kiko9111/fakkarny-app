@@ -99,6 +99,12 @@ describe.skipIf(!hasTestDb)("trackers", () => {
     expect((await list(h)).trackers).toHaveLength(1);
     // A kind they do not follow goes to Zaki as a normal message.
     expect(await trackerFastPath(prisma, await user(id), "صرفت 300 على البقالة", "arabic", clock)).toBeNull();
+
+    // A log that also answers an open reminder is logged, then handed to Zaki to close it.
+    await prisma.item.create({ data: { userId: id, type: "reminder", title: "اشرب مية", remindAt: clock, dueAt: clock } });
+    const both = await trackerFastPath(prisma, await user(id), "شربت مية", "arabic", clock);
+    expect(both).toMatchObject({ closesReminder: true });
+    expect((await list(h)).trackers[0]).toMatchObject({ today: 9 });
   });
 
   it("gives the Ramadan pack for free in season, outside the one-tracker limit", async () => {

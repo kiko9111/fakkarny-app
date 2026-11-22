@@ -93,7 +93,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     const authenticate = requireUser(prisma, auth);
     const pipeline = deps.pipeline ?? deps.pipelineFactory?.(app.log) ?? noopPipeline;
     const billing = deps.billing ?? { requireSubscription: false };
-    app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription });
+    app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription, push: deps.push });
     app.register(billingRoutes, { prisma, authenticate, ...billing });
     app.register(referralRoutes, { prisma, authenticate, now: deps.now });
     app.register(circleRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl, push: deps.push });

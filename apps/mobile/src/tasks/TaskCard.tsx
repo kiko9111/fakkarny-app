@@ -5,6 +5,7 @@ import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
 import { cancelTask, finishTask, nudgeTask, respondTask } from "@/lib/api";
 import { colors } from "@/lib/theme";
+import { pullItems } from "@/sync/items";
 import { taskActions, type TaskAction } from "./logic";
 
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -17,6 +18,8 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
     setBusy(true);
     try {
       await fn();
+      // Accepting makes the task one of the user's reminders; cancelling/finishing closes it.
+      void pullItems();
       if (after) Alert.alert(after);
       onChanged();
     } catch {

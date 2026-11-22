@@ -5,7 +5,7 @@ import type { PrismaClient, ReflectMessage, ReflectSession, User } from "../gene
 import { localToUtc, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
 import { SESSION_PROMPT, SESSION_PROMPT_VERSION } from "../persona/session";
-import { detectScript, helplineMessage, looksLikeCrisis, replyLang, type ReplyLang } from "../pipeline/rules";
+import { detectScript, helplineMessage, looksDistressed, looksLikeCrisis, replyLang, type ReplyLang } from "../pipeline/rules";
 import { atMessageCap, CAP_LINE, CRISIS_CARE, SESSION_FALLBACK } from "./rules";
 
 export type SessionWithMessages = ReflectSession & { messages: ReflectMessage[] };
@@ -80,7 +80,7 @@ export async function sessionTurn(
   let step: { title: string; at: Date | null } | null = null;
   let ended = false;
 
-  if (atMessageCap(userCount) && !crisisKeyword) {
+  if (atMessageCap(userCount) && !looksDistressed(text)) {
     // Long enough for one sitting: close kindly, no model call.
     replies = [CAP_LINE[lang]];
     ended = true;

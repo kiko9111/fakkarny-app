@@ -6,6 +6,7 @@ import { createEmitter } from "@/lib/emitter";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
 import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications } from "@/notifications";
+import { pullItems } from "./items";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
 /** Fired whenever local messages change, so screens can reload from SQLite. */
@@ -82,6 +83,8 @@ export function startSync() {
     void pullMessages();
     // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
     void listScheduled().then(scheduleItems).catch(() => {});
+    // Items made or closed on the server outside the chat (circle tasks, Session steps).
+    void pullItems();
   };
   refresh();
   addNetworkStateListener(({ isConnected, isInternetReachable }) => {

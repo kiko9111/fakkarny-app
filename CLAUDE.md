@@ -277,9 +277,21 @@ Rules:
   the request carries `x-message-kinds: 2` (sent by the app since Zaki M9). When adding a
   message kind or any enum value the phone parses, gate it the same way.
 - The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`).
-- Family plan sharing: a member with an active plan of tier "family" covers the first 6
-  people (payer included, by join time) of each family circle they are in
-  (apps/api/src/billing/family.ts); used for the AI allowance and GET /me `pro`.
+- Family plan sharing: a member with an active plan of tier "family" covers 6 people in
+  all: the payer plus the first 5 others by join time across all of the payer's family
+  circles, never 6 per circle (apps/api/src/billing/family.ts); used for the AI allowance
+  and GET /me `pro`.
+- Past the free AI allowance (pipeline/conversation.ts) two kinds of message still reach the
+  model and don't count against it (`ai_call` purpose "chat_free"): distress
+  (`looksDistressed`, a wider net than the crisis keywords; never limited) and reminder work
+  (`looksLikeReminderWork`: asking for a reminder, the notification's Done / Later lines, a
+  tracker log that answers an open reminder; FREE_REMINDER_CALLS_PER_DAY). Session's 30-message
+  cap also lets distress through.
+- Account deletion (DELETE /me) hands owned circles to the longest-standing member, deletes
+  circles left empty, and deletes circle_posts by or about the user (no FK on those ids).
+- The phone pulls items changed on the server outside the chat (accepted tasks, Session steps,
+  cancelled tasks) on every foreground with `pullItems` (apps/mobile/src/sync/items.ts) and
+  re-plans their notifications.
 - Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
   keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
   still saved, user told once), Sentry on API and app with all content collection off,

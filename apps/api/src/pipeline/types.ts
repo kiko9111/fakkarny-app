@@ -15,6 +15,8 @@ export interface PipelineResult {
   replies: Message[];
   items: Item[];
   memories: Memory[];
+  /** Pushes to send after the reply (e.g. a circle task finished in chat tells its assigner). */
+  notices?: { userId: string; text: string }[];
   /** Today's AI allowance after this message, when one applies. */
   aiAllowance?: { limit: number | null; used: number };
 }
