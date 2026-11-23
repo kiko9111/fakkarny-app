@@ -364,8 +364,11 @@ Rules:
   favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
   SVG; keep them in step if the mark changes. The splash is configured through the
   expo-splash-screen plugin in app.json.
-- Chat first (owner decision, 2026-11-22): a new user sees only Zaki's chat (no tab bar,
-  Settings in the header). Daftar opens on money talk, People on family/friends words or an
+- Chat first (owner decision, 2026-11-22; tab bar always shown since 2026-11-23): a new user
+  sees Zaki's chat and the Me tab. The first version hid the bar and put Settings in the header:
+  the owner read the missing bar as a broken build, and `router.push` to a tab with `href: null`
+  does nothing. The bar and `Screen` pad by the bottom safe-area inset (Android is edge-to-edge;
+  3-button navigation is 48dp and covered the composer). Daftar opens on money talk, People on family/friends words or an
   accepted invite, Today after 3 active days (src/lib/unlock.ts, pure + tested; state in
   prefs "unlocked" via src/lib/unlock-store.ts). No saved state = a user from before this
   change: everything stays open. Story: "Zaki remembers so you don't have to".

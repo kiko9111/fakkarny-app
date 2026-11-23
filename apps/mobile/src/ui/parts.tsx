@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, type ViewStyle } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
 import { plain } from "./plain";
@@ -8,10 +9,12 @@ import { glass, minTouch, palette, radius, space } from "./tokens";
 
 /** A scrolling page over the colour mesh, with pull-to-refresh when `onRefresh` is given. */
 export function Screen({ children, onRefresh, refreshing = false, contentStyle, keyboard }: { children: ReactNode; onRefresh?: () => void; refreshing?: boolean; contentStyle?: ViewStyle; keyboard?: boolean }) {
+  // Edge-to-edge Android: the last thing on the page must clear the system buttons.
+  const bottom = useSafeAreaInsets().bottom;
   return (
     <ScrollView
       style={styles.page}
-      contentContainerStyle={[styles.content, contentStyle]}
+      contentContainerStyle={[styles.content, { paddingBottom: space.xxxl + bottom }, contentStyle]}
       keyboardShouldPersistTaps={keyboard ? "handled" : undefined}
       refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} colors={[palette.primary]} /> : undefined}
     >
