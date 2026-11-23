@@ -2,7 +2,7 @@ import type { Item, Memory, Message, PrismaClient, Summary, User } from "../gene
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
 import { detectScriptInContext, type Script } from "./rules";
-import { loadAppData, type AppData } from "../chat/actions";
+import { loadAppData, loadAppNumbers, type AppData } from "../chat/actions";
 
 export const RECENT_MESSAGES = 15;
 export const MAX_MEMORIES = 20;
@@ -43,6 +43,8 @@ export async function loadContext(prisma: PrismaClient, user: User, now: Date): 
     prisma.summary.findFirst({ where: { userId: user.id }, orderBy: { periodEnd: "desc" } }),
     loadAppData(prisma, user.id),
   ]);
+  // The numbers ("how much did I spend on food?") need the names first; a failure only loses them.
+  app.numbers = await loadAppNumbers(prisma, user, app, now).catch(() => undefined);
   const recent = recentDesc.reverse();
   return {
     user,
@@ -58,7 +60,7 @@ export async function loadContext(prisma: PrismaClient, user: User, now: Date): 
 const money = (n: unknown) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 /** What the user has in the app, by name, for app_actions. Kept short: names, not ids. */
-export function describeApp(app: AppData | undefined, userId: string): string[] {
+export function describeApp(app: AppData | undefined, userId: string, tz = "Africa/Cairo"): string[] {
   if (!app) return [];
   const lines: string[] = ["", "IN THE APP (use these names in app_actions; never invent a circle, person, section or tracker):"];
   lines.push(
@@ -84,11 +86,73 @@ export function describeApp(app: AppData | undefined, userId: string): string[] 
     `- TRACKERS: ${
       app.trackers.length
         ? app.trackers
-            .map((t) => `${t.kind === "custom" ? `«${t.name ?? "custom"}»` : t.kind}${t.goal !== null ? ` (goal ${money(t.goal)}/day)` : ""}${t.askTimes.length ? ` asks at ${t.askTimes.join(", ")}` : ""}${t.circle ? `, shared with «${t.circle.name}»` : ""}`)
+            .map((t) => {
+              const s = app.numbers?.trackerStats[t.id];
+              const stats = s ? `, today ${money(s.today)}, streak ${s.streak} day${s.streak === 1 ? "" : "s"}` : "";
+              return `${t.kind === "custom" ? `«${t.name ?? "custom"}»` : t.kind}${t.goal !== null ? ` (goal ${money(t.goal)}/day)` : ""}${t.askTimes.length ? ` asks at ${t.askTimes.join(", ")}` : ""}${t.circle ? `, shared with «${t.circle.name}»` : ""}${stats}`;
+            })
             .join(" · ")
         : "none yet"
     }`,
   );
+  if (app.numbers) lines.push(...describeNumbers(app, userId, tz));
+  return lines;
+}
+
+/**
+ * The numbers, so questions about the app ("how much on food this month?", "did Omar do his
+ * homework?") are answered from facts in the same call. Ids are for the tools' ref field.
+ */
+export function describeNumbers(app: AppData, userId: string, tz: string): string[] {
+  const n = app.numbers;
+  if (!n) return [];
+  const lines: string[] = [];
+  const spent = app.sections.filter((s) => s.kind === "expense").map((s) => {
+    const total = n.monthSpend[s.id] ?? 0;
+    const pct = s.budget !== null && Number(s.budget) > 0 ? ` of ${money(s.budget)} (${Math.round((total / Number(s.budget)) * 100)}%)` : "";
+    return `«${s.name}» ${money(total)}${pct}`;
+  });
+  const income = app.sections.filter((s) => s.kind === "income").map((s) => `«${s.name}» ${money(n.monthSpend[s.id] ?? 0)}`);
+  lines.push(`- MONEY THIS MONTH (EGP): spent ${spent.length ? spent.join(" · ") : "nothing logged"}${income.length ? `; income ${income.join(" · ")}` : ""}`);
+  const name = (u: { name: string | null } | null | undefined) => u?.name ?? "(no name)";
+  lines.push(
+    `- DAFTAR (open debts, from the user's side): ${
+      n.daftar.length
+        ? n.daftar
+            .map((e) => {
+              const mine = e.creatorId === userId;
+              const who = mine ? e.otherName : name(e.creator);
+              const owedToUser = mine ? e.direction === "owed_to_me" : e.direction === "i_owe";
+              const state = e.status === "pending" ? (mine ? "waiting for their OK" : "waiting for the user's OK") : e.status;
+              return `id=${e.id} ${owedToUser ? `${who} owes the user` : `the user owes ${who}`} ${money(e.amount)}${e.note ? ` (${e.note})` : ""}, ${state}`;
+            })
+            .join(" · ")
+        : "none"
+    }`,
+  );
+  const asked = n.tasks.filter((t) => t.assigneeId === userId && t.status !== "done");
+  const byUser = n.tasks.filter((t) => t.assignerId === userId && t.status !== "done");
+  const toReview = n.tasks.filter((t) => t.assignerId === userId && t.status === "done");
+  const due = (d: Date | null) => (d ? `, due ${toLocalIso(d, tz)}` : "");
+  const task = (t: (typeof n.tasks)[number], who: string) => `id=${t.id} «${t.title}»${t.homework ? " (homework)" : ""} ${who}, ${t.status === "pending" ? "not answered yet" : "accepted"}${due(t.dueAt)}`;
+  if (n.tasks.length) {
+    lines.push(
+      `- TASKS: asked of the user: ${asked.length ? asked.map((t) => task(t, `from ${name(t.assigner)}`)).join(" · ") : "none"}; asked by the user: ${byUser.length ? byUser.map((t) => task(t, `for ${name(t.assignee)}`)).join(" · ") : "none"}${
+        toReview.length ? `; homework handed in, waiting for the user's review: ${toReview.map((t) => `id=${t.id} «${t.title}» by ${name(t.assignee)}`).join(" · ")}` : ""
+      }`,
+    );
+  } else lines.push("- TASKS: none open");
+  if (n.splits.length) {
+    lines.push(
+      `- SPLITS (last 30 days): ${n.splits
+        .map((s) => {
+          const people = (s.peopleJson as { name: string; paid?: boolean }[]) ?? [];
+          const unpaid = people.slice(1).filter((p) => !p.paid).map((p) => p.name);
+          return `id=${s.id} «${s.title || "bill"}» ${money(s.total)} with ${people.length} people, ${unpaid.length ? `not paid yet: ${unpaid.join(", ")}` : "all paid"}`;
+        })
+        .join(" · ")}`,
+    );
+  }
   return lines;
 }
 
@@ -139,8 +203,9 @@ export function userTexts(recent: Pick<Message, "role" | "text">[]): string[] {
  * Arabic needs a grammatical gender for "you". Decided in code so it stays stable from
  * one reply to the next: feminine once a memory records it, otherwise masculine.
  */
-export function addressAs(memories: Pick<Memory, "content">[]): string {
-  return memories.some((m) => m.content.includes("المؤنث"))
+export function addressAs(memories: Pick<Memory, "content">[], gender?: string | null): string {
+  if (gender === "male") return "a man (masculine forms: إنت، قولي، عامل إيه)";
+  return gender === "female" || memories.some((m) => m.content.includes("المؤنث"))
     ? "a woman (feminine forms: إنتي، قوليلي، عاملة إيه)"
     : "a man (masculine forms, the default: إنت، قولي، عامل إيه) unless their own words in this conversation are feminine";
 }
@@ -158,7 +223,9 @@ export function renderContext(ctx: ConversationContext): string {
   lines.push(`USER: name=${user.name ?? "(unknown — ask what to call them if it fits)"}; app language (fallback only; REPLY SCRIPT decides)=${user.language === "ar_EG" ? "Egyptian Arabic" : "English"}; tone=${user.tone}; wakes ${user.wakeTime}, sleeps ${user.sleepTime}`);
   const script = replyScript(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic");
   if (script) lines.push(`REPLY SCRIPT: ${script}`);
-  lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories)}`);
+  lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories, user.gender)}`);
+  // Arabic needs it for every "you": when nobody knows yet, Zaki asks once, lightly.
+  if (!user.gender && !ctx.memories.some((m) => m.content.includes("المؤنث"))) lines.push("GENDER: not set yet. In an Arabic conversation, when it fits naturally (never in distress, and not if you already asked in the recent chat), ask once how to address them (إنت ولا إنتي؟) and save the answer with the app tool: settings, setting address, text female or male.");
   lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
   lines.push("");
   lines.push("MEMORIES (what you know about their life):");
@@ -166,7 +233,7 @@ export function renderContext(ctx: ConversationContext): string {
   lines.push("");
   lines.push("OPEN ITEMS (use these ids in update_items):");
   lines.push(ctx.openItems.length ? ctx.openItems.map((i) => describeItem(i, tz)).join("\n") : "- (none)");
-  lines.push(...describeApp(ctx.app, user.id));
+  lines.push(...describeApp(ctx.app, user.id, tz));
   if (ctx.summary) {
     lines.push("");
     lines.push(`EARLIER CONVERSATION (summary up to ${local(ctx.summary.periodEnd, tz)}):`);

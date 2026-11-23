@@ -35,7 +35,7 @@ describe("friend output schema", () => {
 });
 
 describe("toAppActions", () => {
-  const blank = { name: "", title: "", section: "", tracker: "", circle: "", person: "", amount: 0, money_kind: "", tracker_kind: "", unit: "", ask_times: [], family: false, homework: false, note: "", text: "", due_at_local: "", remind_at_local: "" };
+  const blank = { name: "", title: "", section: "", tracker: "", circle: "", person: "", amount: 0, money_kind: "", tracker_kind: "", unit: "", ask_times: [], family: false, homework: false, note: "", text: "", due_at_local: "", remind_at_local: "", ref: "", answer: "", direction: "", people: [], checkin_kind: "", setting: "", screen: "" };
 
   it("drops the empty fields", () => {
     expect(toAppActions([{ ...blank, kind: "log_money", amount: 250, money_kind: "expense", section: "أكل" }])).toEqual([{ kind: "log_money", amount: 250, money_kind: "expense", section: "أكل" }]);

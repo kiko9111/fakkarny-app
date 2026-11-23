@@ -31,6 +31,7 @@ import { CHECKIN_ASK_GAP_HOURS, checkinAskLine, postLine } from "../tasks/rules"
 import { langOf } from "../tasks/store";
 import { hasProAccess } from "../billing/family";
 import { summaryLines, weekData } from "../circles/summary";
+import { announceJoin, askCheckin, postCheckin, removeMember } from "../circles/ops";
 import { INVITE_VALID_DAYS, inviteShareText, inviteState, MAX_CIRCLE_MEMBERS, MAX_CIRCLES_PER_USER, newInviteCode } from "../circles/rules";
 
 export interface CircleRoutesOptions {
@@ -214,19 +215,10 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
     const body = CheckinRequest.safeParse(req.body);
     if (!params.success) return reply.code(404).send({ error: "not_found" });
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
-    const circle = await prisma.circle.findFirst({ where: { id: params.data.id, members: { some: { userId: req.user.id } } }, include: { members: { include: { user: { select: { id: true, language: true } } } } } });
-    if (!circle) return reply.code(404).send({ error: "not_found" });
-    const event = `checkin:${body.data.kind}`;
-    const note = body.data.note || null;
-    await prisma.circlePost.create({ data: { circleId: circle.id, event, actorId: req.user.id, title: note, createdAt: now() } });
-    await prisma.event.create({ data: { userId: req.user.id, name: "checkin", propsJson: { kind: body.data.kind } } });
-    void pushNotices(
-      prisma,
-      opts.push,
-      circle.members.filter((m) => m.userId !== req.user.id).map((m) => ({ userId: m.userId, text: `${circle.name}: ${postLine(langOf(m.user), event, req.user.name, null, note)}` })),
-      app.log,
-    );
-    return reply.code(201).send({ circle: (await detail(req, circle.id, req.user))! } satisfies CircleResponse);
+    const posted = await postCheckin(prisma, params.data.id, req.user, body.data.kind, body.data.note || null, now());
+    if (!posted) return reply.code(404).send({ error: "not_found" });
+    void pushNotices(prisma, opts.push, posted.notices, app.log);
+    return reply.code(201).send({ circle: (await detail(req, params.data.id, req.user))! } satisfies CircleResponse);
   });
 
   /** "Ask them to check in": Zaki passes it on, at most once every few hours per pair. */
@@ -235,17 +227,10 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
     if (!params.success) return reply.code(404).send({ error: "not_found" });
     const { id: circleId, userId } = params.data;
     if (userId === req.user.id) return reply.code(400).send({ error: "invalid_request" });
-    const circle = await prisma.circle.findFirst({ where: { id: circleId, members: { some: { userId: req.user.id } } }, include: { members: { where: { userId }, include: { user: true } } } });
-    const target = circle?.members[0]?.user;
-    if (!circle || !target) return reply.code(404).send({ error: "not_found" });
-    const at = now();
-    const bucket = Math.floor(at.getTime() / (CHECKIN_ASK_GAP_HOURS * 3600_000));
-    const clientId = `checkin_ask:${circleId}:${req.user.id}:${bucket}`;
-    if (await prisma.message.findUnique({ where: { userId_clientId: { userId: target.id, clientId } } })) return reply.code(409).send({ error: "too_soon" });
-    const text = checkinAskLine(langOf(target), req.user.name, circle.name);
-    await postUpdate(prisma, target.id, clientId, text, at);
-    await prisma.event.create({ data: { userId: req.user.id, name: "checkin_asked", propsJson: {} } });
-    void pushNotices(prisma, opts.push, [{ userId: target.id, text }], app.log);
+    const asked = await askCheckin(prisma, circleId, req.user, userId, now());
+    if (!asked) return reply.code(404).send({ error: "not_found" });
+    if (asked === "too_soon") return reply.code(409).send({ error: "too_soon" });
+    void pushNotices(prisma, opts.push, asked.notices, app.log);
     return reply.code(204).send();
   });
 
@@ -257,16 +242,7 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
     const me = await prisma.circleMember.findUnique({ where: { circleId_userId: { circleId, userId: req.user.id } } });
     if (!me) return reply.code(404).send({ error: "not_found" });
     if (userId !== req.user.id && me.role !== "owner") return reply.code(403).send({ error: "owner_only" });
-    await prisma.$transaction(async (tx) => {
-      const target = await tx.circleMember.findUnique({ where: { circleId_userId: { circleId, userId } } });
-      if (!target) return;
-      await tx.circleMember.delete({ where: { circleId_userId: { circleId, userId } } });
-      await tx.tracker.updateMany({ where: { userId, circleId }, data: { circleId: null } });
-      await tx.invite.updateMany({ where: { circleId, inviterId: userId, revokedAt: null }, data: { revokedAt: now() } });
-      const next = await tx.circleMember.findFirst({ where: { circleId }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
-      if (!next) await tx.circle.delete({ where: { id: circleId } });
-      else if (target.role === "owner") await tx.circleMember.update({ where: { circleId_userId: { circleId, userId: next.userId } }, data: { role: "owner" } });
-    });
+    await removeMember(prisma, circleId, userId, now());
     return reply.code(204).send();
   });
 
@@ -346,6 +322,8 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
         await tx.event.create({ data: { userId: req.user.id, name: "invite_accepted", propsJson: { kind: invite.circle.kind } } });
         if (canClaim(req.user, invite.inviter, at).ok) await rewardInviter(tx, req.user.id, invite.inviter.id, at);
       });
+      // The others hear it in their chat (a repeat join posts nothing new: same client id).
+      void pushNotices(prisma, opts.push, await announceJoin(prisma, invite.circleId, req.user, at), app.log);
     }
     const circle = await detail(req, invite.circleId, req.user);
     if (!circle) return reply.code(409).send({ error: "full" });

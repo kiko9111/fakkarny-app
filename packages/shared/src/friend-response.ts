@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DebtDirection, ItemStatus, ItemType, MemoryKind } from "./enums";
-import { AppAction } from "./chat-actions";
+import { AppAction, MAX_APP_ACTIONS } from "./chat-actions";
 
 /**
  * The structured output of one Claude call (PRD §6 "Response tool schema").
@@ -25,6 +25,8 @@ export const CreateItemAction = z.object({
   follow_up_at_local: LocalDateTime.optional(),
   /** Medicine, flights, payments with penalties: get the clear version at due time (F5). */
   important: z.boolean().optional(),
+  /** Ring like an alarm. Only when the user asks for an alarm or says yes to one; never by default. */
+  alarm: z.boolean().optional(),
   /** Indirect friend question for the reminder notification, e.g. "Heading out soon? Traffic to Dokki is crazy 😅". */
   nudge: z.string().min(1).max(200).optional(),
   /** "Every hour" = 60, "every day" = 1440. The first occurrence is remind_at_local / due_at_local. */
@@ -41,6 +43,7 @@ export const UpdateItemAction = z.object({
   remind_at_local: LocalDateTime.optional(),
   follow_up_at_local: LocalDateTime.optional(),
   repeat_every_minutes: z.number().int().min(15).max(10080).optional(),
+  alarm: z.boolean().optional(),
 });
 export type UpdateItemAction = z.infer<typeof UpdateItemAction>;
 
@@ -57,8 +60,8 @@ export const FriendResponse = z.object({
   create_items: z.array(CreateItemAction).default([]),
   update_items: z.array(UpdateItemAction).default([]),
   save_memories: z.array(SaveMemoryAction).default([]),
-  /** Things to do in the app: money, trackers, circles (chat-actions.ts). At most 3 a turn. */
-  app_actions: z.array(AppAction).max(3).default([]),
+  /** Things to do in the app: money, trackers, circles (chat-actions.ts). At most MAX_APP_ACTIONS a turn. */
+  app_actions: z.array(AppAction).max(MAX_APP_ACTIONS).default([]),
   crisis: z.boolean().default(false),
 });
 export type FriendResponse = z.infer<typeof FriendResponse>;

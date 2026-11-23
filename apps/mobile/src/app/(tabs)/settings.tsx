@@ -182,6 +182,13 @@ export default function SettingsScreen() {
         <Field label={t.settings.name} first>
           {input(name, setName, () => void save({ name: name.trim() || null }))}
         </Field>
+        <Field label={t.settings.addressAs}>
+          <Segmented
+            value={(user?.gender ?? "") as "female" | "male" | ""}
+            onChange={(v) => void save({ gender: v || null })}
+            options={[{ value: "female", label: t.settings.female }, { value: "male", label: t.settings.male }]}
+          />
+        </Field>
         <Field label={t.ui.themeLabel}>
           <ThemePicker />
         </Field>

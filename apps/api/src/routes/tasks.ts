@@ -7,6 +7,8 @@ import type { PushSender } from "../proactive/push";
 import { circleExtras, FREE_NUDGES_PER_TASK } from "@fakkarni/shared";
 import { hasProAccess } from "../billing/family";
 import { canCancel, canFinish, canNudge, canRespond, canSetRemind, postLine } from "../tasks/rules";
+import { inviteToIftar } from "../circles/ops";
+import { postUpdate } from "../daftar/store";
 import { assignTask, cancel, finish, langOf, nudge, respond, reviewHomework, roleOf, submitHomework, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
 
 export interface TaskRoutesOptions {
@@ -79,12 +81,10 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     const body = IftarRequest.safeParse(req.body);
     if (!params.success) return reply.code(404).send({ error: "not_found" });
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
-    const circle = await prisma.circle.findFirst({ where: { id: params.data.id, members: { some: { userId: req.user.id } } }, include: { members: { include: { user: { select: { language: true } } } } } });
-    if (!circle) return reply.code(404).send({ error: "not_found" });
-    const title = `${body.data.on}|${body.data.note ?? ""}`;
-    const post = await prisma.circlePost.create({ data: { circleId: circle.id, event: "iftar", actorId: req.user.id, title, createdAt: now() } });
-    await prisma.event.create({ data: { userId: req.user.id, name: "iftar_invite", propsJson: {} } });
-    void pushNotices(prisma, opts.push, circle.members.filter((m) => m.userId !== req.user.id).map((m) => ({ userId: m.userId, text: `${circle.name}: ${postLine(langOf(m.user), "iftar", req.user.name, null, title)}` })), app.log);
+    const made = await inviteToIftar(prisma, params.data.id, req.user, body.data.on, body.data.note ?? null, now());
+    if (!made) return reply.code(404).send({ error: "not_found" });
+    void pushNotices(prisma, opts.push, made.notices, app.log);
+    const post = { id: made.postId };
     return reply.code(201).send({ id: post.id });
   });
 
@@ -103,7 +103,12 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     else await prisma.circlePost.create({ data: { circleId, event, actorId: req.user.id, targetId: postId, createdAt: now() } });
     if (invite.actorId && invite.actorId !== req.user.id && existing?.event !== event) {
       const host = await prisma.user.findUnique({ where: { id: invite.actorId }, select: { id: true, language: true } });
-      if (host) void pushNotices(prisma, opts.push, [{ userId: host.id, text: postLine(langOf(host), event, req.user.name, null, null) ?? "" }], app.log);
+      const text = host ? postLine(langOf(host), event, req.user.name, null, null) : null;
+      if (host && text) {
+        // The host also hears it in their chat (owner ask 2026-11-23).
+        await postUpdate(prisma, host.id, `rsvp:${postId}:${req.user.id}:${event}`, text, now());
+        void pushNotices(prisma, opts.push, [{ userId: host.id, text }], app.log);
+      }
     }
     return reply.code(204).send();
   });

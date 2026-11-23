@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import { TRACKER_TEMPLATES, type FriendResponse, type TrackerKind } from "@fakkarni/shared";
-import type { Prisma } from "../generated/prisma/client";
+import { Prisma } from "../generated/prisma/client";
 import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
@@ -12,8 +12,9 @@ import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../tracker
 import { moneyFastPath } from "../money/store";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
-import { answerCard, attachCards, runAppActions } from "../chat/actions";
-import { CANCELLED_REPLY, CONFIRMED_REPLY, isCancel, isConfirm, storedCards, type StoredCard } from "../chat/cards";
+import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
+import { CANCELLED_REPLY, CONFIRMED_REPLY, HOME_REPLY, homeCheckin, isCancel, isConfirm, isUndo, LABEL, storedCards, type StoredCard } from "../chat/cards";
+import { UNDO_WINDOW_MS, undoCard } from "../chat/undo";
 import type { Message } from "../generated/prisma/client";
 
 const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "save_memories"> & { app_actions?: FriendResponse["app_actions"] } = {
@@ -74,6 +75,23 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (answered) {
       await event(prisma, user.id, "reply_fast_path", { card: true });
       return answered;
+    }
+
+    // 0b. "Undo" / "تراجع": takes back Zaki's latest change of the user's own, by rules.
+    const undone = crisisKeyword || !isUndo(message.text) ? null : await undoLatest(prisma, user, message, script, now);
+    if (undone) {
+      await event(prisma, user.id, "reply_fast_path", { undo: true });
+      return undone;
+    }
+
+    // 0c. "وصلت البيت" / "I'm home": offer to tell the family (a card; nothing goes out without a yes).
+    const home = crisisKeyword ? null : homeCheckin(message.text);
+    if (home) {
+      const ran = await runAppActions(prisma, user, [{ kind: "checkin", checkin_kind: home }], script, now, { requireSubscription: requireSubscription ?? false });
+      if (ran.cards.some((c) => c.status === "pending")) {
+        await event(prisma, user.id, "reply_fast_path", { checkin: true });
+        return withCards(prisma, await applyActions(prisma, { user, message, replies: [HOME_REPLY[script]], response: EMPTY_ACTIONS, now }), ran.cards);
+      }
     }
 
     // 0a'. A plain "yes" to Zaki's status check ("did you get to …?") closes it by rules.
@@ -174,6 +192,9 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       applied = await withCards(prisma, applied, ran.cards);
       applied = { ...applied, notices: [...(applied.notices ?? []), ...ran.notices] };
     }
+    // A debt with someone in their circles: offer the shared Daftar too (unless the model already did).
+    const debts = crisis ? [] : actions.create_items.flatMap((i) => (i.type === "debt" && i.debt && !appActions.some((a) => a.kind === "daftar_add") ? [i.debt] : []));
+    if (debts.length) applied = await withCards(prisma, applied, await debtCards(prisma, user, debts, script).catch(() => []));
 
     if (usage) {
       await event(prisma, user.id, "ai_call", {
@@ -262,6 +283,8 @@ async function answerPendingCards(prisma: Parameters<MessagePipeline>[0]["prisma
   if (!cards.some((c) => c.status === "pending")) return null;
   const notices: { userId: string; text: string }[] = [];
   const results: StoredCard[] = [];
+  // Cards on someone else's news (a request, homework) take "no" as an answer, not a cancel.
+  const answers = cards.some((c) => c.status === "pending" && c.noPayload);
   for (const [n, c] of cards.entries()) {
     if (c.status !== "pending") continue;
     const out = await answerCard(prisma, user, c, yes, now, { requireSubscription });
@@ -270,9 +293,33 @@ async function answerPendingCards(prisma: Parameters<MessagePipeline>[0]["prisma
     notices.push(...out.notices);
   }
   await prisma.message.update({ where: { id: last.id }, data: { actionsJson: cards as unknown as Prisma.InputJsonValue } });
-  const applied = await applyActions(prisma, { user, message, replies: [yes ? CONFIRMED_REPLY[lang] : CANCELLED_REPLY[lang]], response: EMPTY_ACTIONS, now });
+  const reply = answers ? results.map((r) => r.label).join("\n") : yes ? CONFIRMED_REPLY[lang] : CANCELLED_REPLY[lang];
+  const applied = await applyActions(prisma, { user, message, replies: [reply], response: EMPTY_ACTIONS, now });
   // The outcome also shows under this reply, with the same card id, so the phone can update
   // the old card it still shows as pending.
   const withResult = await withCards(prisma, applied, results);
   return { ...withResult, notices: [...(withResult.notices ?? []), ...notices] };
+}
+
+/**
+ * "Undo": the newest done card with an undo, in Zaki's replies of the last day, is taken back
+ * (the same as tapping its Undo). Null when there is nothing to undo, so the model answers.
+ */
+async function undoLatest(prisma: Parameters<MessagePipeline>[0]["prisma"], user: Parameters<MessagePipeline>[0]["user"], message: Parameters<MessagePipeline>[0]["message"], lang: ReplyLang, now: Date): Promise<Awaited<ReturnType<MessagePipeline>> | null> {
+  const recent = await prisma.message.findMany({
+    where: { userId: user.id, role: "friend", createdAt: { gte: new Date(now.getTime() - UNDO_WINDOW_MS), lte: message.createdAt }, actionsJson: { not: Prisma.AnyNull } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  for (const m of recent) {
+    const cards = storedCards(m.actionsJson);
+    const at = cards.map((c) => c.status === "done" && Boolean(c.undo)).lastIndexOf(true);
+    if (at < 0) continue;
+    const out = await undoCard(prisma, user, cards[at]!, m.createdAt, now);
+    cards[at] = out;
+    await prisma.message.update({ where: { id: m.id }, data: { actionsJson: cards as unknown as Prisma.InputJsonValue } });
+    const applied = await applyActions(prisma, { user, message, replies: [out.status === "cancelled" ? LABEL.undone(lang) + " ↩️" : out.label], response: EMPTY_ACTIONS, now });
+    return withCards(prisma, applied, [out]);
+  }
+  return null;
 }

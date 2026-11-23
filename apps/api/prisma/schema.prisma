@@ -143,6 +143,8 @@ model User {
   instapayLink       String?         @map("instapay_link")
   // F5: skip the indirect hint and always send the clear reminder.
   alwaysDirect       Boolean         @default(false) @map("always_direct")
+  /// "female" | "male" | null (not told yet). Arabic needs it for "you" (owner ask 2026-11-23).
+  gender             String?
   // Proactive-message bookkeeping (M4).
   lastMorningAt      DateTime?       @map("last_morning_at")
   lastNightAt        DateTime?       @map("last_night_at")
@@ -221,6 +223,8 @@ model Item {
   // and by F5 escalation (important items get the clear version at due time).
   remindAt           DateTime?      @map("remind_at")
   important          Boolean        @default(false)
+  /// Ring like an alarm (loud, high priority), only when the user asked for one.
+  alarm              Boolean        @default(false)
   // F5: the friend's indirect question shown in the local reminder notification.
   nudge              String?
   status             ItemStatus     @default(open)

@@ -140,7 +140,7 @@ describe.skipIf(!hasTestDb)("shared Daftar", () => {
     expect(share_text).toBeNull();
     expect(entry.circle_id).toBe(circle.id);
     expect((await list(omar))[0]).toMatchObject({ other_name: "منى", direction: "i_owe", status: "pending", mine: false });
-    expect((await chat(omar)).find((m) => m.kind === "update")!.text).toContain("منى سجّل 120 جنيه بينكم");
+    expect((await chat(omar)).find((m) => m.kind === "update")!.text).toContain("في الدفتر من منى: 120 جنيه");
 
     // Not in the circle: refused, for the sender or the other person.
     const bad = { other_name: "x", direction: "owed_to_me", amount: 5, circle_id: circle.id };

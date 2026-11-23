@@ -4,7 +4,7 @@ import { CreateDaftarRequest, normalizeInviteCode, RespondDaftarRequest, type Da
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import { newInviteCode } from "../circles/rules";
 import { canCancel, canNudge, canRespond, canSettle, confirmShareText, formatAmount, nudgeShareText, type Lang } from "../daftar/rules";
-import { daftarUrl, postUpdate, respond, settle, toWireEntry, withPeople, type EntryWithPeople } from "../daftar/store";
+import { cancelEntry, createEntry, daftarUrl, respond, settle, toWireEntry, withPeople, type EntryWithPeople } from "../daftar/store";
 import { baseUrl } from "./circles";
 
 export interface DaftarRoutesOptions {
@@ -54,39 +54,8 @@ export const daftarRoutes: FastifyPluginAsync<DaftarRoutesOptions> = async (app,
       const members = await prisma.circleMember.count({ where: { circleId: b.circle_id, userId: { in: ids } } });
       if (members !== ids.length) return reply.code(404).send({ error: "not_found" });
     }
-    const at = now();
-    let entry: EntryWithPeople | null = null;
-    for (let attempt = 0; !entry; attempt++) {
-      try {
-        entry = await prisma.daftarEntry.create({
-          data: {
-            code: newInviteCode(),
-            creatorId: req.user.id,
-            circleId: b.circle_id ?? null,
-            otherName: b.other_name,
-            otherUserId: b.other_user_id ?? null,
-            direction: b.direction,
-            amount: new Prisma.Decimal(b.amount),
-            note: b.note || null,
-            createdAt: at,
-          },
-          include: withPeople,
-        });
-      } catch (err) {
-        if (attempt < 4 && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
-        throw err;
-      }
-    }
-    await prisma.event.create({ data: { userId: req.user.id, name: "daftar_created", propsJson: { in_circle: Boolean(b.circle_id), to_member: Boolean(b.other_user_id) } } });
+    const entry = await createEntry(prisma, req.user, { circleId: b.circle_id ?? null, otherName: b.other_name, otherUserId: b.other_user_id ?? null, direction: b.direction, amount: b.amount, note: b.note || null }, now());
     const base = baseUrl(req, opts.publicUrl);
-    if (entry.other) {
-      // A circle member: it shows up in their app, and Zaki tells them in their chat.
-      const lang = langOf(entry.other);
-      const money = formatAmount(b.amount, entry.currency, lang);
-      const name = req.user.name ?? (lang === "en" ? "Someone in your circle" : "حد من دايرتك");
-      const line = lang === "en" ? `${name} noted ${money} between you in the Daftar. Have a look in Money and confirm if it's right 🌟` : `${name} سجّل ${money} بينكم في الدفتر. بص عليها في الفلوس وأكّد لو مظبوطة 🌟`;
-      await postUpdate(prisma, entry.other.id, `daftar:${entry.id}:new`, line, at);
-    }
     const res: DaftarResponse = {
       entry: toWireEntry(entry, req.user.id, base),
       share_text: entry.other ? null : confirmShareText({ lang: langOf(req.user), direction: entry.direction, amount: b.amount, currency: entry.currency, note: entry.note, url: daftarUrl(base, entry.code) }),
@@ -147,8 +116,7 @@ export const daftarRoutes: FastifyPluginAsync<DaftarRoutesOptions> = async (app,
     const found = params.success ? await mine(params.data.id, req.user.id) : null;
     if (!found) return reply.code(404).send({ error: "not_found" });
     if (!canCancel(found.e.status, found.role)) return reply.code(409).send({ error: "not_allowed" });
-    const changed = await prisma.daftarEntry.updateMany({ where: { id: found.e.id, status: { in: ["pending", "disputed"] } }, data: { status: "cancelled" } });
-    if (changed.count === 0) return reply.code(409).send({ error: "not_allowed" });
+    if (!(await cancelEntry(prisma, found.e.id))) return reply.code(409).send({ error: "not_allowed" });
     return reply.code(204).send();
   });
 };

@@ -127,8 +127,10 @@ export async function postMessage(body: PostMessageRequest): Promise<PostMessage
 }
 
 /** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */
-export async function actOnChatAction(messageId: string, actionId: string, confirm: boolean): Promise<WireMessage> {
-  const res = (await request(`/messages/${encodeURIComponent(messageId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify({ confirm }) })) as { message: unknown };
+/** Confirm or cancel a pending card, or "undo" a done one (the user's own change, within a day). */
+export async function actOnChatAction(messageId: string, actionId: string, answer: boolean | "undo"): Promise<WireMessage> {
+  const body = answer === "undo" ? { undo: true } : { confirm: answer };
+  const res = (await request(`/messages/${encodeURIComponent(messageId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify(body) })) as { message: unknown };
   return WireMessage.parse(res.message);
 }
 
