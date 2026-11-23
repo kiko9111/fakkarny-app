@@ -4,7 +4,8 @@ pg-boss, zod, RevenueCat, vitest. Monorepo: apps/mobile, apps/api, packages/shar
 Full product spec: docs/PRD.pdf (section numbers below refer to it).
 
 Rules:
-- Text input only. No audio or image processing anywhere.
+- Text input only. No audio anywhere. Images only for receipts and homework pages (owner
+  decision, 2026-11-23; see "Photos" below); no other image processing.
 - The app works offline: save to SQLite first, sync later with client IDs.
 - Reminders are local notifications; briefs and check-ins come from the server as push.
 - The friend never replies with a checklist unless the user asks for their plans.
@@ -482,6 +483,17 @@ Rules:
   already in builds): tap the streak flame, or "Share as a picture" on a split.
 - Split to Daftar: "Put what's left in the Daftar" on a split creates Daftar entries from the
   creator's side (`daftarFromSplit`, mobile split/logic.ts; the creator is the first person).
+- Photos (owner decision, 2026-11-23, the only exception to text-only): limits in
+  packages/shared/src/photos.ts. Receipts: POST /receipts/read (apps/api/src/routes/photos.ts)
+  sends the photo to `readReceipt` (src/ai/model.ts, RECEIPT_SYSTEM, non-nullable schema) once,
+  never stores it, and counts as one chat AI message (`ai_call` purpose "chat", photo "receipt").
+  Phone: app/receipt.tsx logs the total into a Daftar section with a tap, or fills the split form
+  (`draftFromReceipt`, handed over in memory by split/handoff.ts). Homework: up to 5 page photos
+  with POST /tasks/:id/submit, stored in table photos (bytea) for the child and the assigner only
+  (GET /photos/:id checks), deleted by the proactive tick after PHOTO_KEEP_DAYS (90); in
+  /me/export. The picker is optional native code (expo-image-picker + expo-image-manipulator,
+  src/lib/photos.ts `photosAvailable`): photo buttons appear only in builds made after
+  2026-11-23. Shrunk to 1600px JPEG on the phone. Do not add any other photo use.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

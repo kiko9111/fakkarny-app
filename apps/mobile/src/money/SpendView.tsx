@@ -6,6 +6,7 @@ import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
 import { getMoney, getMonthGift } from "@/lib/api";
+import { photosAvailable } from "@/lib/photos";
 import { Badge, Button, Card, EmptyState, Icon, IconTile, Note, palette, ProgressBar, radius, SectionHeader, space, Text, ZakiAvatar } from "@/ui";
 import { budgetState, groupSections, monthLabel } from "./logic";
 
@@ -79,6 +80,7 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
       ) : null}
 
       <Button label={t.book.newSection} icon="add" block onPress={() => router.push("/money/new")} />
+      {photosAvailable ? <Button label={t.receipt.open} icon="camera-outline" kind="tonal" block onPress={() => router.push("/receipt")} /> : null}
       <Text variant="small" color={palette.inkSoft}>
         {t.book.chatHint}
       </Text>

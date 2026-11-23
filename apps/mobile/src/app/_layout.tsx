@@ -92,6 +92,7 @@ export default function RootLayout() {
           <Stack.Screen name="ref/[code]" options={{ title: "" }} />
           <Stack.Screen name="split/new" options={{ presentation: "modal", title: t.split.title }} />
           <Stack.Screen name="split/[id]" options={{ title: "" }} />
+          <Stack.Screen name="receipt" options={{ presentation: "modal", title: t.receipt.title }} />
           <Stack.Screen
             name="session"
             options={{

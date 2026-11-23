@@ -1,4 +1,4 @@
-import type { CirclePost as WirePost, CircleTask as WireTask, TaskRole } from "@fakkarni/shared";
+import { PHOTO_KEEP_DAYS, type CirclePost as WirePost, type CircleTask as WireTask, type PhotoUpload, type TaskRole } from "@fakkarni/shared";
 import type { CirclePost, CircleTask, Prisma, PrismaClient, User } from "../generated/prisma/client";
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
@@ -7,10 +7,12 @@ import { canNudge, homeworkLine, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lan
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Person = Pick<User, "id" | "name" | "language">;
-export type TaskWithPeople = CircleTask & { assigner: Person; assignee: Person; circle: { name: string } };
+export type TaskWithPeople = CircleTask & { assigner: Person; assignee: Person; circle: { name: string }; photos: { id: string }[] };
 
 const person = { select: { id: true, name: true, language: true } } as const;
-export const withPeople = { assigner: person, assignee: person, circle: { select: { name: true } } } as const;
+const photoCount = (lang: Lang, n: number) => (lang === "en" ? `${n} ${n === 1 ? "photo" : "photos"}` : n === 1 ? "صورة" : `${n} صور`);
+
+export const withPeople = { assigner: person, assignee: person, circle: { select: { name: true } }, photos: { select: { id: true }, orderBy: { createdAt: "asc" } } } as const;
 export const langOf = (u: { language: string }): Lang => (u.language === "en" ? "en" : "ar");
 
 export const roleOf = (t: Pick<CircleTask, "assignerId" | "assigneeId">, userId: string): TaskRole => (t.assignerId === userId ? "assigner" : t.assigneeId === userId ? "assignee" : "watcher");
@@ -28,6 +30,7 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
     note: t.note,
     submission: t.submission,
     submitted_at: t.submittedAt?.toISOString() ?? null,
+    photo_ids: t.photos.map((p) => p.id),
     review: t.review === "approved" || t.review === "redo" ? t.review : null,
     review_note: t.reviewNote,
     status: t.status,
@@ -214,20 +217,30 @@ export async function assignTask(
  * The child hands in homework (text answer or link). Still waiting? Handing in is the yes. The
  * task (and its item) is done, and the parent hears at once in their chat, with a push.
  */
-export async function submitHomework(prisma: PrismaClient, taskId: string, text: string, now: Date): Promise<Outcome | null> {
+export async function submitHomework(prisma: PrismaClient, taskId: string, text: string, now: Date, photos: PhotoUpload[] = []): Promise<Outcome | null> {
   return prisma.$transaction(async (tx) => {
     const changed = await tx.circleTask.updateMany({
       where: { id: taskId, homework: true, status: { in: ["pending", "accepted"] } },
       data: { status: "done", doneAt: now, respondedAt: now, submission: text, submittedAt: now, review: null, reviewNote: null },
     });
     if (changed.count === 0) return null;
+    // A new hand-in (after a redo) replaces the old pages.
+    await tx.photo.deleteMany({ where: { taskId } });
+    if (photos.length) {
+      const owner = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, select: { assigneeId: true } });
+      const expiresAt = new Date(now.getTime() + PHOTO_KEEP_DAYS * 86_400_000);
+      for (const [n, p] of photos.entries()) {
+        const data = Buffer.from(p.data.replace(/\s+/g, ""), "base64");
+        await tx.photo.create({ data: { userId: owner.assigneeId, taskId, mime: p.mime, data, bytes: data.length, createdAt: new Date(now.getTime() + n), expiresAt } });
+      }
+    }
     const t = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, include: withPeople });
     if (t.itemId) await tx.item.updateMany({ where: { id: t.itemId, status: "open" }, data: { status: "done", doneAt: now } });
     await post(tx, t, "task_done", now);
     const reader = t.assigner;
-    const line = homeworkLine(langOf(reader), "submitted", t.assignee.name, t.title, text.slice(0, 300));
+    const line = homeworkLine(langOf(reader), "submitted", t.assignee.name, t.title, text ? text.slice(0, 300) : photoCount(langOf(reader), photos.length));
     await postUpdate(tx, reader.id, `task:${t.id}:submitted:${now.getTime()}`, line, now);
-    await tx.event.create({ data: { userId: t.assigneeId, name: "homework_submitted", propsJson: {} } });
+    await tx.event.create({ data: { userId: t.assigneeId, name: "homework_submitted", propsJson: { photos: photos.length } } });
     return { task: t, notices: [{ userId: reader.id, text: line }] };
   });
 }

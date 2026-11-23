@@ -155,12 +155,12 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
   });
 
   /** The child hands in homework (answer or link); the parent hears at once. */
-  app.post("/tasks/:id/submit", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+  app.post("/tasks/:id/submit", { bodyLimit: 24 * 1024 * 1024, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
     const body = SubmitHomeworkRequest.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
     const found = await mine(req.params, req.user.id);
     if (!found) return reply.code(404).send({ error: "not_found" });
-    const outcome = found.role === "assignee" && found.t.homework ? await submitHomework(prisma, found.t.id, body.data.text, now()) : null;
+    const outcome = found.role === "assignee" && found.t.homework ? await submitHomework(prisma, found.t.id, body.data.text, now(), body.data.photos) : null;
     if (!outcome) return reply.code(409).send({ error: "not_allowed" });
     return done(outcome, req.user.id);
   });

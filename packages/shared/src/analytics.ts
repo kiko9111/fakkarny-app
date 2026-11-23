@@ -24,6 +24,10 @@ export const APP_EVENTS = [
   "split_to_daftar", // props.entries (count)
   "streak_shared", // props.days
   "split_card_shared",
+  "receipt_read", // props.ok, props.items (count), props.for: "daftar" | "split"
+  "receipt_logged",
+  "receipt_split",
+  "homework_photos", // props.count
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;

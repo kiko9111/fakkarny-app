@@ -384,6 +384,8 @@ async function pushToUser(deps: TickDeps, user: User, body: string, kind: Messag
 
 /** Runs every minute (pg-boss cron): one proactive message at most per user per tick. */
 export async function runTick(deps: TickDeps, now = new Date()): Promise<number> {
+  // Homework photos are kept 90 days (owner decision, 2026-11-23).
+  await deps.prisma.photo.deleteMany({ where: { expiresAt: { lt: now } } }).catch(() => {});
   const users = await deps.prisma.user.findMany({
     where: { lastActiveAt: { gte: new Date(now.getTime() - ACTIVE_WITHIN_DAYS * 86400_000) } },
   });

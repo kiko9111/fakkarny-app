@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewSplit, removePerson, startPeople, toSplitInput, type Draft, daftarFromSplit } from "./logic";
+import { previewSplit, removePerson, startPeople, toSplitInput, type Draft, daftarFromSplit, draftFromReceipt } from "./logic";
 
 const base: Draft = { title: "", subtotal: "", people: ["Me", "Sara"], items: [], service: false, vat: false, tip: "", paidBy: 0 };
 
@@ -44,5 +44,24 @@ describe("daftarFromSplit", () => {
     const mine = people.map((p, i) => (i === 0 ? { ...p, paid: false } : p));
     expect(daftarFromSplit({ title: "", paid_by: 2, people: mine }, "Split")).toEqual([{ other_name: "عمر", direction: "i_owe", amount: 300, note: "Split" }]);
     expect(daftarFromSplit({ title: "", paid_by: null, people }, "Split")).toEqual([]);
+  });
+});
+
+describe("draftFromReceipt", () => {
+  const receipt = { merchant: "Zooba", date: null, currency: "EGP", total: 1260, subtotal: 1000, service: 120, vat: 140, category: "مطاعم", items: [{ name: "Koshari", price: 300, qty: 2 }, { name: "Tea", price: 700, qty: 1 }] };
+
+  it("fills title, items, toggles and the bill before service", () => {
+    const d = draftFromReceipt(receipt, ["Me", ""]);
+    expect(d.title).toBe("Zooba");
+    expect(d.subtotal).toBe("1000");
+    expect(d.items).toEqual([{ name: "Koshari ×2", price: "300", eaters: [] }, { name: "Tea", price: "700", eaters: [] }]);
+    expect(d.service && d.vat).toBe(true);
+  });
+
+  it("works out the subtotal when it is not printed, and uses the total with no taxes", () => {
+    expect(draftFromReceipt({ ...receipt, subtotal: null }, ["Me", "S"]).subtotal).toBe("1000");
+    const plain = draftFromReceipt({ ...receipt, subtotal: null, service: 0, vat: 0, total: 455.5 }, ["Me", "S"]);
+    expect(plain.subtotal).toBe("455.5");
+    expect(plain.service || plain.vat).toBe(false);
   });
 });

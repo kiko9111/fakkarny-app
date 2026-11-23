@@ -187,6 +187,36 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect((await chat(omar)).at(-1)!.text).toContain("برافو");
   });
 
+  it("takes homework pages as photos, shows them only to the two people, and deletes them after 90 days", async () => {
+    const mama = await signedIn("ماما");
+    const omar = await signedIn("عمر");
+    const aunt = await signedIn("خالتو");
+    const circleId = await circleOf(mama, omar, aunt);
+    const task = await assign(mama, circleId, { assignee_id: omar.id, title: "واجب الرياضة", homework: true });
+    const png = Buffer.from("89504E470D0A1A0A" + "00".repeat(200), "hex").toString("base64");
+    expect((await post(omar, `/tasks/${task.id}/submit`, { photos: [] })).statusCode).toBe(400);
+    expect((await post(omar, `/tasks/${task.id}/submit`, { photos: Array(6).fill({ mime: "image/png", data: png }) })).statusCode).toBe(400);
+    const handed = TaskResponse.parse((await post(omar, `/tasks/${task.id}/submit`, { photos: [{ mime: "image/png", data: png }, { mime: "image/png", data: png }] })).json()).task;
+    expect(handed.photo_ids).toHaveLength(2);
+    expect((await chat(mama)).at(-1)!.text).toContain("2 صور");
+    const url = `/photos/${handed.photo_ids[0]}`;
+    for (const who of [mama, omar]) {
+      const res = await app.inject({ method: "GET", url, headers: who });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toBe("image/png");
+    }
+    expect((await app.inject({ method: "GET", url, headers: aunt })).statusCode).toBe(404);
+    // Redo and hand in again: the new pages replace the old ones.
+    await post(mama, `/tasks/${task.id}/review`, { verdict: "redo" });
+    const again = TaskResponse.parse((await post(omar, `/tasks/${task.id}/submit`, { text: "صححت", photos: [{ mime: "image/png", data: png }] })).json()).task;
+    expect(again.photo_ids).toHaveLength(1);
+    expect(await prisma.photo.count()).toBe(1);
+    // Kept 90 days, then gone.
+    clock = new Date("2026-11-22T10:00:00Z");
+    clock = new Date(clock.getTime() + 91 * 86_400_000);
+    expect((await app.inject({ method: "GET", url: `/photos/${again.photo_ids[0]}`, headers: mama })).statusCode).toBe(404);
+  });
+
   it("nudges only when the assigner asks, at most every 12 hours and three times", async () => {
     const mona = await signedIn("منى");
     const ahmed = await signedIn("أحمد");

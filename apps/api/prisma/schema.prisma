@@ -167,6 +167,7 @@ model User {
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
+  photos          Photo[]
   moneyEntries    MoneyEntry[]
   postReactions   PostReaction[]
   postComments    PostComment[]
@@ -406,9 +407,10 @@ model CircleTask {
   reviewNote  String?    @map("review_note")
   createdAt   DateTime   @default(now()) @map("created_at")
 
-  circle   Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
-  assigner User   @relation("TaskAssigner", fields: [assignerId], references: [id], onDelete: Cascade)
-  assignee User   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+  circle   Circle  @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  assigner User    @relation("TaskAssigner", fields: [assignerId], references: [id], onDelete: Cascade)
+  assignee User    @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+  photos   Photo[]
 
   @@index([circleId, status])
   @@index([assigneeId, status])
@@ -624,4 +626,24 @@ model Split {
 
   @@index([userId, createdAt])
   @@map("splits")
+}
+
+/// Homework pages a child handed in (owner decision 2026-11-23: photos for receipts and homework
+/// only). Seen by the child and the parent who set the task; deleted at expires_at (90 days).
+model Photo {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  taskId    String?  @map("task_id") @db.Uuid
+  mime      String
+  data      Bytes
+  bytes     Int
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task CircleTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([expiresAt])
+  @@map("photos")
 }

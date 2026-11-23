@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Linking, Pressable, Share, StyleSheet, Switch, View } from "react-native";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
@@ -8,6 +8,8 @@ import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
 import { createSplit } from "@/lib/api";
 import { contactsAvailable, pickContactName } from "@/lib/contacts";
+import { photosAvailable } from "@/lib/photos";
+import { takeDraft } from "@/split/handoff";
 import { previewSplit, removePerson, startPeople, type Draft } from "@/split/logic";
 import { Button, Card, Chip, Icon, IconButton, notify, palette, radius, Screen, space, Text, TextField } from "@/ui";
 
@@ -19,7 +21,7 @@ import { Button, Card, Chip, Icon, IconButton, notify, palette, radius, Screen, 
  */
 export default function NewSplitScreen() {
   const params = useLocalSearchParams<{ subtotal?: string; people?: string }>();
-  const [d, setD] = useState<Draft>({
+  const [d, setD] = useState<Draft>(() => takeDraft() ?? {
     title: "",
     subtotal: params.subtotal ?? "",
     people: startPeople(t.split.me, params.people ? Number(params.people) : null),
@@ -30,6 +32,15 @@ export default function NewSplitScreen() {
     paidBy: 0,
   });
   const [busy, setBusy] = useState(false);
+  // Back from a receipt photo: take its items, keep the names already typed.
+  useFocusEffect(
+    useCallback(() => {
+      const r = takeDraft();
+      if (!r) return;
+      setD((x) => ({ ...r, people: x.people, paidBy: x.paidBy, title: x.title.trim() || r.title }));
+      notify(t.receipt.filled);
+    }, []),
+  );
   const preview = previewSplit(d);
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
   const setItem = (i: number, patch: Partial<Draft["items"][number]>) => set({ items: d.items.map((it, k) => (k === i ? { ...it, ...patch } : it)) });
@@ -84,6 +95,7 @@ export default function NewSplitScreen() {
       <Text variant="small" color={palette.inkSoft}>
         {t.split.intro}
       </Text>
+      {photosAvailable ? <Button label={t.receipt.fromReceipt} icon="camera-outline" kind="tonal" onPress={() => router.push({ pathname: "/receipt", params: { for: "split" } })} /> : null}
       <TextField label={t.split.subtotal} hint={t.split.subtotalHint} value={d.subtotal} onChangeText={(v) => set({ subtotal: v })} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
       <TextField label={t.split.what} value={d.title} onChangeText={(v) => set({ title: v })} maxLength={60} placeholder={t.split.whatHint} />
 

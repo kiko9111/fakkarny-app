@@ -6,6 +6,7 @@ import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t, dateLocale } from "@/i18n";
 import { listSplits } from "@/lib/api";
+import { photosAvailable } from "@/lib/photos";
 import { Button, Card, EmptyState, ListRow, Note, palette, space, Text } from "@/ui";
 
 /** The Daftar's "Split the check" view: start a split, and the recent ones. */
@@ -28,6 +29,7 @@ export function SplitsView({ reloadKey }: { reloadKey: number }) {
         {t.split.intro}
       </Text>
       <Button label={t.split.start} icon="receipt-outline" block onPress={() => router.push("/split/new")} />
+      {photosAvailable ? <Button label={t.receipt.split} icon="camera-outline" kind="tonal" block onPress={() => router.push({ pathname: "/receipt", params: { for: "split" } })} /> : null}
       {offline && splits === null ? <Note icon="cloud-offline-outline">{t.split.offline}</Note> : null}
       {splits !== null && splits.length === 0 ? (
         <Card>

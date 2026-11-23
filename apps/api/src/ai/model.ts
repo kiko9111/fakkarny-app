@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { APP_ACTION_KINDS, AppAction, FriendResponse, MoneyKind, TrackerKind } from "@fakkarni/shared";
+import { APP_ACTION_KINDS, AppAction, FriendResponse, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
 export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
@@ -63,7 +63,56 @@ export const SessionTurn = z.object({
 export type SessionTurn = z.infer<typeof SessionTurn>;
 export type SessionTurnResult = { ok: true; output: SessionTurn; usage: Usage } | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
 
+/**
+ * Receipt reading output: no nullable or optional fields (the structured-output limits are
+ * per request, but keep it lean). "" / 0 mean not printed; `readable` false = not a receipt.
+ */
+const ModelReceipt = z.object({
+  readable: z.boolean(),
+  merchant: z.string(),
+  date: z.string(),
+  currency: z.string(),
+  total: z.number(),
+  subtotal: z.number(),
+  service: z.number(),
+  vat: z.number(),
+  category: z.string(),
+  items: z.array(z.object({ name: z.string(), price: z.number(), qty: z.number() })),
+});
+
+export const RECEIPT_SYSTEM = `You read one photo of a shop or restaurant receipt for an Egyptian household app. Extract only what is printed; never guess numbers.
+- readable: false if it is not a receipt or the totals can't be read (then leave the rest empty).
+- merchant: the shop or restaurant name as printed (keep its script). date: YYYY-MM-DD, or "".
+- currency: "EGP" unless another is printed. total: the final amount paid, service and VAT included.
+- subtotal: before service and VAT, 0 if not printed. service and vat: the printed amounts (not percentages), 0 if none.
+- items: each line item with its line price (price for the whole line, qty as printed, 1 if none). At most 60. Leave out totals, taxes and discounts lines.
+- category: one or two plain words for the kind of spending, in the requested language (e.g. "بقالة", "مطاعم", "صيدلية" / "groceries", "restaurants", "pharmacy").
+Numbers: Arabic-Indic digits are digits; commas are thousands separators.`;
+
+/** Validate and tidy the model's reading. Null when it isn't a usable receipt. */
+export function toReceipt(raw: z.infer<typeof ModelReceipt>): Receipt | null {
+  if (!raw.readable || !(raw.total > 0)) return null;
+  const money = (n: number) => (Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0);
+  const parsed = Receipt.safeParse({
+    merchant: raw.merchant.trim().slice(0, 80),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : null,
+    currency: (raw.currency || "EGP").trim().slice(0, 8).toUpperCase(),
+    total: money(raw.total),
+    subtotal: money(raw.subtotal) || null,
+    service: money(raw.service),
+    vat: money(raw.vat),
+    category: raw.category.trim().slice(0, 40),
+    items: raw.items
+      .filter((i) => i.name.trim() && money(i.price) > 0)
+      .slice(0, 60)
+      .map((i) => ({ name: i.name.trim().slice(0, 80), price: money(i.price), qty: Math.max(1, Math.round(i.qty) || 1) })),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
 export interface FriendModel {
+  /** Read a receipt photo (owner decision 2026-11-23: photos for receipts and homework only). */
+  readReceipt?(input: { photo: PhotoUpload; language: "ar" | "en" }): Promise<{ receipt: Receipt | null; usage: Usage }>;
   respond(input: FriendModelInput): Promise<FriendModelResult>;
   /** A Session turn (apps/api/src/session). Separate prompt, separate output; never creates items or memories. */
   reflect?(input: { system: string; context: string; history: ChatTurn[] }): Promise<SessionTurnResult>;
@@ -264,6 +313,26 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
         if (res.parsed_output && reply.length) return { ok: true, output: { ...res.parsed_output, reply }, usage };
       }
       return { ok: false, reason: "invalid_output", usage };
+    },
+
+    async readReceipt({ photo, language }) {
+      const res = await client.messages.parse({
+        model: FRIEND_MODEL,
+        max_tokens: 3000,
+        system: [{ type: "text", text: RECEIPT_SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: photo.mime, data: photo.data.replace(/\s+/g, "") } },
+              { type: "text", text: `Read this receipt. Category language: ${language === "en" ? "English" : "Egyptian Arabic"}.` },
+            ],
+          },
+        ],
+        output_config: { effort: "low", format: zodOutputFormat(ModelReceipt) },
+      });
+      const usage = toUsage(res.usage);
+      return { receipt: res.parsed_output ? toReceipt(res.parsed_output) : null, usage };
     },
 
     async complete({ system, prompt, maxTokens = 1000 }) {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_HOMEWORK_PHOTOS, PhotoUpload } from "./photos";
 
 /**
  * Assigned tasks (Zaki M5): one circle member asks another to do something. Accept first:
@@ -27,6 +28,8 @@ export const CircleTask = z.object({
   /** Homework handed in: the child's answer or link (text only), and when. */
   submission: z.string().nullable().default(null),
   submitted_at: Instant.nullable().default(null),
+  /** Homework pages handed in as photos (GET /photos/:id). */
+  photo_ids: z.array(z.uuid()).default([]),
   /** The parent's review of handed-in homework. */
   review: z.enum(["approved", "redo"]).nullable().default(null),
   review_note: z.string().nullable().default(null),
@@ -60,7 +63,10 @@ export type TaskRemindRequest = z.infer<typeof TaskRemindRequest>;
  * The child hands in homework: an answer or a link (text only, no photos). Handing in also says
  * yes to it if it was still waiting, and finishes it; the parent is told at once.
  */
-export const SubmitHomeworkRequest = z.object({ text: z.string().trim().min(1).max(1000) });
+/** The child's hand-in: words or a link, and/or photos of the pages (at most 5). */
+export const SubmitHomeworkRequest = z
+  .object({ text: z.string().trim().max(1000).default(""), photos: z.array(PhotoUpload).max(MAX_HOMEWORK_PHOTOS).default([]) })
+  .refine((v) => v.text.length > 0 || v.photos.length > 0, "Nothing handed in");
 export type SubmitHomeworkRequest = z.infer<typeof SubmitHomeworkRequest>;
 
 /** The parent's answer: well done, or please redo it (back on the child's list, with a note). */
