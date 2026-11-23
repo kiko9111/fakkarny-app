@@ -5,14 +5,14 @@ import type { MoneyOverview, MoneySection } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
-import { getMoney, getMonthGift } from "@/lib/api";
+import { getMoney, getMonthGift, peekMoney } from "@/lib/api";
 import { photosAvailable } from "@/lib/photos";
 import { Badge, Button, Card, EmptyState, Icon, IconTile, Note, palette, ProgressBar, radius, SectionHeader, space, Text, ZakiAvatar } from "@/ui";
 import { budgetState, groupSections, monthLabel } from "./logic";
 
 /** Spending and income: this month's totals, Zaki's month gift early in the month, and the sections. */
 export function SpendView({ reloadKey }: { reloadKey: number }) {
-  const [data, setData] = useState<MoneyOverview | null>(null);
+  const [data, setData] = useState<MoneyOverview | null>(() => peekMoney());
   const [gift, setGift] = useState<string[]>([]);
   const [offline, setOffline] = useState(false);
 

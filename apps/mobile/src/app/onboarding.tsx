@@ -28,7 +28,10 @@ export default function OnboardingScreen() {
 
   const finish = () => {
     track("signin_done", { signed_in: authAvailable });
-    if (gender) void patchMe({ gender }).catch(() => {});
+    // The server writes proactive messages, circle posts and pushes in the user's language: tell
+    // it the one picked here (it was left at Arabic, so English users got Arabic lines).
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    void patchMe({ language, ...(timezone ? { timezone } : {}), ...(gender ? { gender } : {}) }).catch(() => {});
     prefs.set("onboarded", "1");
     // Chat first: a new user starts with Zaki only; the rest opens as it's needed.
     unlock.startFresh();

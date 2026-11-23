@@ -24,6 +24,9 @@ export interface AuthConfig {
 }
 
 export const supabaseAuthId = (sub: string) => `supabase:${sub}`;
+/** last_active_at only needs minute-level freshness (the tick looks at people active in the last days). */
+const ACTIVE_WRITE_MS = 5 * 60_000;
+
 export const installAuthId = (id: string) => `install:${id}`;
 
 const InstallId = z.uuid();
@@ -70,11 +73,13 @@ export function requireUser(prisma: PrismaClient, cfg: AuthConfig = { allowInsta
       if (parsed.success) authId = installAuthId(parsed.data);
     }
     if (!authId) return reply.code(401).send({ error: "unauthorized" });
-    req.user = await prisma.user.upsert({
-      where: { authId },
-      create: { authId },
-      update: { lastActiveAt: new Date() },
-    });
+    // One read per request; the write happens only for a new user or when last_active_at is
+    // more than ACTIVE_WRITE_MS old (it was an upsert, i.e. a row write, on every request, and
+    // a screen fires several requests at once at the same row).
+    const found = await prisma.user.findUnique({ where: { authId } });
+    if (!found) req.user = await prisma.user.upsert({ where: { authId }, create: { authId }, update: { lastActiveAt: new Date() } });
+    else if (!found.lastActiveAt || Date.now() - found.lastActiveAt.getTime() > ACTIVE_WRITE_MS) req.user = await prisma.user.update({ where: { id: found.id }, data: { lastActiveAt: new Date() } });
+    else req.user = found;
   };
 }
 

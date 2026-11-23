@@ -37,6 +37,8 @@ import {
   type DaftarEntry,
   BillingOffersResponse,
   CircleResponse,
+  CircleMember,
+  CircleInvite,
   CircleSummary,
   CreateInviteResponse,
   InvitePreview,
@@ -76,6 +78,7 @@ import { resolveApiUrl } from "./api-url";
 import { accessToken } from "./supabase";
 import { isDemo } from "./demo";
 import { demoRequest } from "@/demo/server";
+import { createScreenCache, eachValid } from "./screen-cache";
 
 export const API_URL = resolveApiUrl({
   envUrl: process.env.EXPO_PUBLIC_API_URL,
@@ -83,6 +86,22 @@ export const API_URL = resolveApiUrl({
 });
 
 const TIMEOUT_MS = 20_000;
+
+/** Last good copies of server-only screens (see screen-cache.ts). */
+export const screenCache = createScreenCache({
+  getItem: (k) => localStorage.getItem(k),
+  setItem: (k, v) => localStorage.setItem(k, v),
+  removeItem: (k) => localStorage.removeItem(k),
+});
+
+/** GET that also keeps the reply on the phone, so the screen can draw it at once next time (`peek`). */
+async function cachedGet<T>(path: string, parse: (raw: unknown) => T): Promise<T> {
+  const raw = await request(path);
+  const value = parse(raw);
+  screenCache.set(path, raw);
+  return value;
+}
+const peek = <T>(path: string, parse: (raw: unknown) => T): T | null => screenCache.get(path, parse);
 
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
   if (isDemo) {
@@ -199,9 +218,11 @@ export async function getBillingOffers(): Promise<BillingOffersResponse> {
 }
 
 // Circles (Friends and Family spaces). These need a connection: they are shared records.
+const parseCircles = (raw: unknown): Circle[] => eachValid(ListCirclesResponse.shape.circles.element.safeParse, (raw as { circles?: unknown } | null)?.circles);
 export async function listCircles(): Promise<Circle[]> {
-  return ListCirclesResponse.parse(await request("/circles")).circles;
+  return cachedGet("/circles", parseCircles);
 }
+export const peekCircles = () => peek("/circles", parseCircles);
 
 export async function createCircle(kind: CircleKind, name: string, familyType?: FamilyType | null): Promise<CircleDetail> {
   return CircleResponse.parse(await request("/circles", { method: "POST", body: JSON.stringify({ kind, name, ...(familyType ? { family_type: familyType } : {}) }) })).circle;
@@ -227,9 +248,15 @@ export async function getCircleSummary(id: string): Promise<CircleSummary> {
   return CircleSummary.parse(await request(`/circles/${id}/summary`));
 }
 
+/** The circle itself must parse; a member or invite row that doesn't is left out rather than blanking the screen. */
+const parseCircle = (raw: unknown): CircleDetail => {
+  const c = (raw as { circle?: Record<string, unknown> } | null)?.circle ?? {};
+  return CircleResponse.shape.circle.parse({ ...c, members: eachValid(CircleMember.safeParse, c.members), open_invites: eachValid(CircleInvite.safeParse, c.open_invites) });
+};
 export async function getCircle(id: string): Promise<CircleDetail> {
-  return CircleResponse.parse(await request(`/circles/${id}`)).circle;
+  return cachedGet(`/circles/${id}`, parseCircle);
 }
+export const peekCircle = (id: string) => peek(`/circles/${id}`, parseCircle);
 
 export async function deleteCircle(id: string): Promise<void> {
   await request(`/circles/${id}`, { method: "DELETE" });
@@ -253,9 +280,11 @@ export async function acceptInvite(code: string): Promise<CircleDetail> {
 }
 
 // Shared Daftar: debts both people see. Needs a connection.
+const parseDaftar = (raw: unknown): DaftarEntry[] => eachValid(ListDaftarResponse.shape.entries.element.safeParse, (raw as { entries?: unknown } | null)?.entries);
 export async function listDaftar(): Promise<DaftarEntry[]> {
-  return ListDaftarResponse.parse(await request("/daftar")).entries;
+  return cachedGet("/daftar", parseDaftar);
 }
+export const peekDaftar = () => peek("/daftar", parseDaftar);
 
 export async function createDaftar(body: CreateDaftarRequest): Promise<DaftarResponse> {
   return DaftarResponse.parse(await request("/daftar", { method: "POST", body: JSON.stringify(body) }));
@@ -283,13 +312,20 @@ export async function cancelDaftar(id: string): Promise<void> {
 }
 
 // Assigned tasks: ask someone in a circle; they accept first. Needs a connection.
+const parseTasks = (raw: unknown): CircleTask[] => eachValid(ListTasksResponse.shape.tasks.element.safeParse, (raw as { tasks?: unknown } | null)?.tasks);
 export async function listTasks(): Promise<CircleTask[]> {
-  return ListTasksResponse.parse(await request("/tasks")).tasks;
+  return cachedGet("/tasks", parseTasks);
 }
+export const peekTasks = () => peek("/tasks", parseTasks);
 
+const parseFeed = (raw: unknown): CircleFeedResponse => {
+  const r = (raw ?? {}) as { posts?: unknown; tasks?: unknown };
+  return { posts: eachValid(CircleFeedResponse.shape.posts.element.safeParse, r.posts), tasks: eachValid(CircleFeedResponse.shape.tasks.element.safeParse, r.tasks) };
+};
 export async function getCircleFeed(circleId: string): Promise<CircleFeedResponse> {
-  return CircleFeedResponse.parse(await request(`/circles/${circleId}/feed`));
+  return cachedGet(`/circles/${circleId}/feed`, parseFeed);
 }
+export const peekCircleFeed = (circleId: string) => peek(`/circles/${circleId}/feed`, parseFeed);
 
 // The circle feed: reactions, short comments, and asking Zaki in front of the circle.
 export async function reactPost(circleId: string, postId: string, key: ReactionKey | null): Promise<CirclePost> {
@@ -348,8 +384,9 @@ export async function remindTask(id: string, remind_at: string | null): Promise<
 
 // Trackers dashboard. Needs a connection; chat messages feed it on the server too.
 export async function listTrackers(): Promise<ListTrackersResponse> {
-  return ListTrackersResponse.parse(await request("/trackers"));
+  return cachedGet("/trackers", ListTrackersResponse.parse);
 }
+export const peekTrackers = () => peek("/trackers", ListTrackersResponse.parse);
 
 export async function createTracker(body: CreateTrackerRequest): Promise<Tracker> {
   return TrackerResponse.parse(await request("/trackers", { method: "POST", body: JSON.stringify(body) })).tracker;
@@ -360,9 +397,11 @@ export async function updateTracker(id: string, body: UpdateTrackerRequest): Pro
   return TrackerResponse.parse(await request(`/trackers/${id}`, { method: "PATCH", body: JSON.stringify(body) })).tracker;
 }
 
+const parseShared = (raw: unknown): SharedTracker[] => eachValid(SharedTrackersResponse.shape.trackers.element.safeParse, (raw as { trackers?: unknown } | null)?.trackers);
 export async function getCircleTrackers(circleId: string): Promise<SharedTracker[]> {
-  return SharedTrackersResponse.parse(await request(`/circles/${circleId}/trackers`)).trackers;
+  return cachedGet(`/circles/${circleId}/trackers`, parseShared);
 }
+export const peekCircleTrackers = (circleId: string) => peek(`/circles/${circleId}/trackers`, parseShared);
 
 export async function logTracker(id: string, amount?: number): Promise<Tracker> {
   return TrackerResponse.parse(await request(`/trackers/${id}/entries`, { method: "POST", body: JSON.stringify(amount === undefined ? {} : { amount }) })).tracker;
@@ -423,14 +462,16 @@ export async function answerInvite(circleId: string, postId: string, going: bool
 
 // Wider Daftar: expense / income sections and circle shared books. Needs a connection.
 export async function getMoney(month?: string): Promise<MoneyOverview> {
-  return MoneyOverview.parse(await request(`/money${month ? `?month=${month}` : ""}`));
+  return cachedGet(`/money${month ? `?month=${month}` : ""}`, MoneyOverview.parse);
 }
+export const peekMoney = (month?: string) => peek(`/money${month ? `?month=${month}` : ""}`, MoneyOverview.parse);
 export async function createSection(body: CreateSectionRequest): Promise<MoneySection> {
   return SectionResponse.parse(await request("/money/sections", { method: "POST", body: JSON.stringify(body) })).section;
 }
 export async function getSection(id: string, month?: string): Promise<SectionDetail> {
-  return SectionDetail.parse(await request(`/money/sections/${id}${month ? `?month=${month}` : ""}`));
+  return cachedGet(`/money/sections/${id}${month ? `?month=${month}` : ""}`, SectionDetail.parse);
 }
+export const peekSection = (id: string) => peek(`/money/sections/${id}`, SectionDetail.parse);
 export async function deleteSection(id: string): Promise<void> {
   await request(`/money/sections/${id}`, { method: "DELETE" });
 }
@@ -462,12 +503,15 @@ export async function postEvents(body: PostEventsRequest): Promise<void> {
 export async function createSplit(body: SplitInput): Promise<SplitResponse> {
   return SplitResponse.parse(await request("/splits", { method: "POST", body: JSON.stringify(body) }));
 }
+const parseSplits = (raw: unknown): Split[] => eachValid(ListSplitsResponse.shape.splits.element.safeParse, (raw as { splits?: unknown } | null)?.splits);
 export async function listSplits(): Promise<Split[]> {
-  return ListSplitsResponse.parse(await request("/splits")).splits;
+  return cachedGet("/splits", parseSplits);
 }
+export const peekSplits = () => peek("/splits", parseSplits);
 export async function getSplit(id: string): Promise<SplitResponse> {
-  return SplitResponse.parse(await request(`/splits/${id}`));
+  return cachedGet(`/splits/${id}`, SplitResponse.parse);
 }
+export const peekSplit = (id: string) => peek(`/splits/${id}`, SplitResponse.parse);
 export async function updateSplit(id: string, body: UpdateSplitRequest): Promise<SplitResponse> {
   return SplitResponse.parse(await request(`/splits/${id}`, { method: "PUT", body: JSON.stringify(body) }));
 }

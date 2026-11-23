@@ -6,7 +6,7 @@ import { fill } from "@/circles/logic";
 import { PlanRow } from "@/components/PlanRow";
 import { listUpcoming } from "@/db/items";
 import { t, dateLocale } from "@/i18n";
-import { getMe, listTasks, listTrackers } from "@/lib/api";
+import { getMe, listTasks, listTrackers, peekTasks, peekTrackers } from "@/lib/api";
 import { useItems } from "@/lib/useItems";
 import { TaskCard } from "@/tasks/TaskCard";
 import { canAdd } from "@/trackers/logic";
@@ -25,8 +25,8 @@ const greeting = () => {
 export default function TodayScreen() {
   const { items, refreshing, refresh, complete } = useItems(listUpcoming);
   const [name, setName] = useState<string | null>(null);
-  const [asked, setAsked] = useState<CircleTask[]>([]);
-  const [trackers, setTrackers] = useState<Tracker[] | null>(null);
+  const [asked, setAsked] = useState<CircleTask[]>(() => (peekTasks() ?? []).filter((task) => task.status === "pending" && task.role === "assignee"));
+  const [trackers, setTrackers] = useState<Tracker[] | null>(() => peekTrackers()?.trackers ?? null);
   const [limit, setLimit] = useState<number | null>(1);
 
   const loadOnline = useCallback(() => {

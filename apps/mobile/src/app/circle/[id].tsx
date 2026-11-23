@@ -4,7 +4,7 @@ import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
-import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, peekCircle, peekCircleFeed, peekCircleTrackers, removeCircleMember, screenCache, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
@@ -18,24 +18,35 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday:
 /** One circle: who's OK, requests between its people, what Zaki posted, and the invite that grows it. */
 export default function CircleScreen() {
   const { id, invite: inviteNow } = useLocalSearchParams<{ id: string; invite?: string }>();
-  const [circle, setCircle] = useState<CircleDetail | null>(null);
+  // The phone's last copy draws at once; the fresh one replaces it when it arrives.
+  const [circle, setCircle] = useState<CircleDetail | null>(() => peekCircle(id));
   const [failed, setFailed] = useState(false);
   const [inviting, setInviting] = useState(false);
-  const [feed, setFeed] = useState<CircleFeedResponse>({ posts: [], tasks: [] });
+  const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [] });
   const [summary, setSummary] = useState<string[] | null>(null);
-  const [trackers, setTrackers] = useState<SharedTracker[]>([]);
+  const [trackers, setTrackers] = useState<SharedTracker[]>(() => peekCircleTrackers(id) ?? []);
 
+  // Each part loads on its own: the circle shows as soon as it arrives, and a feed or tracker
+  // problem never keeps the whole circle from opening.
   const load = useCallback(async () => {
+    const feedDone = getCircleFeed(id).then(setFeed, () => {});
+    const trackersDone = getCircleTrackers(id).then(setTrackers, () => {});
+    const summaryDone = getCircleSummary(id).then(
+      (s) => setSummary(s.lines),
+      () => setSummary(null),
+    );
     try {
-      const [c, f, tr] = await Promise.all([getCircle(id), getCircleFeed(id), getCircleTrackers(id).catch(() => [])]);
-      setCircle(c);
-      setFeed(f);
-      setTrackers(tr);
+      setCircle(await getCircle(id));
       setFailed(false);
-      setSummary(c.extras ? (await getCircleSummary(id).catch(() => null))?.lines ?? null : null);
-    } catch {
+    } catch (err) {
+      // Left, removed or deleted: drop the saved copy instead of showing it.
+      if (err instanceof HttpError && err.status === 404) {
+        screenCache.remove(`/circles/${id}`);
+        setCircle(null);
+      }
       setFailed(true);
     }
+    await Promise.all([feedDone, trackersDone, summaryDone]);
   }, [id]);
 
   // Reload on every return to the screen (after sending a request, for example).

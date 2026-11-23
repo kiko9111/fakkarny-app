@@ -2,17 +2,18 @@ import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import type { Tracker } from "@fakkarni/shared";
 import { t } from "@/i18n";
-import { addRamadanPack, listTrackers } from "@/lib/api";
+import { addRamadanPack, listTrackers, peekTrackers } from "@/lib/api";
 import { canAdd } from "@/trackers/logic";
 import { TrackerCard } from "@/trackers/TrackerCard";
 import { Button, Card, EmptyState, Note, notify, palette, Screen, Text } from "@/ui";
 
 /** Everything the user follows (Today shows the same cards; this page also holds the Ramadan pack). */
 export default function TrackersScreen() {
-  const [trackers, setTrackers] = useState<Tracker[]>([]);
-  const [limit, setLimit] = useState<number | null>(1);
+  const saved = useState(() => peekTrackers())[0];
+  const [trackers, setTrackers] = useState<Tracker[]>(saved?.trackers ?? []);
+  const [limit, setLimit] = useState<number | null>(saved ? saved.limit : 1);
   const [ramadan, setRamadan] = useState<"available" | "added" | "off">("off");
-  const [state, setState] = useState<"loading" | "ready" | "offline">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "offline">(saved ? "ready" : "loading");
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {

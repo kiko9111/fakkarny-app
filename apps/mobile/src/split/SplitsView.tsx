@@ -5,13 +5,13 @@ import type { Split } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t, dateLocale } from "@/i18n";
-import { listSplits } from "@/lib/api";
+import { listSplits, peekSplits } from "@/lib/api";
 import { photosAvailable } from "@/lib/photos";
 import { Button, Card, EmptyState, ListRow, Note, palette, space, Text } from "@/ui";
 
 /** The Daftar's "Split the check" view: start a split, and the recent ones. */
 export function SplitsView({ reloadKey }: { reloadKey: number }) {
-  const [splits, setSplits] = useState<Split[] | null>(null);
+  const [splits, setSplits] = useState<Split[] | null>(() => peekSplits());
   const [offline, setOffline] = useState(false);
   const load = useCallback(() => {
     listSplits()

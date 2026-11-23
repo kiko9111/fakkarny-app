@@ -1,7 +1,9 @@
 import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
-import { listMessagesAfter, postMessage } from "@/lib/api";
+import { getMe, listMessagesAfter, patchMe, postMessage } from "@/lib/api";
+import { language } from "@/i18n";
+import { prefs } from "@/lib/prefs";
 import { createEmitter } from "@/lib/emitter";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
@@ -88,10 +90,25 @@ export function startSync() {
     void pullItems();
   };
   refresh();
+  void syncLanguage();
   addNetworkStateListener(({ isConnected, isInternetReachable }) => {
     if (isConnected && isInternetReachable !== false) refresh();
   });
   AppState.addEventListener("change", (state) => {
     if (state === "active") refresh();
   });
+}
+
+/**
+ * Once per start: the server writes Zaki's own lines (proactive messages, circle posts, pushes)
+ * in the user's language, which onboarding used not to send. Mend it when they differ.
+ */
+async function syncLanguage() {
+  if (prefs.get("onboarded") !== "1") return;
+  try {
+    const me = await getMe();
+    if (me.language !== language) await patchMe({ language });
+  } catch {
+    // Offline or signed out: next start.
+  }
 }
