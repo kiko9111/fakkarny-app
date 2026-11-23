@@ -11,7 +11,7 @@ import { useChat } from "@/chat/useChat";
 import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
 import { getMe } from "@/lib/api";
-import { unlock, useUnlocked } from "@/lib/unlock-store";
+import { unlock } from "@/lib/unlock-store";
 import { fill } from "@/circles/logic";
 import { suggestTracker } from "@/trackers/logic";
 import { Button, glass, IconButton, Note, palette, space, Text, ZakiAvatar } from "@/ui";
@@ -47,7 +47,6 @@ function ZakiHeader({ typing }: { typing: boolean }) {
 
 export default function ChatScreen() {
   const { messages, loaded, typing, locked, send } = useChat();
-  const unlocked = useUnlocked();
   // "عايز أتعود على القراية كل يوم" → offer a tracker with one tap (rules on the phone, no AI call).
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const say = (text: string) => {
@@ -68,10 +67,8 @@ export default function ChatScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: () => <ZakiHeader typing={typing && !offline} />,
-      // Chat only (nothing else open yet): Settings sits in the header instead of a tab bar.
-      headerRight: unlocked.length === 0 ? () => <IconButton name="settings-outline" label={t.ui.settingsShort} onPress={() => router.push("/settings")} /> : undefined,
     });
-  }, [navigation, typing, offline, unlocked.length]);
+  }, [navigation, typing, offline]);
 
   // Inverted list: newest at the bottom, keyboard-friendly.
   const data = useMemo(() => {

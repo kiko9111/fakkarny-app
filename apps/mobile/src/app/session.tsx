@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { router, Stack } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Mood, SessionMode, type Session, type SessionMessage, type SessionState } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
@@ -33,6 +34,8 @@ export default function SessionScreen() {
 }
 
 function SessionBody() {
+  // Edge-to-edge Android: keep the message box above the system buttons.
+  const bottomInset = useSafeAreaInsets().bottom;
   const [state, setState] = useState<SessionState | null>(null);
   const [failed, setFailed] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -229,7 +232,7 @@ function SessionBody() {
 
   const ended = Boolean(session.ended_at);
   return (
-    <KeyboardAvoidingView style={styles.page} behavior="padding" keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={[styles.page, { paddingBottom: bottomInset }]} behavior="padding" keyboardVerticalOffset={90}>
       <Stack.Screen options={{ title: t.session.title }} />
       <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {session.messages.map((m) => {

@@ -1,4 +1,5 @@
 import { Redirect, router, Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isRTL, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { useUnlocked } from "@/lib/unlock-store";
@@ -17,11 +18,15 @@ const backToChat = () => <IconButton name={isRTL ? "arrow-forward" : "arrow-back
 
 /**
  * Up to five places: Zaki, your day, your people, the Daftar, and you. Chat first: a new user
- * sees only Zaki (no tab bar); the others appear as they open (src/lib/unlock.ts).
+ * sees Zaki and Me; the others appear as they open (src/lib/unlock.ts). The bar is always
+ * there: hidden, the app read as broken, and a tab with `href: null` can't be opened by a link
+ * either (the old header Settings button did nothing).
  */
 export default function TabsLayout() {
   const unlocked = useUnlocked();
-  const chatOnly = unlocked.length === 0;
+  // Android is edge-to-edge: the bar has to clear the system buttons (3-button navigation is
+  // 48dp tall) or the gesture line, whatever the phone uses.
+  const bottom = Math.max(useSafeAreaInsets().bottom, 14);
   const shown = (f: "daftar" | "people" | "today") => (unlocked.includes(f) ? {} : { href: null });
   if (prefs.get("onboarded") !== "1") return <Redirect href="/onboarding" />;
   // Came in through an invite link before setting up: finish that first.
@@ -43,7 +48,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: palette.primaryInk,
         tabBarInactiveTintColor: palette.inkFaint,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: chatOnly ? { display: "none" } : { ...glass, borderTopColor: palette.glassEdge, borderTopWidth: 1, borderWidth: 0, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, height: 76, paddingTop: 6, paddingBottom: 14, backgroundColor: palette.surfaceStrong },
+        tabBarStyle: { ...glass, borderTopColor: palette.glassEdge, borderTopWidth: 1, borderWidth: 0, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, height: 62 + bottom, paddingTop: 6, paddingBottom: bottom, backgroundColor: palette.surfaceStrong },
         tabBarItemStyle: { paddingBottom: 2 },
         tabBarLabelStyle: { fontFamily: fonts.bodySemi, fontSize: 12, lineHeight: 18, paddingBottom: 2 },
         headerStyle: { backgroundColor: glassBar },
@@ -68,7 +73,7 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen name="money" options={{ ...shown("daftar"), title: t.ui.tabMoney, tabBarIcon: icon("book-outline", "book") }} />
-      <Tabs.Screen name="settings" options={{ ...(chatOnly ? { href: null } : {}), title: t.ui.tabMe, tabBarIcon: icon("person-circle-outline", "person-circle") }} />
+      <Tabs.Screen name="settings" options={{ title: t.ui.tabMe, tabBarIcon: icon("person-circle-outline", "person-circle") }} />
       {/* Kept as routes (links and notifications open them), shown inside Today. */}
       <Tabs.Screen name="trackers" options={{ href: null, title: t.tabs.trackers }} />
       <Tabs.Screen name="upcoming" options={{ href: null, title: t.tabs.upcoming }} />
