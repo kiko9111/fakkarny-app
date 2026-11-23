@@ -2,7 +2,8 @@ import { createAnthropicModel } from "./ai/model";
 import { buildApp, LOG_REDACT } from "./app";
 import { startJobs } from "./jobs";
 import { createConversationPipeline } from "./pipeline/conversation";
-import { createExpoPushSender } from "./proactive/push";
+import { createExpoPushSender, createExpoReceiptChecker } from "./proactive/push";
+import { trackPush } from "./proactive/push-receipts";
 import { db } from "./db";
 import { loadEnv } from "./env";
 import { initSentry } from "./observability/sentry";
@@ -13,7 +14,9 @@ const prisma = env.DATABASE_URL ? db() : undefined;
 const model = env.ANTHROPIC_API_KEY ? createAnthropicModel({ apiKey: env.ANTHROPIC_API_KEY }) : undefined;
 const supabaseUrl = env.SUPABASE_URL;
 const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const push = createExpoPushSender(fetch, env.EXPO_ACCESS_TOKEN);
+const expoPush = createExpoPushSender(fetch, env.EXPO_ACCESS_TOKEN);
+// Every push goes through trackPush, so dead tokens are cleared wherever a push is sent.
+const push = prisma ? trackPush(prisma, expoPush) : expoPush;
 const app = buildApp(
   // Behind the host's proxy (Railway): take the caller's IP and protocol from its headers,
   // so the public invite page is rate-limited per visitor and invite links are https.
@@ -56,6 +59,7 @@ const boss =
         prisma,
         model,
         push,
+        receipts: createExpoReceiptChecker(fetch, env.EXPO_ACCESS_TOKEN),
         log: app.log,
         requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
       })

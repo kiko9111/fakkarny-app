@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "237066811051",
+    "project_id": "zaki-c4f8a",
+    "storage_bucket": "zaki-c4f8a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:237066811051:android:84260a8f1fd03f192569ee",
+        "android_client_info": {
+          "package_name": "com.fakkarni.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAE_lSybdgUa2mLmW28KEgFpSK_SIyapKA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

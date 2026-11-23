@@ -153,6 +153,8 @@ model User {
   slowdownNoticed    Boolean         @default(false) @map("slowdown_noticed")
   createdAt          DateTime        @default(now()) @map("created_at")
   lastActiveAt       DateTime?       @map("last_active_at")
+  // Proactive tick: when this user next needs a look (null = now). See proactive/schedule.ts.
+  nextTickAt         DateTime?       @map("next_tick_at")
 
   devices         Device[]
   messages        Message[]
@@ -177,6 +179,7 @@ model User {
   reflectSessions ReflectSession[]
 
   @@index([referredById])
+  @@index([nextTickAt])
   @@map("users")
 }
 
@@ -191,6 +194,16 @@ model Device {
 
   @@index([userId])
   @@map("devices")
+}
+
+/// Expo push tickets waiting for their receipt (a dead token often shows up only there).
+model PushTicket {
+  id        String   @id
+  token     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("push_tickets")
 }
 
 model Message {
@@ -244,6 +257,8 @@ model Item {
   sourceMessage Message? @relation(fields: [sourceMessageId], references: [id], onDelete: SetNull)
 
   @@index([userId, status, dueAt])
+  @@index([remindAt])
+  @@index([followUpAt])
   @@map("items")
 }
 

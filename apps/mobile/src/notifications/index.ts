@@ -16,6 +16,10 @@ const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
 const ACTION_LATER = "later";
 const CHANNEL = "reminders";
+/** Zaki's own messages sent as push by the server (proactive/push.ts sends this channelId). */
+const MESSAGES_CHANNEL = "messages";
+/** Re-send the token now and then, so the server has it even if its copy was lost. */
+const REREGISTER_MS = 7 * 86400_000;
 /** Alarm-style reminders the user asked for. A full-screen alarm needs a new native build; this is the loudest a notification can be. */
 const ALARM_CHANNEL = "alarms";
 
@@ -32,6 +36,10 @@ export async function setupNotifications() {
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync(CHANNEL, {
       name: t.notifications.channel,
+      importance: Notifications.AndroidImportance.HIGH,
+    });
+    await Notifications.setNotificationChannelAsync(MESSAGES_CHANNEL, {
+      name: t.notifications.messagesChannel,
       importance: Notifications.AndroidImportance.HIGH,
     });
     await Notifications.setNotificationChannelAsync(ALARM_CHANNEL, {
@@ -51,26 +59,41 @@ export async function setupNotifications() {
 
 /**
  * Ask for permission ("so I can check on you", F1) and register the push token.
- * Remote push needs a development build and an EAS projectId; local reminders work without either.
+ * Remote push needs a build with Firebase set up (google-services.json, see app.config.js) and an
+ * EAS projectId; local reminders work without either. `force` re-sends the token (after sign-in).
  */
-export async function ensurePermissionAndRegister(): Promise<boolean> {
+export async function ensurePermissionAndRegister(opts: { force?: boolean } = {}): Promise<boolean> {
   const current = await Notifications.getPermissionsAsync();
   let granted = current.granted;
   if (!granted && current.canAskAgain) granted = (await Notifications.requestPermissionsAsync()).granted;
   if (!granted) return false;
+  await registerPushToken(opts.force ?? false);
+  return true;
+}
 
+async function registerPushToken(force: boolean) {
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-  if (!Device.isDevice || !projectId) return true;
+  if (!Device.isDevice || !projectId) return;
   try {
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-    if ((await kvGet("push_token")) !== token) {
+    const last = Number((await kvGet("push_token_at")) ?? 0);
+    if (force || (await kvGet("push_token")) !== token || Date.now() - last > REREGISTER_MS) {
       await registerDevice({ platform: Platform.OS === "ios" ? "ios" : "android", push_token: token });
       await kvSet("push_token", token);
+      await kvSet("push_token_at", String(Date.now()));
     }
   } catch {
-    // Expo Go on Android or no network: local reminders still work; retry next launch.
+    // Expo Go on Android, a build without Firebase, or no network: local reminders still work; retry next launch.
   }
-  return true;
+}
+
+let watchingToken = false;
+
+/** The OS can rotate the push token; send the new one when it does. */
+export function watchPushToken() {
+  if (watchingToken) return;
+  watchingToken = true;
+  Notifications.addPushTokenListener(() => void registerPushToken(true));
 }
 
 function formatTime(d: Date) {

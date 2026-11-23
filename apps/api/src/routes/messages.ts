@@ -51,7 +51,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
 
     // Keep the user's time zone current (relative dates resolve in it).
     if (body.data.timezone && body.data.timezone !== user.timezone && isValidTimeZone(body.data.timezone)) {
-      user = await prisma.user.update({ where: { id: user.id }, data: { timezone: body.data.timezone } });
+      user = await prisma.user.update({ where: { id: user.id }, data: { timezone: body.data.timezone, nextTickAt: null } });
     }
 
     // Idempotency: a retried client_id returns what was stored the first time.

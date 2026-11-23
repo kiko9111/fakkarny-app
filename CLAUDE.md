@@ -302,11 +302,30 @@ Rules:
   in-memory error-rate metrics, GET /admin (Basic auth, ADMIN_PASSWORD; counts and
   costs only, never chat content). Deploy the API with the root Dockerfile; build the
   app with apps/mobile/eas.json profiles (development / preview / production).
-- Proactive messages (M4): pg-boss cron `proactive-tick` every minute
+- Proactive messages (M4): pg-boss cron `proactive-tick-2` every minute
   (apps/api/src/jobs) → `planProactive` (pure; decides morning/night/check-in/
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
   template fallback) → stored as a friend Message + Expo push. The phone pulls them
   with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Tick scaling (2026-11-23): the tick does not loop over every user. users.next_tick_at (indexed)
+  says when each user next needs a look (`nextTickAt`, proactive/schedule.ts, pure): every 10 min
+  while awake, at wake time while asleep, at local midnight once the daily budget is spent.
+  `runTick` claims due users in batches of 200 (UPDATE … FOR UPDATE SKIP LOCKED, a 3-minute lease),
+  works 5 at a time, stops claiming after 45 s, and also pulls in anyone whose item remind_at /
+  follow_up_at passed in the last 2 min. PATCH /me (time zone, waking hours, check-ins) and a time
+  zone change in POST /messages clear next_tick_at. Any new proactive sender must fit this: a
+  window of at least ~15 min while awake, or add its time to `nextTickAt`. The pg-boss queue
+  "proactive-tick-2" is "exclusive" (no overlapping or piled-up ticks); photo cleanup and push
+  receipts run in the "housekeeping" queue every 10 min. 3,000 users all due: one tick ~5.6 s locally.
+- Push (2026-11-23): every server push goes through `trackPush` (proactive/push-receipts.ts):
+  tokens Expo rejects are cleared at once, ticket ids are kept in push_tickets, and housekeeping
+  reads the receipts 15 min later and clears DeviceNotRegistered tokens. Pushes use the Android
+  channel "messages" (created by the app). The phone registers its token after the first
+  message's permission ask, on every start (re-sent weekly or when it changes), after sign-in,
+  and when the OS rotates it; sign-out calls DELETE /devices. Android push needs Firebase:
+  google-services.json via the EAS file variable GOOGLE_SERVICES_JSON or apps/mobile/
+  google-services.json (app.config.js), plus the FCM V1 service-account key on EAS, then a new build.
+  F6 follow-ups are not pushed (the phone shows a local notification, as with reminders).
 - Status checks (owner ask, 2026-11-22: "ask the status of everything, not just remind"):
   apps/api/src/proactive/status.ts (pure, tested) picks one subject per tick, in order: a
   reminder/task whose time passed 45 min to 3 days ago and is still open, a debt open 7+ days,
@@ -332,8 +351,8 @@ Rules:
   assumes waking hours 07:00–23:00 (the server uses the user's settings).
 - Follow-ups ("how was the dentist, did it hurt?"): the persona sets follow_up_at for
   events with an outcome; the tick writes the question (not counted against the daily
-  cap); the phone shows a local notification at the same time, because remote push
-  needs FCM credentials that are not set up yet (devices register no push token).
+  cap); the phone shows a local notification at the same time, so the server does not
+  push follow-ups.
 - A short Latin message with no language of its own ("yara", "ok") follows the
   conversation: `detectScriptInContext` (rules.ts).
 - Message order on the phone: a synced user message takes the server's `created_at`.

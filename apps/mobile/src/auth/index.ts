@@ -2,9 +2,11 @@ import { Platform } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { linkAccount } from "@/lib/api";
+import { linkAccount, unregisterDevice } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { fullSync } from "@/sync/full";
+import { kvGet, kvSet } from "@/db/kv";
+import { ensurePermissionAndRegister } from "@/notifications";
 import type { Contact } from "./contact";
 
 /** Sign-in options (FR-10): a code by email or SMS, Apple, Google — all through Supabase Auth. */
@@ -19,6 +21,8 @@ export const phoneAvailable = process.env.EXPO_PUBLIC_SIGNIN_PHONE === "1";
 async function afterSignIn() {
   await linkAccount();
   await fullSync();
+  // The server moved this phone's push token to the account; send it again in case it had none.
+  if (await kvGet("asked_notifications")) void ensurePermissionAndRegister({ force: true }).catch(() => {});
 }
 
 /**
@@ -95,5 +99,12 @@ export async function currentAccountLabel(): Promise<string | null> {
 }
 
 export async function signOut() {
+  // Stop this account's pushes reaching the phone, then register it again for this phone's own install ID.
+  const token = await kvGet("push_token");
+  if (token) {
+    await unregisterDevice(token).catch(() => {});
+    await kvSet("push_token", "");
+  }
   await supabase?.auth.signOut();
+  if (token) void ensurePermissionAndRegister({ force: true }).catch(() => {});
 }

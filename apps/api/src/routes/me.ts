@@ -52,6 +52,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
     }
     if (b.always_direct !== undefined) data.alwaysDirect = b.always_direct;
     if (b.gender !== undefined) data.gender = b.gender;
+    // New waking hours or time zone: let the proactive tick look again now (proactive/schedule.ts).
+    if (b.timezone || b.wake_time || b.sleep_time || b.checkin_interval_h) data.nextTickAt = null;
     if (b.instapay_link !== undefined) {
       const link = b.instapay_link ? parseInstapayLink(b.instapay_link) : null;
       if (b.instapay_link && !link) return reply.code(400).send({ error: "invalid_instapay_link" });
