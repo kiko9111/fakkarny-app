@@ -17,7 +17,7 @@ function memoryStore(initial: string[]) {
 }
 
 const ok = (msg: PostMessageRequest): PostMessageResponse => ({
-  message: { id: `s-${msg.client_id}`, user_id: "u", role: "user", text: msg.text, client_id: msg.client_id, kind: "chat", created_at: msg.created_at },
+  message: { id: `s-${msg.client_id}`, user_id: "u", role: "user", text: msg.text, client_id: msg.client_id, kind: "chat", created_at: msg.created_at, actions: [] },
   replies: [],
   items: [],
   memories: [],

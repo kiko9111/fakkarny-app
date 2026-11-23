@@ -24,6 +24,8 @@ const GREETING: LocalMessage = {
   created_at: new Date(0).toISOString(),
   sync_status: "synced",
   saved: null,
+  server_id: null,
+  actions: [],
 };
 
 /** The header: Zaki's face, his name, and what he is doing right now. */

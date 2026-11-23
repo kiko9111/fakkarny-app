@@ -1,14 +1,11 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { z } from "zod";
-import { circleExtras, CommentRequest, ReactRequest, type PostResponse } from "@fakkarni/shared";
+import { CommentRequest, ReactRequest, type PostResponse } from "@fakkarni/shared";
 import type { CirclePost, PrismaClient, User } from "../generated/prisma/client";
-import { hasProAccess } from "../billing/family";
-import { weekData } from "../circles/summary";
-import { addressesZaki, circleReminderLine, parseZakiAsk, REMIND_ALL_GAP_HOURS } from "../circles/zaki";
-import { postUpdate } from "../daftar/store";
+import { askZaki, zakiAnswer } from "../circles/ask";
+import { addressesZaki } from "../circles/zaki";
 import { pushNotices, type Notice } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
-import { CHECKIN_ASK_GAP_HOURS, checkinAskLine } from "../tasks/rules";
 import { langOf, wirePosts } from "../tasks/store";
 
 export interface FeedRoutesOptions {
@@ -44,46 +41,6 @@ export const feedRoutes: FastifyPluginAsync<FeedRoutesOptions> = async (app, opt
     return circle && post ? { circle, post } : null;
   };
 
-  /** Act on an @Zaki ask: returns Zaki's template key (with data) and who to tell. */
-  async function zakiAnswer(circle: { id: string; name: string; createdAt: Date; members: { userId: string }[] }, user: User, text: string): Promise<{ event: string; notices: Notice[] }> {
-    const ask = parseZakiAsk(text);
-    const at = now();
-    const others = circle.members.map((m) => m.userId).filter((id) => id !== user.id);
-    if (ask.kind === "remind") {
-      const bucket = Math.floor(at.getTime() / (REMIND_ALL_GAP_HOURS * 3600_000));
-      const clientId = `circle_remind:${circle.id}:${user.id}:${bucket}`;
-      const people = await prisma.user.findMany({ where: { id: { in: others } }, select: { id: true, language: true } });
-      if (people[0] && (await prisma.message.findUnique({ where: { userId_clientId: { userId: people[0].id, clientId } } }))) return { event: "zaki:too_soon", notices: [] };
-      const notices: Notice[] = [];
-      for (const p of people) {
-        const line = circleReminderLine(langOf(p), user.name, circle.name, ask.what);
-        await postUpdate(prisma, p.id, clientId, line, at);
-        notices.push({ userId: p.id, text: line });
-      }
-      return { event: `zaki:reminded|${people.length}`, notices };
-    }
-    if (ask.kind === "checkin") {
-      const bucket = Math.floor(at.getTime() / (CHECKIN_ASK_GAP_HOURS * 3600_000));
-      const clientId = `checkin_ask:${circle.id}:${user.id}:${bucket}`;
-      const people = await prisma.user.findMany({ where: { id: { in: others } }, select: { id: true, language: true } });
-      const notices: Notice[] = [];
-      for (const p of people) {
-        const line = checkinAskLine(langOf(p), user.name, circle.name);
-        const before = await prisma.message.count({ where: { userId: p.id, clientId } });
-        await postUpdate(prisma, p.id, clientId, line, at);
-        if (!before) notices.push({ userId: p.id, text: line });
-      }
-      return { event: notices.length ? `zaki:checkin|${notices.length}` : "zaki:too_soon", notices };
-    }
-    if (ask.kind === "summary") {
-      const pro = !opts.requireSubscription || (await hasProAccess(prisma, user, at));
-      if (!circleExtras(circle.createdAt, pro, at)) return { event: "zaki:locked", notices: [] };
-      const { done, open, checkins } = await weekData(prisma, circle.id, at);
-      return { event: `zaki:summary|${JSON.stringify({ done, open, checkins })}`, notices: [] };
-    }
-    return { event: "zaki:help", notices: [] };
-  }
-
   app.post("/circles/:id/posts/:postId/react", async (req, reply) => {
     const found = await findPost(req.params, req.user);
     const body = ReactRequest.safeParse(req.body);
@@ -104,7 +61,7 @@ export const feedRoutes: FastifyPluginAsync<FeedRoutesOptions> = async (app, opt
     await prisma.postComment.create({ data: { postId: found.post.id, userId: req.user.id, text: body.data.text, createdAt: at } });
     const notices: Notice[] = [];
     if (addressesZaki(body.data.text)) {
-      const answer = await zakiAnswer(found.circle, req.user, body.data.text);
+      const answer = await zakiAnswer(prisma, found.circle, req.user, body.data.text, at, opts.requireSubscription ?? false);
       await prisma.postComment.create({ data: { postId: found.post.id, zakiEvent: answer.event, createdAt: new Date(at.getTime() + 1) } });
       notices.push(...answer.notices);
     } else if (found.post.actorId && found.post.actorId !== req.user.id && found.circle.members.some((m) => m.userId === found.post.actorId)) {
@@ -132,13 +89,8 @@ export const feedRoutes: FastifyPluginAsync<FeedRoutesOptions> = async (app, opt
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
     const circle = await circleFor(p.data.id, req.user.id);
     if (!circle) return reply.code(404).send({ error: "not_found" });
-    const at = now();
-    const text = body.data.text.replace(/^\s*(?:@\s*)?(?:زكي|زكى|zaki)\s*[،,:!.\-]?\s*/i, "").trim() || body.data.text;
-    const post = await prisma.circlePost.create({ data: { circleId: circle.id, event: "zaki_ask", actorId: req.user.id, title: text, createdAt: at } });
-    const answer = await zakiAnswer(circle, req.user, `زكي ${text}`);
-    await prisma.postComment.create({ data: { postId: post.id, zakiEvent: answer.event, createdAt: new Date(at.getTime() + 1) } });
-    await prisma.event.create({ data: { userId: req.user.id, name: "feed_zaki_ask", propsJson: { kind: answer.event.split("|")[0]!.slice(5) } } });
-    void pushNotices(prisma, opts.push, answer.notices, app.log);
+    const { post, notices } = await askZaki(prisma, circle, req.user, body.data.text, now(), opts.requireSubscription ?? false);
+    void pushNotices(prisma, opts.push, notices, app.log);
     return reply.code(201).send(await one(post, req.user));
   });
 };

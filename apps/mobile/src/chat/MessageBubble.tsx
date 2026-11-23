@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import type { MessageKind } from "@fakkarni/shared";
 import type { LocalMessage } from "@/db/messages";
 import { t, dateLocale } from "@/i18n";
+import { ActionCards } from "./ActionCards";
 import { glass, Button, Icon, palette, radius, shadow, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 /** Friend messages that Zaki started himself get a small label, so they read as his idea. */
@@ -45,6 +46,7 @@ export const MessageBubble = memo(function MessageBubble({ message, lastInRun = 
             {message.text}
           </Text>
         </View>
+        {!mine && message.actions.length ? <ActionCards serverId={message.server_id} actions={message.actions} /> : null}
         {message.kind === "upsell" ? <Button label={t.paywall.upsellButton} icon="sparkles" size="sm" kind="tonal" onPress={() => router.push("/paywall")} style={styles.pro} /> : null}
         {message.saved ? (
           <Pressable style={({ pressed }) => [styles.savedChip, pressed && { opacity: 0.7 }]} onPress={() => router.push({ pathname: "/saved/[clientId]", params: { clientId: message.client_id } })} accessibilityRole="button">

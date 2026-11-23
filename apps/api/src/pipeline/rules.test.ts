@@ -60,7 +60,7 @@ describe("looksLikeCrisis", () => {
 });
 
 describe("toFriendResponse", () => {
-  const base: ModelOutput = { reply: ["Hi"], create_items: [], update_items: [], save_memories: [], crisis: false };
+  const base: ModelOutput = { reply: ["Hi"], create_items: [], update_items: [], save_memories: [], app_actions: [], crisis: false };
 
   it("drops nulls so optional fields validate", () => {
     const r = toFriendResponse({

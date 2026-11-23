@@ -12,3 +12,14 @@ export const LIST_MESSAGES_SQL =
 
 export const PENDING_MESSAGES_SQL =
   "SELECT * FROM messages WHERE sync_status = 'pending' AND role = 'user' ORDER BY created_at ASC, rowid ASC";
+
+/**
+ * A message from the server. A row we already hold keeps everything but takes newer action
+ * cards (a pull after the user answered one), never losing cards to a reply without them.
+ */
+export const UPSERT_SERVER_MESSAGE_SQL = `INSERT INTO messages (client_id, server_id, role, kind, text, created_at, sync_status, actions_json)
+  VALUES (?, ?, ?, ?, ?, ?, 'synced', ?)
+  ON CONFLICT(client_id) DO UPDATE SET actions_json = excluded.actions_json WHERE excluded.actions_json IS NOT NULL`;
+
+/** Older messages that may carry a card with this id (the JSON is checked in code). */
+export const MESSAGES_WITH_CARD_SQL = "SELECT client_id, actions_json FROM messages WHERE actions_json LIKE ? AND client_id != ?";

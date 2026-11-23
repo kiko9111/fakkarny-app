@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { FriendResponse } from "@fakkarni/shared";
+import { APP_ACTION_KINDS, FriendResponse, TrackerKind } from "@fakkarni/shared";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
 export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
@@ -48,8 +48,10 @@ export interface FriendModelInput {
   todayLocal?: string;
 }
 
+/** The model's validated answer. app_actions may be left out (scripted test models). */
+export type FriendOutput = Omit<FriendResponse, "app_actions"> & { app_actions?: FriendResponse["app_actions"] };
 export type FriendModelResult =
-  | { ok: true; output: FriendResponse; usage: Usage }
+  | { ok: true; output: FriendOutput; usage: Usage }
   | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
 
 /** One Session turn: what Zaki says, whether this is a crisis, and at most one small step. */
@@ -94,11 +96,32 @@ const ModelUpdate = z.object({
   follow_up_at_local: z.string().nullable(),
   repeat_every_minutes: z.number().nullable(),
 });
+const ModelAppAction = z.object({
+  kind: z.enum(APP_ACTION_KINDS),
+  name: z.string().nullable(),
+  title: z.string().nullable(),
+  section: z.string().nullable(),
+  tracker: z.string().nullable(),
+  circle: z.string().nullable(),
+  person: z.string().nullable(),
+  amount: z.number().nullable(),
+  money_kind: z.enum(["expense", "income"]).nullable(),
+  tracker_kind: TrackerKind.nullable(),
+  unit: z.string().nullable(),
+  ask_times: z.array(z.string()).nullable(),
+  family: z.boolean().nullable(),
+  homework: z.boolean().nullable(),
+  note: z.string().nullable(),
+  text: z.string().nullable(),
+  due_at_local: z.string().nullable(),
+  remind_at_local: z.string().nullable(),
+});
 export const ModelOutput = z.object({
   reply: z.array(z.string()),
   create_items: z.array(ModelItem),
   update_items: z.array(ModelUpdate),
   save_memories: z.array(z.object({ kind: z.enum(["person", "place", "preference", "fact"]), subject: z.string(), content: z.string() })),
+  app_actions: z.array(ModelAppAction),
   crisis: z.boolean(),
 });
 export type ModelOutput = z.infer<typeof ModelOutput>;
@@ -120,6 +143,7 @@ export function toFriendResponse(raw: ModelOutput): FriendResponse {
     create_items: raw.create_items.map((i) => dropNulls(i)),
     update_items: raw.update_items.map((u) => dropNulls(u)),
     save_memories: raw.save_memories,
+    app_actions: (raw.app_actions ?? []).slice(0, 3).map((a) => dropNulls(a)),
     crisis: raw.crisis,
   });
 }
