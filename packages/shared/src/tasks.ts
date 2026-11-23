@@ -24,6 +24,12 @@ export const CircleTask = z.object({
   /** Homework: a parent's description or link, opened by the child, who then taps done. */
   homework: z.boolean().default(false),
   note: z.string().nullable().default(null),
+  /** Homework handed in: the child's answer or link (text only), and when. */
+  submission: z.string().nullable().default(null),
+  submitted_at: Instant.nullable().default(null),
+  /** The parent's review of handed-in homework. */
+  review: z.enum(["approved", "redo"]).nullable().default(null),
+  review_note: z.string().nullable().default(null),
   status: TaskStatus,
   role: TaskRole,
   assigner_name: z.string().nullable(),
@@ -49,6 +55,17 @@ export type CreateTaskRequest = z.infer<typeof CreateTaskRequest>;
 /** Change when Zaki reminds the assignee: the assigner while it is pending, the assignee any time it is open. */
 export const TaskRemindRequest = z.object({ remind_at: Instant.nullable() });
 export type TaskRemindRequest = z.infer<typeof TaskRemindRequest>;
+
+/**
+ * The child hands in homework: an answer or a link (text only, no photos). Handing in also says
+ * yes to it if it was still waiting, and finishes it; the parent is told at once.
+ */
+export const SubmitHomeworkRequest = z.object({ text: z.string().trim().min(1).max(1000) });
+export type SubmitHomeworkRequest = z.infer<typeof SubmitHomeworkRequest>;
+
+/** The parent's answer: well done, or please redo it (back on the child's list, with a note). */
+export const ReviewHomeworkRequest = z.object({ verdict: z.enum(["approved", "redo"]), note: z.string().trim().max(300).optional() });
+export type ReviewHomeworkRequest = z.infer<typeof ReviewHomeworkRequest>;
 
 export const RespondTaskRequest = z.object({ answer: z.enum(["accept", "decline"]) });
 export type RespondTaskRequest = z.infer<typeof RespondTaskRequest>;

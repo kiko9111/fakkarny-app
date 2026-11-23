@@ -164,6 +164,29 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect(TaskResponse.parse((await post(omar, `/tasks/${task.id}/done`)).json()).task.status).toBe("done");
   });
 
+  it("lets the child hand in homework and the parent approve it or ask for a redo", async () => {
+    const mama = await signedIn("ماما");
+    const omar = await signedIn("عمر");
+    const circleId = await circleOf(mama, omar);
+    const task = await assign(mama, circleId, { assignee_id: omar.id, title: "واجب العربي", homework: true, note: "https://school.test/hw/3" });
+    // Handing in while still waiting is the yes; only the child can hand it in.
+    expect((await post(mama, `/tasks/${task.id}/submit`, { text: "x" })).statusCode).toBe(409);
+    const handed = TaskResponse.parse((await post(omar, `/tasks/${task.id}/submit`, { text: "https://docs.test/omar-arabic" })).json()).task;
+    expect(handed).toMatchObject({ status: "done", submission: "https://docs.test/omar-arabic" });
+    expect((await chat(mama)).at(-1)!.text).toContain("الواجب اتسلّم من عمر: واجب العربي");
+
+    // Redo: back on the child's list with the note.
+    const redo = TaskResponse.parse((await post(mama, `/tasks/${task.id}/review`, { verdict: "redo", note: "كمّل السؤال التالت" })).json()).task;
+    expect(redo).toMatchObject({ status: "accepted", review: "redo", review_note: "كمّل السؤال التالت" });
+    expect((await chat(omar)).at(-1)!.text).toContain("كمّل السؤال التالت");
+    expect((await post(omar, `/tasks/${task.id}/review`, { verdict: "approved" })).statusCode).toBe(409);
+
+    await post(omar, `/tasks/${task.id}/submit`, { text: "خلصت السؤال التالت" });
+    const ok = TaskResponse.parse((await post(mama, `/tasks/${task.id}/review`, { verdict: "approved" })).json()).task;
+    expect(ok).toMatchObject({ status: "done", review: "approved" });
+    expect((await chat(omar)).at(-1)!.text).toContain("برافو");
+  });
+
   it("nudges only when the assigner asks, at most every 12 hours and three times", async () => {
     const mona = await signedIn("منى");
     const ahmed = await signedIn("أحمد");

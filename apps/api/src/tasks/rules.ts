@@ -124,3 +124,17 @@ export function checkinAskLine(lang: Lang, name: string | null | undefined, circ
   const n = nameOr(name, lang);
   return lang === "en" ? `${n} would love to know you're okay. One tap in «${circle}» is enough 💛` : `طمّن ${n} عليك. دوسة واحدة في «${circle}» كفاية 💛`;
 }
+
+/** Homework lines (the child handed it in; the parent approved or asked for a redo). No gendered verbs. */
+export function homeworkLine(lang: Lang, kind: "submitted" | "approved" | "redo", name: string | null | undefined, title: string, extra: string | null): string {
+  const n = nameOr(name, lang);
+  const tail = extra ? `\n«${extra}»` : "";
+  if (lang === "en") {
+    if (kind === "submitted") return `${n} handed in the homework: ${title} 📚${tail}\nHave a look, then tap Well done or Redo.`;
+    if (kind === "approved") return `${n} loved your homework: ${title} 🌟 Well done!`;
+    return `${n} asks you to look at this homework again: ${title} ✏️${tail}`;
+  }
+  if (kind === "submitted") return `الواجب اتسلّم من ${n}: ${title} 📚${tail}\nبص عليه، وبعدين دوس «برافو» أو «يعيده».`;
+  if (kind === "approved") return `برافو! ${n} شاف الواجب: ${title} 🌟 شغل حلو!`;
+  return `${n} عايز الواجب ده يتراجع تاني: ${title} ✏️${tail}`;
+}

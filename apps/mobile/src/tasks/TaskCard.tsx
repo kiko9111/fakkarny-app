@@ -5,9 +5,10 @@ import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
 import { router } from "expo-router";
 import { HttpError } from "@/sync/queue";
-import { cancelTask, finishTask, nudgeTask, remindTask, respondTask } from "@/lib/api";
+import { cancelTask, finishTask, nudgeTask, remindTask, respondTask, reviewHomework, submitHomework } from "@/lib/api";
 import { pullItems } from "@/sync/items";
-import { Badge, Button, Card, Chip, confirm, Icon, notify, palette, space, Text } from "@/ui";
+import { track } from "@/lib/analytics";
+import { Badge, Button, Card, Chip, confirm, Icon, notify, palette, space, Text, TextField } from "@/ui";
 import { firstLink, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -18,6 +19,9 @@ const ACTION_ICON: Partial<Record<TaskAction, "checkmark" | "close" | "notificat
 export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  // Homework: the child's answer or link, or the parent's redo note, while typing.
+  const [draft, setDraft] = useState<"hand_in" | "redo" | null>(null);
+  const [text, setText] = useState("");
 
   const work = async (fn: () => Promise<unknown>, after?: string) => {
     setBusy(true);
@@ -58,7 +62,19 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
   const assigner = task.assigner_name ?? t.circles.noName;
   const assignee = task.assignee_name ?? t.circles.noName;
   const who = task.role === "assignee" ? fill(t.tasks.fromLine, { name: assigner }) : task.role === "assigner" ? fill(t.tasks.toLine, { name: assignee }) : fill(t.tasks.watchLine, { assignee, assigner });
-  const actions = taskActions(task);
+  // Homework is handed in (answer or link), not just ticked: the parent then reviews it.
+  const homeworkOpen = task.homework && task.role === "assignee" && open;
+  const actions = taskActions(task).filter((a) => !(homeworkOpen && a === "done"));
+  const toReview = task.homework && task.role === "assigner" && task.status === "done" && task.submission !== null && task.review === null;
+  const sendDraft = () => {
+    const value = text.trim();
+    if (draft === "hand_in" && value) {
+      track("homework_handed_in", { link: firstLink(value) !== null });
+      void work(() => submitHomework(task.id, value), t.tasks.handedIn).then(() => setDraft(null));
+    }
+    if (draft === "redo") void work(() => reviewHomework(task.id, "redo", value || undefined), t.tasks.redoSent).then(() => setDraft(null));
+    setText("");
+  };
   return (
     <Card style={busy ? styles.dim : undefined}>
       <View style={styles.head}>
@@ -98,12 +114,44 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
           </Text>
         </View>
       ) : null}
+      {task.homework && task.submission ? (
+        <View style={styles.submission}>
+          <Text variant="caption" color={palette.inkSoft}>
+            {t.tasks.handedInLabel}
+          </Text>
+          <Text variant="small" color={palette.ink}>
+            {task.submission}
+          </Text>
+          {firstLink(task.submission) ? <Button label={t.tasks.openLink} size="sm" kind="text" icon="open-outline" onPress={() => void Linking.openURL(firstLink(task.submission)!)} /> : null}
+          {task.review ? (
+            <Text variant="small" color={task.review === "approved" ? palette.ok : palette.warn}>
+              {task.review === "approved" ? t.tasks.approved : fill(t.tasks.redoLine, { note: task.review_note ?? "" })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {link ? <Button label={t.tasks.openLink} size="sm" kind="outline" icon="open-outline" onPress={() => void Linking.openURL(link)} /> : null}
       {picking ? (
         <View style={styles.actions}>
           {remindChoices(new Date(), task.due_at).map((c) => (
             <Chip key={c} icon="alarm-outline" label={t.tasks.remind[c]} onPress={() => pickRemind(c)} />
           ))}
+        </View>
+      ) : null}
+      {draft ? (
+        <View style={styles.draft}>
+          <TextField value={text} onChangeText={setText} maxLength={draft === "hand_in" ? 1000 : 300} multiline placeholder={draft === "hand_in" ? t.tasks.handInPlaceholder : t.tasks.redoPlaceholder} autoFocus />
+          <View style={styles.actions}>
+            <Button label={draft === "hand_in" ? t.tasks.handIn : t.tasks.redo} size="sm" icon="send" disabled={busy || (draft === "hand_in" && !text.trim())} onPress={sendDraft} />
+            <Button label={t.ui.cancel} size="sm" kind="text" onPress={() => setDraft(null)} />
+          </View>
+        </View>
+      ) : null}
+      {!draft && (homeworkOpen || toReview) ? (
+        <View style={styles.actions}>
+          {homeworkOpen ? <Button label={t.tasks.handIn} size="sm" icon="cloud-upload-outline" disabled={busy} onPress={() => setDraft("hand_in")} /> : null}
+          {toReview ? <Button label={t.tasks.wellDone} size="sm" icon="star" disabled={busy} onPress={() => void work(() => reviewHomework(task.id, "approved"), t.tasks.approvedSent)} /> : null}
+          {toReview ? <Button label={t.tasks.redo} size="sm" kind="outline" icon="refresh" disabled={busy} onPress={() => setDraft("redo")} /> : null}
         </View>
       ) : null}
       {actions.length ? (
@@ -126,4 +174,6 @@ const styles = StyleSheet.create({
   struck: { textDecorationLine: "line-through" },
   meta: { flexDirection: "row", alignItems: "center", gap: 6 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
+  submission: { gap: 2, paddingStart: space.sm, borderStartWidth: 2, borderStartColor: palette.primarySoft },
+  draft: { gap: space.xs },
 });

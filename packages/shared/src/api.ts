@@ -141,5 +141,7 @@ export const ExportResponse = z.object({
   /** Comments the user wrote in circle feeds. */
   feed_comments: z.array(z.object({ text: z.string(), at: z.string() })).default([]),
   money: z.array(z.object({ name: z.string(), kind: z.string(), budget: z.number().nullable(), shared: z.boolean(), entries: z.array(z.object({ amount: z.number(), note: z.string().nullable(), at: z.string() })) })).default([]),
+  /** Split the bill: bills the user split, with each person's name and share. */
+  splits: z.array(z.object({ title: z.string(), total: z.number(), currency: z.string(), people: z.array(z.object({ name: z.string(), share: z.number(), paid: z.boolean() })), created_at: z.string() })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

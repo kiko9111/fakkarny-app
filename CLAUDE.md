@@ -448,6 +448,17 @@ Rules:
   checks app actions too (`expect.actions`; extra actions count as a problem). Not yet measured
   with a model key.
 
+- Split the bill (2026-11-23; NOT named E7sebly, which is a real Egyptian app): table splits,
+  math in packages/shared/src/split.ts (pure: items split among their eaters, none = everyone;
+  the rest of a typed bill shared by all; service 12% and VAT 14% in proportion; largest-remainder
+  rounding). Routes apps/api/src/routes/splits.ts; public page GET /s/:code where friends without
+  Zaki add their own items (POST form, `web_adds`) and see an install call to action. Phone:
+  app/split/new.tsx, app/split/[id].tsx, the "Split" chip in the money tab; chat "قسّم الحساب"
+  offers a card (unlock-store). Records only.
+- Homework hand-in: circle_tasks.submission / submitted_at / review / review_note. The child hands
+  in text or a link (POST /tasks/:id/submit; says yes to a pending task and finishes it); the parent
+  is told in chat + push and answers Well done or Redo (POST /tasks/:id/review; redo reopens it).
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

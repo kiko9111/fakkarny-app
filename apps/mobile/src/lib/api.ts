@@ -61,6 +61,11 @@ import {
   type PatchItemRequest,
   type PostMessageRequest,
   ReferralResponse,
+  SplitResponse,
+  ListSplitsResponse,
+  type SplitInput,
+  type UpdateSplitRequest,
+  type Split,
   type PostEventsRequest,
 } from "@fakkarni/shared";
 import { getInstallId } from "@/db/kv";
@@ -304,6 +309,13 @@ const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Pr
 export const finishTask = taskAction("done");
 export const cancelTask = taskAction("cancel");
 export const nudgeTask = taskAction("nudge");
+/** Homework: the child hands in an answer or link; the parent says well done or redo. */
+export async function submitHomework(id: string, text: string): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/tasks/${id}/submit`, { method: "POST", body: JSON.stringify({ text }) })).task;
+}
+export async function reviewHomework(id: string, verdict: "approved" | "redo", note?: string): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/tasks/${id}/review`, { method: "POST", body: JSON.stringify({ verdict, ...(note ? { note } : {}) }) })).task;
+}
 export async function remindTask(id: string, remind_at: string | null): Promise<CircleTask> {
   return TaskResponse.parse(await request(`/tasks/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) })).task;
 }
@@ -418,4 +430,24 @@ export async function claimReferral(code: string): Promise<User> {
 /** Product analytics: counted events, never content (src/lib/analytics.ts). */
 export async function postEvents(body: PostEventsRequest): Promise<void> {
   await request("/events", { method: "POST", body: JSON.stringify(body) });
+}
+
+// Split the check: needs a connection (the page everyone opens lives on the server).
+export async function createSplit(body: SplitInput): Promise<SplitResponse> {
+  return SplitResponse.parse(await request("/splits", { method: "POST", body: JSON.stringify(body) }));
+}
+export async function listSplits(): Promise<Split[]> {
+  return ListSplitsResponse.parse(await request("/splits")).splits;
+}
+export async function getSplit(id: string): Promise<SplitResponse> {
+  return SplitResponse.parse(await request(`/splits/${id}`));
+}
+export async function updateSplit(id: string, body: UpdateSplitRequest): Promise<SplitResponse> {
+  return SplitResponse.parse(await request(`/splits/${id}`, { method: "PUT", body: JSON.stringify(body) }));
+}
+export async function markSplitPaid(id: string, index: number, paid: boolean): Promise<SplitResponse> {
+  return SplitResponse.parse(await request(`/splits/${id}/paid`, { method: "POST", body: JSON.stringify({ index, paid }) }));
+}
+export async function deleteSplit(id: string): Promise<void> {
+  await request(`/splits/${id}`, { method: "DELETE" });
 }

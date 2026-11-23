@@ -166,6 +166,7 @@ model User {
   tasksTaken      CircleTask[]     @relation("TaskAssignee")
   trackers        Tracker[]
   moneySections   MoneySection[]
+  splits          Split[]
   moneyEntries    MoneyEntry[]
   postReactions   PostReaction[]
   postComments    PostComment[]
@@ -190,16 +191,16 @@ model Device {
 }
 
 model Message {
-  id        String      @id @default(uuid()) @db.Uuid
-  userId    String      @map("user_id") @db.Uuid
-  role      MessageRole
-  text      String
-  clientId  String      @map("client_id") // generated on the phone; makes sync idempotent
-  kind      MessageKind @default(chat)
-  createdAt DateTime    @default(now()) @map("created_at")
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  role        MessageRole
+  text        String
+  clientId    String      @map("client_id") // generated on the phone; makes sync idempotent
+  kind        MessageKind @default(chat)
+  createdAt   DateTime    @default(now()) @map("created_at")
   /// Zaki's action cards under this reply (chat/actions.ts): label, status, route, and the
   /// resolved payload of a card waiting for the user's OK. The payload never goes on the wire.
-  actionsJson Json?     @map("actions_json")
+  actionsJson Json?       @map("actions_json")
 
   user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceItems Item[]
@@ -398,6 +399,11 @@ model CircleTask {
   // Nudges the assigner asked Zaki to send (rate-limited; see tasks/rules.ts).
   nudges      Int        @default(0)
   lastNudgeAt DateTime?  @map("last_nudge_at")
+  /// Homework handed in by the child: their answer or a link (text only), and the parent's review.
+  submission  String?
+  submittedAt DateTime?  @map("submitted_at")
+  review      String? // "approved" | "redo"
+  reviewNote  String?    @map("review_note")
   createdAt   DateTime   @default(now()) @map("created_at")
 
   circle   Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
@@ -587,4 +593,35 @@ model MoneyEntry {
   @@index([sectionId, at])
   @@index([userId])
   @@map("money_entries")
+}
+
+/// Split the check: a bill for a group outing. People (names, shares, paid) and items (name,
+/// price, who had it) are JSON; friends add their items on the public page /s/:code. Records only.
+model Split {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  userId       String   @map("user_id") @db.Uuid
+  title        String   @default("")
+  currency     String   @default("EGP")
+  subtotal     Decimal  @db.Decimal(12, 2)
+  /// The bill as typed (before service); what items don\'t cover is shared by all. Null = items only.
+  bill         Decimal? @db.Decimal(12, 2)
+  servicePct   Decimal  @map("service_pct") @db.Decimal(5, 2)
+  vatPct       Decimal  @map("vat_pct") @db.Decimal(5, 2)
+  vatOnService Boolean  @default(true) @map("vat_on_service")
+  tip          Decimal  @default(0) @db.Decimal(12, 2)
+  total        Decimal  @db.Decimal(12, 2)
+  /// [{ name, ordered, share, paid }]
+  peopleJson   Json     @map("people_json")
+  /// [{ name, price, eaters: number[] }]; empty = a quick even split of `subtotal`
+  itemsJson    Json     @default("[]") @map("items_json")
+  webAdds      Int      @default(0) @map("web_adds")
+  paidBy       Int?     @map("paid_by")
+  webViews     Int      @default(0) @map("web_views")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("splits")
 }

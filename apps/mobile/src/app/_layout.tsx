@@ -90,6 +90,8 @@ export default function RootLayout() {
           />
           <Stack.Screen name="invite/[code]" options={{ title: "" }} />
           <Stack.Screen name="ref/[code]" options={{ title: "" }} />
+          <Stack.Screen name="split/new" options={{ presentation: "modal", title: t.split.title }} />
+          <Stack.Screen name="split/[id]" options={{ title: "" }} />
           <Stack.Screen
             name="session"
             options={{
