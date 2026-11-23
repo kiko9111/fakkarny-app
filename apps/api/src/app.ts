@@ -16,6 +16,8 @@ import { legalRoutes, type LegalOptions } from "./routes/legal";
 import { meRoutes } from "./routes/me";
 import { messageRoutes } from "./routes/messages";
 import { referralRoutes } from "./routes/referrals";
+import { eventRoutes } from "./routes/events";
+import { referralPageRoutes } from "./routes/referral-page";
 import { circleRoutes } from "./routes/circles";
 import { invitePageRoutes } from "./routes/invite-page";
 import { daftarRoutes } from "./routes/daftar";
@@ -97,7 +99,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     const billing = deps.billing ?? { requireSubscription: false };
     app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription, push: deps.push });
     app.register(billingRoutes, { prisma, authenticate, ...billing });
-    app.register(referralRoutes, { prisma, authenticate, now: deps.now });
+    app.register(referralRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
+    app.register(referralPageRoutes, { prisma, storeUrl: deps.invites?.storeUrl });
     app.register(circleRoutes, { prisma, authenticate, now: deps.now, requireSubscription: billing.requireSubscription, publicUrl: deps.invites?.publicUrl, push: deps.push });
     app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
@@ -109,6 +112,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(sessionRoutes, { prisma, authenticate, now: deps.now, model: deps.model, enabled: deps.sessionEnabled });
     app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(deviceRoutes, { prisma, authenticate });
+    app.register(eventRoutes, { prisma, authenticate, now: deps.now });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });
   }

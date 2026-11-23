@@ -9,7 +9,12 @@ import { Button, IconTile, palette, plain, Screen, space, Text, TextField } from
 export default function EnterInviteScreen() {
   const [text, setText] = useState("");
   const code = inviteCodeFromText(text);
-  const go = () => code && router.replace({ pathname: "/invite/[code]", params: { code } });
+  // A friend's personal link (…/r/CODE or fakkarni://ref/CODE) is a gift, not a circle.
+  const personal = /(?:\/r\/|ref\/)([A-Za-z0-9]{4,16})/.exec(text)?.[1]?.toUpperCase();
+  const go = () =>
+    personal
+      ? router.replace({ pathname: "/ref/[code]", params: { code: personal } })
+      : code && router.replace({ pathname: "/invite/[code]", params: { code } });
 
   return (
     <Screen keyboard contentStyle={styles.content}>
@@ -21,7 +26,7 @@ export default function EnterInviteScreen() {
         </Text>
       </View>
       <TextField big value={text} onChangeText={setText} placeholder={t.circles.codePlaceholder} autoCapitalize="characters" autoCorrect={false} autoFocus textAlign="center" returnKeyType="go" onSubmitEditing={go} />
-      <Button label={t.circles.next} size="lg" block disabled={!code} onPress={go} />
+      <Button label={t.circles.next} size="lg" block disabled={!code && !personal} onPress={go} />
     </Screen>
   );
 }

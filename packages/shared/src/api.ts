@@ -55,6 +55,8 @@ export const ReferralResponse = z.object({
   /** Pro days earned this calendar month (7 per friend, at most 28). */
   days_this_month: z.number().int().nonnegative(),
   max_days_per_month: z.number().int().positive(),
+  /** The personal invite link (https://…/r/CODE): the friend and the inviter both get 7 Pro days. */
+  url: z.string().optional(),
 });
 export type ReferralResponse = z.infer<typeof ReferralResponse>;
 

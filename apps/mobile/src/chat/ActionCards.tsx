@@ -4,6 +4,7 @@ import { router, type Href } from "expo-router";
 import type { ChatAction } from "@fakkarni/shared";
 import { setActions } from "@/db/messages";
 import { actOnChatAction } from "@/lib/api";
+import { featureOfRoute } from "@/lib/unlock";
 import { unlock } from "@/lib/unlock-store";
 import { messagesChanged } from "@/sync";
 import { t } from "@/i18n";
@@ -17,11 +18,16 @@ const LOOK: Record<ChatAction["status"], { icon: IconName; color: string; bg: st
   failed: { icon: "alert-circle", color: palette.warn, bg: palette.warnSoft },
 };
 
-/** Opening a card's place also opens that tab for a chat-first user. */
+/**
+ * Opening a card's place also opens that tab for a chat-first user. A tab that was hidden a
+ * moment ago can't be navigated to in the same frame (`href: null`), so wait for the re-render.
+ */
 function open(route: string) {
-  if (route.startsWith("/money")) unlock.open("daftar");
-  if (route.startsWith("/circle")) unlock.open("people");
-  router.push(route as Href);
+  const place = featureOfRoute(route);
+  const wasClosed = place !== null && !unlock.isOpen(place);
+  if (place) unlock.open(place);
+  if (wasClosed) setTimeout(() => router.navigate(route as Href), 60);
+  else router.push(route as Href);
 }
 
 /**

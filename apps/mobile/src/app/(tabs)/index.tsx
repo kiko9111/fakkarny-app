@@ -10,6 +10,7 @@ import { TypingIndicator } from "@/chat/TypingIndicator";
 import { useChat } from "@/chat/useChat";
 import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
+import { track } from "@/lib/analytics";
 import { getMe } from "@/lib/api";
 import { unlock } from "@/lib/unlock-store";
 import { fill } from "@/circles/logic";
@@ -50,9 +51,9 @@ export default function ChatScreen() {
   // "عايز أتعود على القراية كل يوم" → offer a tracker with one tap (rules on the phone, no AI call).
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const say = (text: string) => {
-    unlock.onUserMessage(text);
+    const followUp = unlock.onUserMessage(text);
     setSuggestion(suggestTracker(text));
-    void send(text);
+    void send(text).then(followUp).catch(() => {});
   };
   const navigation = useNavigation();
   // New users are asked to start the trial; lapsed subscribers see that everything is saved.
@@ -70,6 +71,7 @@ export default function ChatScreen() {
     });
   }, [navigation, typing, offline]);
 
+  const fresh = loaded && messages.length === 0;
   // Inverted list: newest at the bottom, keyboard-friendly.
   const data = useMemo(() => {
     const all = loaded && messages.length === 0 ? [GREETING] : messages;
@@ -119,6 +121,7 @@ export default function ChatScreen() {
                 icon="add"
                 onPress={() => {
                   const name = suggestion;
+                  track("tracker_suggest_tapped");
                   setSuggestion(null);
                   router.push({ pathname: "/tracker/new", params: { name } });
                 }}
@@ -126,7 +129,15 @@ export default function ChatScreen() {
               <IconButton name="close" label={t.ui.cancel} onPress={() => setSuggestion(null)} size={32} />
             </View>
           ) : null}
-          <QuickReplies options={t.chat.quickReplies} onPick={say} />
+          {/* A new chat gets starters made for a busy household; later, the usual quick replies. */}
+          <QuickReplies
+            options={fresh ? t.chat.starters : t.chat.quickReplies}
+            onPick={(text) => {
+              const index = (fresh ? t.chat.starters : t.chat.quickReplies).indexOf(text);
+              track(fresh ? "starter_tapped" : "quick_reply", { index });
+              say(text);
+            }}
+          />
           <ChatInput onSend={say} />
         </>
       )}

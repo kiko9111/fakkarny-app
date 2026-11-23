@@ -368,10 +368,30 @@ Rules:
   sees Zaki's chat and the Me tab. The first version hid the bar and put Settings in the header:
   the owner read the missing bar as a broken build, and `router.push` to a tab with `href: null`
   does nothing. The bar and `Screen` pad by the bottom safe-area inset (Android is edge-to-edge;
-  3-button navigation is 48dp and covered the composer). Daftar opens on money talk, People on family/friends words or an
-  accepted invite, Today after 3 active days (src/lib/unlock.ts, pure + tested; state in
-  prefs "unlocked" via src/lib/unlock-store.ts). No saved state = a user from before this
-  change: everything stays open. Story: "Zaki remembers so you don't have to".
+  3-button navigation is 48dp and covered the composer). Since 2026-11-23 (owner decision) a tab
+  never appears silently: Zaki introduces it in the chat (money talk: Daftar; family/friends
+  words: People; third active day: Today) with an Open card, written on the phone by
+  `addLocalFriendMessage` (never synced, client_id `local:intro:*`); the tab opens on the tap.
+  "Open the Daftar" opens at once; "what can you do?" gets the overview with every card
+  (src/lib/unlock.ts, pure + tested; state in prefs "unlocked" via src/lib/unlock-store.ts).
+  An accepted invite or Daftar link opens its tab directly. No saved state = a user from before
+  chat-first: everything stays open. Story: "Zaki remembers so you don't have to".
+- Sign-in is required at onboarding (owner decision, 2026-11-23); only a build without sign-in
+  configured shows "Start" without it.
+- Growth plan (2026-11-23, doc https://claude.ai/artifact/G2Z59tkVagTUrDvsschK1R): beachhead user
+  is a mom running a household; first chat shows household starters (`t.chat.starters`).
+- Personal invite link: GET /me/referral returns `url` (…/r/CODE); the public page
+  (apps/api/src/routes/referral-page.ts) shows the inviter's first name only. The app route
+  /ref/[code] claims it (POST /referrals/claim), parked in prefs `pending_referral` until after
+  onboarding. A typed code that is not a circle invite is tried as a personal code. Both sides
+  get 7 Pro days (`REFERRAL_WELCOME_DAYS`, once per invitee; inviter capped at 28 a month).
+  "Invite a friend" sits on the out-of-messages (upsell) bubble and in Me.
+- Product analytics: the phone sends counted events (`APP_EVENTS` in
+  packages/shared/src/analytics.ts; queue src/lib/analytics-queue.ts, screen views from the root
+  layout) to POST /events, stored as Event "app:<name>". Every chat turn writes a `chat_intent`
+  event (item types, memories, card kinds, reply kind; never words). /admin shows weekly active
+  circles (north star), invite counts and the event table. Add a name to APP_EVENTS to track
+  something new; never put text, names or amounts in props.
 - Native modules: existing builds take JS over the air (runtimeVersion appVersion), so
   a new native module must be optional: check `requireOptionalNativeModule` and require it
   lazily (see src/lib/contacts.ts, expo-contacts for "Pick from contacts" in Daftar, which

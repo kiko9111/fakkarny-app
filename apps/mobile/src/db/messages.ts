@@ -188,3 +188,18 @@ export async function setActions(serverId: string, actions: ChatAction[]): Promi
   const db = await getDb();
   await db.runAsync("UPDATE messages SET actions_json = ? WHERE server_id = ?", actions.length ? JSON.stringify(actions) : null, serverId);
 }
+
+/**
+ * A message Zaki writes on the phone itself (introducing a place in the app). Never sent to the
+ * server; placed after the newest message so it reads as the latest thing Zaki said.
+ */
+export async function addLocalFriendMessage(clientId: string, text: string, actions: ChatAction[]): Promise<void> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ at: string | null }>("SELECT MAX(created_at) AS at FROM messages");
+  const latest = row?.at ? new Date(row.at).getTime() : 0;
+  const at = new Date(Math.max(Date.now(), latest + 1)).toISOString();
+  await db.runAsync(
+    "INSERT OR IGNORE INTO messages (client_id, role, kind, text, created_at, sync_status, actions_json) VALUES (?, 'friend', 'chat', ?, ?, 'synced', ?)",
+    clientId, text, at, actions.length ? JSON.stringify(actions) : null,
+  );
+}

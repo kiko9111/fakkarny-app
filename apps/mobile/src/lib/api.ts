@@ -60,6 +60,8 @@ import {
   type Item,
   type PatchItemRequest,
   type PostMessageRequest,
+  ReferralResponse,
+  type PostEventsRequest,
 } from "@fakkarni/shared";
 import { getInstallId } from "@/db/kv";
 import { HttpError } from "@/sync/queue";
@@ -402,4 +404,18 @@ export async function deleteMoneyEntry(id: string): Promise<void> {
 }
 export async function getMonthGift(): Promise<MonthGift> {
   return MonthGift.parse(await request("/money/gift"));
+}
+
+// Invite rewards: a personal link; the friend and the inviter both get Pro days.
+export async function getReferral(): Promise<ReferralResponse> {
+  return ReferralResponse.parse(await request("/me/referral"));
+}
+
+export async function claimReferral(code: string): Promise<User> {
+  return MeResponse.parse(await request("/referrals/claim", { method: "POST", body: JSON.stringify({ code }) })).user;
+}
+
+/** Product analytics: counted events, never content (src/lib/analytics.ts). */
+export async function postEvents(body: PostEventsRequest): Promise<void> {
+  await request("/events", { method: "POST", body: JSON.stringify(body) });
 }

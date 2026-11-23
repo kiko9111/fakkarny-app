@@ -50,12 +50,25 @@ describe.skipIf(!hasTestDb)("referrals", () => {
     const inviter = await signedIn();
     const mine = ReferralResponse.parse((await app.inject({ method: "GET", url: "/me/referral", headers: inviter })).json());
     expect(mine.days_this_month).toBe(0);
+    expect(mine.url).toMatch(new RegExp(`/r/${mine.code}$`));
+    // The public page shows the inviter's first name only, and works without signing in.
+    await app.inject({ method: "PATCH", url: "/me", headers: inviter, payload: { name: "Mona Ali" } });
+    const page = await app.inject({ method: "GET", url: `/r/${mine.code.toLowerCase()}?lang=en` });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain("Mona invited you");
+    expect(page.body).not.toContain("Ali");
+    expect(page.body).toContain(`fakkarni://ref/${mine.code}`);
+    expect((await app.inject({ method: "GET", url: "/r/NOPE999" })).statusCode).toBe(404);
     // The code is stable.
     expect((await app.inject({ method: "GET", url: "/me/referral", headers: inviter })).json().code).toBe(mine.code);
 
     const friend = await signedIn();
     const res = await claim(friend, mine.code.toLowerCase());
     expect(res.statusCode).toBe(200);
+    // Both sides win: the friend gets 7 Pro days too.
+    const friendMe = res.json().user;
+    expect(friendMe.pro).toBe(true);
+    expect(Math.round((new Date(friendMe.bonus_pro_until).getTime() - Date.now()) / 86_400_000)).toBe(7);
     expect((await claim(friend, mine.code)).json()).toEqual({ error: "already_claimed" });
 
     let me = (await app.inject({ method: "GET", url: "/me", headers: inviter })).json().user;
@@ -77,5 +90,28 @@ describe.skipIf(!hasTestDb)("referrals", () => {
     expect((await claim(await signedIn(), "ZZZZZZZ")).statusCode).toBe(404);
     expect((await claim({ [INSTALL_ID_HEADER]: randomUUID() }, code)).json()).toEqual({ error: "sign_in_required" });
     expect((await app.inject({ method: "GET", url: "/me", headers: inviter })).json().user.bonus_pro_until).toBeNull();
+  });
+});
+
+describe.skipIf(!hasTestDb)("product analytics", () => {
+  const prisma = testPrisma();
+  const app = buildApp({ logger: false }, { prisma, rateLimitPerMinute: false, auth: { supabaseJwtSecret: SECRET, allowInstallId: true } });
+  beforeEach(() => resetDb(prisma));
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  it("stores counted events from the phone and refuses unknown names or long text", async () => {
+    const headers = { [INSTALL_ID_HEADER]: randomUUID() };
+    const at = new Date().toISOString();
+    const ok = await app.inject({ method: "POST", url: "/events", headers, payload: { events: [{ name: "screen", props: { route: "/money" }, at }, { name: "place_opened", props: { place: "daftar", via: "tap" }, at: "2020-01-01T00:00:00.000Z" }] } });
+    expect(ok.statusCode).toBe(204);
+    const rows = await prisma.event.findMany({ where: { name: { startsWith: "app:" } }, orderBy: { name: "asc" } });
+    expect(rows.map((r) => r.name)).toEqual(["app:place_opened", "app:screen"]);
+    // A wrong phone clock is clamped to the last week.
+    expect(Date.now() - rows[0]!.createdAt.getTime()).toBeLessThanOrEqual(7 * 86_400_000 + 1000);
+    expect((await app.inject({ method: "POST", url: "/events", headers, payload: { events: [{ name: "chat_text", props: {}, at }] } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/events", headers, payload: { events: [{ name: "screen", props: { route: "x".repeat(200) }, at }] } })).statusCode).toBe(400);
   });
 });

@@ -2,9 +2,11 @@ import "@/lib/web-boot";
 import { useEffect } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useFonts } from "expo-font";
-import { DefaultTheme, Stack, ThemeProvider } from "expo-router";
+import { DefaultTheme, Stack, ThemeProvider, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { t } from "@/i18n";
+import { track } from "@/lib/analytics";
+import { routePattern } from "@/lib/analytics-queue";
 import { isDemo } from "@/lib/demo";
 import { initSentry } from "@/lib/sentry";
 import { startSync } from "@/sync";
@@ -31,6 +33,11 @@ export default function RootLayout() {
   useEffect(() => {
     startSync();
   }, []);
+  // Analytics: which screens people use (the route pattern only, never ids or content).
+  const pathname = usePathname();
+  useEffect(() => {
+    if (pathname) track("screen", { route: routePattern(pathname) });
+  }, [pathname]);
 
   // A blank warm screen for the moment the fonts load (system fonts if they fail).
   if (!fontsReady && !fontError) return <View style={styles.boot} />;
@@ -82,6 +89,7 @@ export default function RootLayout() {
             options={{ presentation: "modal", title: t.circles.codeTitle }}
           />
           <Stack.Screen name="invite/[code]" options={{ title: "" }} />
+          <Stack.Screen name="ref/[code]" options={{ title: "" }} />
           <Stack.Screen
             name="session"
             options={{

@@ -35,6 +35,12 @@ export default function TabsLayout() {
     prefs.set("pending_invite", null);
     return <Redirect href={{ pathname: "/invite/[code]", params: { code: pendingInvite } }} />;
   }
+  // Came in through a friend's personal invite link: claim the gift for both.
+  const pendingReferral = prefs.get("pending_referral");
+  if (pendingReferral) {
+    prefs.set("pending_referral", null);
+    return <Redirect href={{ pathname: "/ref/[code]", params: { code: pendingReferral } }} />;
+  }
   // Right after sign-up: offer the first tracker (Zaki's gift), once.
   if (prefs.get("offer_tracker") === "1" && unlocked.includes("today")) {
     prefs.set("offer_tracker", null);

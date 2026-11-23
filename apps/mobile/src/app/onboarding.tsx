@@ -5,6 +5,7 @@ import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCod
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
+import { track } from "@/lib/analytics";
 import { unlock } from "@/lib/unlock-store";
 import { reloadApp } from "@/lib/reload";
 import { glass, Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker, type IconName } from "@/ui";
@@ -23,6 +24,7 @@ export default function OnboardingScreen() {
   const [busy, setBusy] = useState(false);
 
   const finish = () => {
+    track("signin_done", { signed_in: authAvailable });
     prefs.set("onboarded", "1");
     // Chat first: a new user starts with Zaki only; the rest opens as it's needed.
     unlock.startFresh();
@@ -142,7 +144,9 @@ export default function OnboardingScreen() {
         </View>
       ) : null}
       {busy ? <ActivityIndicator color={palette.primary} /> : null}
-      <Button label={authAvailable ? t.onboarding.skip : t.onboarding.start} kind={authAvailable ? "text" : "filled"} size="lg" block={!authAvailable} icon={authAvailable ? undefined : "arrow-forward"} onPress={finish} />
+      {/* Sign-in is required (owner decision, 2026-11-23): invites, circles and rewards need an
+          account. Only a build without sign-in configured (dev, demo) can go on without one. */}
+      {authAvailable ? null : <Button label={t.onboarding.start} size="lg" block icon="arrow-forward" onPress={finish} />}
     </ScrollView>
   );
 }

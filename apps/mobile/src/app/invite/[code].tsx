@@ -26,7 +26,12 @@ export default function InviteScreen() {
     let active = true;
     previewInvite(code)
       .then((p) => active && setPreview(p))
-      .catch((err) => active && setError(joinFailure(statusOf(err))));
+      .catch((err) => {
+        if (!active) return;
+        // Not a circle invite: a typed code may be a friend's personal code (both get Pro days).
+        if (statusOf(err) === 404) return router.replace({ pathname: "/ref/[code]", params: { code } });
+        setError(joinFailure(statusOf(err)));
+      });
     return () => {
       active = false;
     };

@@ -4,6 +4,8 @@ import { router } from "expo-router";
 import type { MessageKind } from "@fakkarni/shared";
 import type { LocalMessage } from "@/db/messages";
 import { t, dateLocale } from "@/i18n";
+import { track } from "@/lib/analytics";
+import { shareInvite } from "@/referral/share";
 import { ActionCards } from "./ActionCards";
 import { glass, Button, Icon, palette, radius, shadow, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
@@ -47,7 +49,22 @@ export const MessageBubble = memo(function MessageBubble({ message, lastInRun = 
           </Text>
         </View>
         {!mine && message.actions.length ? <ActionCards serverId={message.server_id} actions={message.actions} /> : null}
-        {message.kind === "upsell" ? <Button label={t.paywall.upsellButton} icon="sparkles" size="sm" kind="tonal" onPress={() => router.push("/paywall")} style={styles.pro} /> : null}
+        {message.kind === "upsell" ? (
+          // Out of free AI messages: inviting a friend comes first (both get 7 Pro days), then Pro.
+          <View style={styles.upsell}>
+            <Button label={t.referral.inviteButton} icon="gift" size="sm" onPress={() => void shareInvite("upsell")} />
+            <Button
+              label={t.paywall.upsellButton}
+              icon="sparkles"
+              size="sm"
+              kind="tonal"
+              onPress={() => {
+                track("paywall_opened", { from: "upsell" });
+                router.push("/paywall");
+              }}
+            />
+          </View>
+        ) : null}
         {message.saved ? (
           <Pressable style={({ pressed }) => [styles.savedChip, pressed && { opacity: 0.7 }]} onPress={() => router.push({ pathname: "/saved/[clientId]", params: { clientId: message.client_id } })} accessibilityRole="button">
             <Icon name="bookmark" size={13} color={palette.ok} />
@@ -89,7 +106,7 @@ const styles = StyleSheet.create({
   friend: { ...glass },
   tailMine: { borderBottomEndRadius: 6 },
   tailFriend: { borderBottomStartRadius: 6 },
-  pro: { marginTop: 2 },
+  upsell: { flexDirection: "row", flexWrap: "wrap", gap: space.xs, marginTop: 2 },
   savedChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: palette.okSoft, borderRadius: radius.pill, paddingHorizontal: space.sm + 2, paddingVertical: 4, maxWidth: 280 },
   savedText: { flexShrink: 1 },
   meta: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },

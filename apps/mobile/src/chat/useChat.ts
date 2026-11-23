@@ -32,12 +32,14 @@ export function useChat() {
       if (!text.trim()) return;
       await addUserMessage(text); // shown instantly, saved locally first
       await reload();
-      void syncQueue.flush();
+      // Resolves once this send attempt is over (reply in, or offline), so callers can follow up.
+      const flushing = syncQueue.flush().catch(() => {});
       // F1: after the first real exchange, ask for notifications "so I can check on you".
       if (!(await kvGet("asked_notifications"))) {
         await kvSet("asked_notifications", "1");
         setTimeout(() => void ensurePermissionAndRegister(), 1500);
       }
+      await flushing;
     },
     [reload],
   );

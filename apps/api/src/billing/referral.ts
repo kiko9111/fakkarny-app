@@ -1,10 +1,13 @@
 import { randomInt } from "node:crypto";
 
 /**
- * Invite rewards (owner decision, 2026-11-22): each friend who joins gives the inviter
- * 7 days of Pro, up to 4 weeks a calendar month. Pure helpers; the routes do the storage.
+ * Invite rewards (owner decision, 2026-11-22; both sides since 2026-11-23): each friend who
+ * joins gives the inviter 7 days of Pro, up to 4 weeks a calendar month, and the friend gets
+ * 7 days too (once, since a user names one inviter). Pure helpers; the routes do the storage.
  */
 export const REFERRAL_DAYS_PER_FRIEND = 7;
+/** What the invited friend gets when they name their inviter. */
+export const REFERRAL_WELCOME_DAYS = 7;
 export const REFERRAL_MAX_DAYS_PER_MONTH = 28;
 /** A new user can name their inviter only during their first week. */
 export const REFERRAL_CLAIM_WINDOW_DAYS = 7;

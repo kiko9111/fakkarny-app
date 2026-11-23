@@ -1,7 +1,8 @@
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
-import { extendBonus, monthStart, referralDaysToGrant } from "./referral";
+import { extendBonus, monthStart, REFERRAL_WELCOME_DAYS, referralDaysToGrant } from "./referral";
 
 const REWARD_EVENT = "referral_reward";
+const WELCOME_EVENT = "referral_welcome";
 type Db = PrismaClient | Prisma.TransactionClient;
 
 /** Pro days this inviter earned in the current calendar month. */
@@ -11,7 +12,7 @@ export async function referralDaysThisMonth(db: Db, userId: string, now: Date): 
 }
 
 /**
- * Record who invited `inviteeId` and give the inviter their Pro days. Returns false when
+ * Record who invited `inviteeId`, give the inviter their Pro days and the invitee their welcome days. Returns false when
  * the invitee already has an inviter (a double tap, or a second invite). Call inside a
  * transaction, after `canClaim` said yes.
  */
@@ -24,5 +25,9 @@ export async function rewardInviter(tx: Prisma.TransactionClient, inviteeId: str
   if (days > 0) await tx.user.update({ where: { id: inviter.id }, data: { bonusProUntil: extendBonus(inviter.bonusProUntil, now, days) } });
   // Recorded even at 0 days, so the inviter still sees the friend joined.
   await tx.event.create({ data: { userId: inviter.id, name: REWARD_EVENT, propsJson: { days }, createdAt: now } });
+  // Both sides win: the friend gets their own Pro days (no monthly cap: one inviter per user).
+  const invitee = await tx.user.findUniqueOrThrow({ where: { id: inviteeId } });
+  await tx.user.update({ where: { id: inviteeId }, data: { bonusProUntil: extendBonus(invitee.bonusProUntil, now, REFERRAL_WELCOME_DAYS) } });
+  await tx.event.create({ data: { userId: inviteeId, name: WELCOME_EVENT, propsJson: { days: REFERRAL_WELCOME_DAYS }, createdAt: now } });
   return true;
 }

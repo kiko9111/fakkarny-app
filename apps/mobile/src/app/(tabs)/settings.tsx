@@ -11,6 +11,7 @@ import { API_URL, deleteAccount, exportData, getMe, patchMe } from "@/lib/api";
 import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
+import { shareInvite } from "@/referral/share";
 import { ask, Button, Card, confirm, fonts, Icon, notify, palette, PersonAvatar, radius, Screen, space, Text, textStart, ThemePicker, type IconName } from "@/ui";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -168,6 +169,14 @@ export default function SettingsScreen() {
         </View>
         {authAvailable ? account ? <Button label={t.settings.signOut} kind="text" size="sm" onPress={() => void signOut().then(() => setAccount(null))} /> : <Button label={t.settings.signIn} kind="tonal" size="sm" onPress={() => router.push("/onboarding")} /> : null}
       </Card>
+
+      <Group title={t.referral.groupTitle}>
+        <View style={styles.field}>
+          <Text variant="body">{t.referral.groupBody}</Text>
+          <Button label={t.referral.inviteButton} kind="whatsapp" icon="logo-whatsapp" block onPress={() => void shareInvite("settings")} />
+        </View>
+        <LinkRow icon="key-outline" label={t.ui.haveCode} onPress={() => router.push("/invite")} />
+      </Group>
 
       <Group title={t.ui.profile}>
         <Field label={t.settings.name} first>
