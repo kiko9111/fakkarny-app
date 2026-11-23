@@ -468,6 +468,20 @@ Rules:
   Skipped when there is nothing to say. Template words, no AI call.
 - Invite page peek: GET /i/:code also shows members' first names (6, then "+N") and the count of
   open circle tasks. Nothing else about the circle is public.
+- Notification budget: Zaki's own messages (proactive:, status:, checkup:, gift:, memory:; a
+  multi-bubble send counts once) stop at DAILY_ZAKI_BUDGET = 5 a local day (`zakiSentToday`,
+  proactive/tick.ts). Reminders the user asked for are never counted.
+- Memory moments (proactive/memory-moment.ts): about once a week, 16:00-19:00 local, one short AI
+  call brings back a memory 14-120 days old (not used in 14 days, never "place" or sensitive by
+  keyword; the model may answer SKIP). No template fallback. Stored as kind "checkin", client_id
+  `memory:<id>:<iso>:<n>`, event `memory_moment` (once per 7 days, sent or not).
+- Share cards: apps/api/src/cards/render.ts draws SVG and turns it into PNG with @resvg/resvg-js
+  (fonts in apps/api/assets/fonts, OFL; the font has no emoji so `noEmoji` strips them). Public
+  routes GET /cards/streak/<days>.png?code= and /s/:code/card.png (also the split page og:image).
+  The phone downloads and shares them (src/share/card.ts, expo-file-system + expo-sharing, both
+  already in builds): tap the streak flame, or "Share as a picture" on a split.
+- Split to Daftar: "Put what's left in the Daftar" on a split creates Daftar entries from the
+  creator's side (`daftarFromSplit`, mobile split/logic.ts; the creator is the first person).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

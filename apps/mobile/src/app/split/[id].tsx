@@ -5,7 +5,11 @@ import type { SplitResponse } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t } from "@/i18n";
-import { deleteSplit, getSplit, markSplitPaid } from "@/lib/api";
+import { createDaftar, deleteSplit, getSplit, markSplitPaid } from "@/lib/api";
+import { prefs } from "@/lib/prefs";
+import { track } from "@/lib/analytics";
+import { daftarFromSplit } from "@/split/logic";
+import { shareSplitCard } from "@/share/card";
 import { Badge, Button, Card, confirm, EmptyState, Icon, notify, palette, Screen, space, Text } from "@/ui";
 
 /** One split: everyone's share, what friends added from the link, and who has paid back. */
@@ -13,6 +17,8 @@ export default function SplitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [data, setData] = useState<SplitResponse | null>(null);
   const [failed, setFailed] = useState(false);
+  const [inDaftar, setInDaftar] = useState(() => (prefs.get("split_daftar") ?? "").split(",").includes(id));
+  const [adding, setAdding] = useState(false);
   const load = useCallback(() => {
     getSplit(id)
       .then((r) => {
@@ -30,6 +36,23 @@ export default function SplitScreen() {
     void markSplitPaid(split.id, index, paid)
       .then(setData)
       .catch(() => notify(t.split.offline, "error"));
+  const entries = daftarFromSplit(split, t.split.daftarNote);
+  // Put what is still owed into the Daftar (once per split on this phone), so it stays tracked.
+  const toDaftar = async () => {
+    setAdding(true);
+    try {
+      for (const e of entries) await createDaftar(e);
+      const done = (prefs.get("split_daftar") ?? "").split(",").filter(Boolean).slice(-50);
+      prefs.set("split_daftar", [...done, split.id].join(","));
+      setInDaftar(true);
+      track("split_to_daftar", { entries: entries.length });
+      notify(fill(t.split.inDaftar, { n: entries.length }));
+    } catch {
+      notify(t.split.offline, "error");
+    } finally {
+      setAdding(false);
+    }
+  };
   const owed = split.people.reduce((sum, p, i) => (i === split.paid_by || p.paid ? sum : sum + p.share), 0);
 
   return (
@@ -90,7 +113,9 @@ export default function SplitScreen() {
           ))}
         </Card>
       ) : null}
+      {entries.length && !inDaftar ? <Button label={t.split.toDaftar} kind="outline" icon="book-outline" block disabled={adding} onPress={() => void toDaftar()} /> : null}
       <Button label={t.split.resend} kind="whatsapp" icon="logo-whatsapp" block onPress={resend} />
+      <Button label={t.split.shareCard} kind="outline" icon="image-outline" block onPress={() => void shareSplitCard(split.url).then((ok) => (ok ? track("split_card_shared") : notify(t.split.offline, "error")))} />
       <Button label={t.split.openPage} kind="outline" icon="open-outline" block onPress={() => void Linking.openURL(split.url)} />
       <Button
         label={t.split.delete}

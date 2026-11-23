@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { MessageKind, PrismaClient, User } from "../generated/prisma/client";
 import { costUsd, FRIEND_MODEL, type FriendModel } from "../ai/model";
-import { isAwake, toLocalIso } from "../lib/time";
+import { isAwake, localToUtc, toLocalIso } from "../lib/time";
 
 const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, user.wakeTime, user.sleepTime);
 import { nextOccurrences } from "@fakkarni/shared";
@@ -13,6 +13,34 @@ import { COOLDOWN_DAYS, planStatusCheck, statusClientId, trackerAskDue, type Sta
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
 import { checkupClientId, checkupLines, hasSomething, isCheckupTime } from "./checkup";
+import { isMomentTime, momentClientId, momentLines, momentPrompt, MOMENT_EVERY_DAYS, MOMENT_SYSTEM, pickMemory, QUIET_AFTER_USER_MIN } from "./memory-moment";
+
+/**
+ * Zaki's own messages (morning, night, check-ins, status checks, tracker questions, the Friday
+ * check-up, the month gift, memory moments) stop at this many a local day (owner decision,
+ * 2026-11-23: 4 to 5). Reminders the user asked for are not counted and always fire.
+ */
+export const DAILY_ZAKI_BUDGET = 5;
+
+export async function zakiSentToday(prisma: PrismaClient, user: User, now: Date): Promise<number> {
+  const local = toLocalIso(now, user.timezone);
+  const midnight = localToUtc(`${local.slice(0, 10)}T00:00`, user.timezone);
+  return prisma.message.count({
+    where: {
+      userId: user.id,
+      role: "friend",
+      createdAt: { gte: midnight, lte: now },
+      OR: [
+        { clientId: { startsWith: "status:" } },
+        { clientId: { startsWith: "checkup:" } },
+        { clientId: { startsWith: "gift:" } },
+        { AND: [{ clientId: { startsWith: "memory:" } }, { clientId: { endsWith: ":0" } }] },
+        // One proactive send can be a few bubbles: count its first one.
+        { AND: [{ clientId: { startsWith: "proactive:" } }, { clientId: { endsWith: ":0" } }] },
+      ],
+    },
+  });
+}
 
 /** Only users active recently get proactive messages (no pinging people who left). */
 const ACTIVE_WITHIN_DAYS = 30;
@@ -254,6 +282,41 @@ export async function sendFridayCheckup(deps: TickDeps, user: User, now: Date): 
   return true;
 }
 
+/** About once a week, Zaki brings back something the user told him weeks ago (memory-moment.ts). */
+export async function sendMemoryMoment(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  if (!deps.model || !isMomentTime(toLocalIso(now, user.timezone)) || !isAwakeForNotice(user, now)) return false;
+  if (user.lastUserMessageAt && now.getTime() - user.lastUserMessageAt.getTime() < QUIET_AFTER_USER_MIN * 60_000) return false;
+  const since = new Date(now.getTime() - MOMENT_EVERY_DAYS * 86400_000);
+  // Tried this week already (sent, or the model passed): wait for next week.
+  if (await deps.prisma.event.findFirst({ where: { userId: user.id, name: "memory_moment", createdAt: { gte: since } }, select: { id: true } })) return false;
+  const memory = pickMemory(await deps.prisma.memory.findMany({ where: { userId: user.id }, take: 300 }), now);
+  if (!memory) return false;
+  const script = await scriptFor(deps.prisma, user);
+  let lines: string[] | null = null;
+  let usage: Awaited<ReturnType<FriendModel["complete"]>>["usage"] | null = null;
+  try {
+    const out = await deps.model.complete({ system: MOMENT_SYSTEM, prompt: momentPrompt(memory, now, { name: user.name, script }), maxTokens: 300 });
+    usage = out.usage;
+    lines = momentLines(out.text);
+  } catch {
+    return false;
+  }
+  await deps.prisma.$transaction(async (tx) => {
+    await tx.memory.update({ where: { id: memory.id }, data: { lastUsedAt: now } });
+    await tx.event.create({ data: { userId: user.id, name: "memory_moment", propsJson: { sent: Boolean(lines) } } });
+    if (usage) await tx.event.create({ data: { userId: user.id, name: "ai_call", propsJson: { purpose: "memory_moment", model: FRIEND_MODEL, ...usage, cost_usd: costUsd(usage) } } });
+    if (lines) {
+      await tx.message.createMany({
+        data: lines.map((text, n) => ({ userId: user.id, role: "friend" as const, kind: "checkin" as const, text, clientId: `${momentClientId(memory.id, now)}:${n}`, createdAt: new Date(now.getTime() + n) })),
+        skipDuplicates: true,
+      });
+    }
+  });
+  if (!lines) return false;
+  await pushToUser(deps, user, lines.join("\n"), "checkin");
+  return true;
+}
+
 /** Tracker questions at the times the user picked in the builder. Template words, no AI call. */
 export async function askTrackers(deps: TickDeps, user: User, now: Date): Promise<boolean> {
   const trackers = await deps.prisma.tracker.findMany({
@@ -328,8 +391,10 @@ export async function runTick(deps: TickDeps, now = new Date()): Promise<number>
   for (const user of users) {
     try {
       await postDueReminders(deps.prisma, user, now);
+      if ((await zakiSentToday(deps.prisma, user, now)) >= DAILY_ZAKI_BUDGET) continue;
       if (await sendMonthGift(deps, user, now)) sent++;
       else if (await sendFridayCheckup(deps, user, now)) sent++;
+      else if (await sendMemoryMoment(deps, user, now)) sent++;
       else if (await askTrackers(deps, user, now)) sent++;
       else if (await runForUser(deps, user, now)) sent++;
     } catch (err) {

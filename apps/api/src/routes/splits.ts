@@ -161,7 +161,7 @@ const COPY = {
 
 export function renderSplitPage(split: Split | null, lang: Lang, opts: { storeUrl?: string; notice?: string }): string {
   const t = COPY[lang];
-  const meta = { title: t.title, description: t.description, footer: t.ai };
+  const meta = { title: t.title, description: t.description, footer: t.ai, image: split ? `${split.url}/card.png?lang=${lang}` : undefined };
   if (!split) return renderShell(lang, meta, `<p>${t.gone}</p>`);
   const money = (n: number) => esc(formatAmount(n, split.currency, lang));
   const people = split.people
