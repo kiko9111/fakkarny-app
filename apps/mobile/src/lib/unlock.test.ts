@@ -70,6 +70,8 @@ describe("chat-first unlocking", () => {
 
   it("maps routes to places", () => {
     expect(featureOfRoute("/money/abc")).toBe("daftar");
+    expect(featureOfRoute("/daftar/K7Q2")).toBe("daftar");
+    expect(featureOfRoute("/split/abc")).toBe("daftar");
     expect(featureOfRoute("/circles")).toBe("people");
     expect(featureOfRoute("/trackers")).toBe("today");
     expect(featureOfRoute("/paywall")).toBeNull();

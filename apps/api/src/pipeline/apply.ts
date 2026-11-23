@@ -68,6 +68,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
             followUpAt: repeat ? null : safeLocalToUtc(c.follow_up_at_local, tz),
             repeatEveryMinutes: repeat,
             important: c.important ?? false,
+            alarm: c.alarm ?? false,
             nudge: c.nudge ?? null,
             debtPerson: c.debt?.person ?? null,
             debtAmount: c.debt?.amount ?? null,
@@ -99,6 +100,7 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
         const follow = safeLocalToUtc(u.follow_up_at_local, tz);
         if (follow) data.followUpAt = follow;
         if (u.repeat_every_minutes) data.repeatEveryMinutes = u.repeat_every_minutes;
+        if (typeof u.alarm === "boolean") data.alarm = u.alarm;
         items.push(await tx.item.update({ where: { id: u.id }, data }));
       }
       // "خلصتها" in chat also finishes a task a circle member asked for.

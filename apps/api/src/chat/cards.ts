@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ChatAction } from "@fakkarni/shared";
 import type { ReplyLang } from "../pipeline/rules";
 
@@ -9,12 +10,56 @@ import type { ReplyLang } from "../pipeline/rules";
 export interface StoredCard extends ChatAction {
   lang: ReplyLang;
   payload?: PendingPayload;
+  /** A done card the user can take back ("Undo"): what to do to undo it. Server-only. */
+  undo?: UndoPayload;
+  /** Cards on someone else's news (a request, handed-in homework): "No" does this instead of just cancelling. */
+  noPayload?: PendingPayload;
+}
+
+/**
+ * A card on a chat line about what someone else did ("Mona asked you to buy bread"), so the
+ * reader answers right there: the button or a plain yes runs `payload`, a no runs `noPayload`.
+ */
+export function activityCard(lang: ReplyLang, kind: ChatAction["kind"], label: string, route: string | null, payload: PendingPayload, noPayload?: PendingPayload): StoredCard {
+  return { id: randomUUID(), kind, status: "pending", label, route, lang, payload, ...(noPayload ? { noPayload } : {}) };
 }
 
 export type PendingPayload =
   | { kind: "log_money"; sectionId: string; amount: number; note: string | null; moneyKind: "expense" | "income" }
   | { kind: "assign_task"; circleId: string; assigneeId: string; title: string; dueAt: string | null; remindAt: string | null; homework: boolean; note: string | null }
-  | { kind: "ask_circle"; circleId: string; text: string };
+  | { kind: "ask_circle"; circleId: string; text: string }
+  | { kind: "delete_section"; sectionId: string }
+  | { kind: "delete_tracker"; trackerId: string }
+  | { kind: "daftar_add"; otherName: string; direction: "owed_to_me" | "i_owe"; amount: number; note: string | null; circleId: string | null; otherUserId: string | null }
+  | { kind: "daftar_settle" | "daftar_cancel"; entryId: string }
+  | { kind: "daftar_answer"; entryId: string; answer: "confirm" | "dispute" }
+  | { kind: "task_answer"; taskId: string; answer: "accept" | "decline" }
+  | { kind: "task_nudge" | "task_cancel"; taskId: string }
+  | { kind: "homework_submit"; taskId: string; text: string }
+  | { kind: "homework_review"; taskId: string; verdict: "approved" | "redo"; note: string | null }
+  | { kind: "checkin"; circleId: string; checkinKind: "arrived" | "home" | "on_way" | "medicine" | "ok"; note: string | null }
+  | { kind: "ask_checkin"; circleId: string; userId: string }
+  | { kind: "leave_circle"; circleId: string }
+  | { kind: "iftar"; circleId: string; on: string; note: string | null };
+
+/** How to take back a done card. Only the user's own things; nothing that reached other people. */
+export type UndoPayload =
+  | { kind: "money_entry"; entryId: string }
+  | { kind: "money_entry_restore"; sectionId: string; amount: number; note: string | null; split: string[]; source: string; at: string }
+  | { kind: "section"; sectionId: string }
+  | { kind: "budget"; sectionId: string; budget: number | null }
+  | { kind: "tracker"; trackerId: string }
+  | { kind: "tracker_entry"; entryId: string }
+  | { kind: "tracker_entry_restore"; trackerId: string; amount: number; source: string; at: string }
+  | { kind: "tracker_settings"; trackerId: string; goal: number | null; askTimes: string[] }
+  | { kind: "circle"; circleId: string }
+  | { kind: "rename"; circleId: string; name: string }
+  | { kind: "memories"; memories: { kind: string; subject: string; content: string; createdAt: string }[] }
+  | { kind: "user"; data: { name?: string | null; wakeTime?: string; sleepTime?: string; instapayLink?: string | null; gender?: string | null; tone?: string; checkinIntervalH?: string } }
+  | { kind: "split"; splitId: string }
+  | { kind: "split_paid"; splitId: string; index: number }
+  | { kind: "daftar_entry"; entryId: string }
+  | { kind: "task_remind"; taskId: string; remindAt: string | null };
 
 /** Cards for the wire, without the server-only fields. Tolerates anything stored (old rows: null). */
 export function wireActions(json: unknown): ChatAction[] {
@@ -23,7 +68,7 @@ export function wireActions(json: unknown): ChatAction[] {
     if (!c || typeof c !== "object") return [];
     const card = c as Partial<StoredCard>;
     if (typeof card.id !== "string" || typeof card.kind !== "string" || typeof card.label !== "string" || typeof card.status !== "string") return [];
-    return [{ id: card.id, kind: card.kind, status: card.status, label: card.label, route: card.route ?? null }];
+    return [{ id: card.id, kind: card.kind, status: card.status, label: card.label, route: card.route ?? null, ...(card.status === "done" && card.undo ? { undoable: true } : {}) }];
   });
 }
 
@@ -107,6 +152,80 @@ export const LABEL = {
   circleAsk: (l: ReplyLang, circle: string, text: string) => (l === "english" ? `Post in ${q(circle)}: “${text}”?` : `أنزلها في ${q(circle)}: «${text}»؟`),
   circlePosted: (l: ReplyLang, circle: string) => (l === "english" ? `Posted in ${q(circle)}` : `نزلت في ${q(circle)}`),
   cancelled: (l: ReplyLang) => (l === "english" ? "Cancelled" : "اتلغت"),
+  undone: (l: ReplyLang) => (l === "english" ? "Undone" : "رجّعتها"),
+  entryDeleted: (l: ReplyLang, amount: number, section: string) => (l === "english" ? `Deleted ${egp(l, amount)} from ${q(section)}` : `مسحت ${egp(l, amount)} من ${q(section)}`),
+  noEntry: (l: ReplyLang) => (l === "english" ? "I couldn't find that entry" : "مالقيتش المصروف ده"),
+  sectionDeleteAsk: (l: ReplyLang, name: string, entries: number) =>
+    l === "english" ? `Delete ${q(name)}${entries ? ` and its ${entries} entries` : ""}?` : `أمسح ${q(name)}${entries ? ` وفيه ${entries} مصروف` : ""}؟`,
+  sectionDeleted: (l: ReplyLang, name: string) => (l === "english" ? `Deleted ${q(name)}` : `مسحت ${q(name)}`),
+  daftarAsk: (l: ReplyLang, person: string, amount: number, dir: "owed_to_me" | "i_owe", member: boolean) =>
+    l === "english"
+      ? `Add to the Daftar: ${dir === "owed_to_me" ? `${person} owes you` : `you owe ${person}`} ${egp(l, amount)}?${member ? " They'll see it and confirm." : ""}`
+      : `أسجلها في الدفتر: ${dir === "owed_to_me" ? `ليك عند ${person}` : `عليك لـ ${person}`} ${egp(l, amount)}؟${member ? " هتوصله ويأكدها." : ""}`,
+  daftarMade: (l: ReplyLang, person: string, amount: number, dir: "owed_to_me" | "i_owe", member: boolean) =>
+    l === "english"
+      ? `In the Daftar: ${dir === "owed_to_me" ? `${person} owes you` : `you owe ${person}`} ${egp(l, amount)} · ${member ? "sent for them to confirm" : "tap to send the confirm link"}`
+      : `في الدفتر: ${dir === "owed_to_me" ? `ليك عند ${person}` : `عليك لـ ${person}`} ${egp(l, amount)} · ${member ? "اتبعتت يأكدها" : "دوس وابعتله لينك التأكيد"}`,
+  daftarSettleAsk: (l: ReplyLang, person: string, amount: number) => (l === "english" ? `Mark ${egp(l, amount)} with ${person} as paid? They'll be told.` : `أعلّم إن الـ${egp(l, amount)} مع ${person} اتدفعت؟ هيوصله خبر.`),
+  daftarSettled: (l: ReplyLang, person: string, amount: number) => (l === "english" ? `Paid: ${egp(l, amount)} with ${person}` : `اتدفعت: ${egp(l, amount)} مع ${person}`),
+  daftarCancelAsk: (l: ReplyLang, person: string, amount: number) => (l === "english" ? `Cancel the entry of ${egp(l, amount)} with ${person}?` : `ألغي تسجيلة الـ${egp(l, amount)} مع ${person}؟`),
+  daftarCancelled: (l: ReplyLang, person: string) => (l === "english" ? `Cancelled the entry with ${person}` : `لغيت التسجيلة مع ${person}`),
+  daftarAnswerAsk: (l: ReplyLang, person: string, amount: number, yes: boolean) =>
+    l === "english" ? `Tell ${person} the ${egp(l, amount)} is ${yes ? "right" : "not right"}?` : `أقول لـ ${person} إن الـ${egp(l, amount)} ${yes ? "مظبوطة" : "مش مظبوطة"}؟`,
+  daftarAnswered: (l: ReplyLang, person: string, yes: boolean) => (l === "english" ? `Told ${person}: ${yes ? "it's right" : "not right"}` : `قلت لـ ${person}: ${yes ? "مظبوطة" : "مش مظبوطة"}`),
+  daftarRemind: (l: ReplyLang, person: string) => (l === "english" ? `Tap to send ${person} a gentle reminder from your WhatsApp` : `دوس وابعت لـ ${person} تفكير لطيف من الواتساب بتاعك`),
+  daftarNotYet: (l: ReplyLang) => (l === "english" ? "Zaki reminds only after they confirmed it" : "زكي بيفكّر بس بعد ما يأكدها"),
+  notAllowed: (l: ReplyLang) => (l === "english" ? "That can't be done on it now" : "مينفعش دلوقتي"),
+  trackerUndone: (l: ReplyLang, label: string) => (l === "english" ? `Took back the last log of ${label}` : `شلت آخر تسجيل في ${label}`),
+  trackerNothing: (l: ReplyLang, label: string) => (l === "english" ? `Nothing logged today in ${label}` : `مفيش تسجيل النهارده في ${label}`),
+  trackerDeleteAsk: (l: ReplyLang, label: string) => (l === "english" ? `Stop and delete ${label} with its history?` : `أوقف ${label} وأمسح تاريخها؟`),
+  trackerDeleted: (l: ReplyLang, label: string) => (l === "english" ? `Deleted ${label}` : `مسحت ${label}`),
+  ramadanPack: (l: ReplyLang, n: number) => (l === "english" ? `Ramadan pack added · ${n} trackers` : `باقة رمضان اتضافت · ${n} متابعات`),
+  notRamadan: (l: ReplyLang) => (l === "english" ? "The Ramadan pack opens in Ramadan" : "باقة رمضان بتفتح في رمضان"),
+  invite: (l: ReplyLang, circle: string) => (l === "english" ? `Tap to send the ${q(circle)} invite from your WhatsApp` : `دوس وابعت دعوة ${q(circle)} من الواتساب بتاعك`),
+  joined: (l: ReplyLang, circle: string) => (l === "english" ? `You joined ${q(circle)}` : `دخلت ${q(circle)}`),
+  badCode: (l: ReplyLang) => (l === "english" ? "That invite code doesn't work" : "كود الدعوة ده مش شغال"),
+  renamed: (l: ReplyLang, from: string, to: string) => (l === "english" ? `${q(from)} is now ${q(to)}` : `${q(from)} بقت ${q(to)}`),
+  ownerOnlyCircle: (l: ReplyLang, name: string) => (l === "english" ? `Only the owner of ${q(name)} can do that` : `صاحب ${q(name)} بس اللي يعمل كده`),
+  leaveAsk: (l: ReplyLang, name: string) => (l === "english" ? `Leave ${q(name)}?` : `تخرج من ${q(name)}؟`),
+  left: (l: ReplyLang, name: string) => (l === "english" ? `You left ${q(name)}` : `خرجت من ${q(name)}`),
+  checkinAsk: (l: ReplyLang, circle: string, what: string) => (l === "english" ? `Tell ${q(circle)}: ${what}?` : `أقول لـ ${q(circle)}: ${what}؟`),
+  checkinSent: (l: ReplyLang, circle: string, what: string) => (l === "english" ? `Told ${q(circle)}: ${what}` : `قلت لـ ${q(circle)}: ${what}`),
+  askCheckinAsk: (l: ReplyLang, person: string) => (l === "english" ? `Ask ${person} to check in?` : `أطلب من ${person} يطمّنك؟`),
+  askCheckinSent: (l: ReplyLang, person: string) => (l === "english" ? `Asked ${person} to check in` : `طلبت من ${person} يطمّنك`),
+  tooSoon: (l: ReplyLang) => (l === "english" ? "Already asked a little while ago" : "اتطلبت من شوية"),
+  iftarAsk: (l: ReplyLang, circle: string, on: string) => (l === "english" ? `Invite ${q(circle)} to iftar on ${on}?` : `أعزم ${q(circle)} على الفطار يوم ${on}؟`),
+  iftarSent: (l: ReplyLang, circle: string) => (l === "english" ? `Iftar invite posted in ${q(circle)}` : `دعوة الفطار نزلت في ${q(circle)}`),
+  /** On a request someone sent: Yes accepts, No declines. */
+  taskRequestCard: (l: ReplyLang, title: string) => (l === "english" ? `Take on ${q(title)}? Yes / No` : `توافق على ${q(title)}؟ أيوه / لأ`),
+  /** On handed-in homework: Yes = well done, No = redo. */
+  homeworkCard: (l: ReplyLang, person: string) => (l === "english" ? `Tell ${person} "well done" 👏? (No = do it again)` : `أقول لـ ${person} «برافو» 👏؟ (لأ = يعيدها)`),
+  /** On a Daftar entry a circle member recorded: Yes = right, No = not right. */
+  daftarCard: (l: ReplyLang, amount: number) => (l === "english" ? `Is the ${egp(l, amount)} right? Yes / No` : `الـ${egp(l, amount)} مظبوطة؟ أيوه / لأ`),
+  taskAnswerAsk: (l: ReplyLang, person: string, title: string, yes: boolean) =>
+    l === "english" ? `${yes ? "Say yes" : "Say no"} to ${person}: ${q(title)}?` : `${yes ? "أوافق" : "أعتذر"} لـ ${person} على ${q(title)}؟`,
+  taskAnswered: (l: ReplyLang, title: string, yes: boolean) => (l === "english" ? (yes ? `Yours now: ${q(title)}` : `Said no to ${q(title)}`) : yes ? `بقت عليك: ${q(title)}` : `اعتذرت عن ${q(title)}`),
+  nudgeAsk: (l: ReplyLang, person: string, title: string) => (l === "english" ? `Remind ${person} about ${q(title)}?` : `أفكّر ${person} بـ ${q(title)}؟`),
+  nudged: (l: ReplyLang, person: string) => (l === "english" ? `Reminded ${person}` : `فكّرت ${person}`),
+  taskCancelAsk: (l: ReplyLang, person: string, title: string) => (l === "english" ? `Cancel ${q(title)} for ${person}?` : `ألغي ${q(title)} من على ${person}؟`),
+  taskCancelled: (l: ReplyLang, title: string) => (l === "english" ? `Cancelled ${q(title)}` : `اتلغت ${q(title)}`),
+  taskRemind: (l: ReplyLang, title: string, at: string | null) => (l === "english" ? `${q(title)}: ${at ? `reminder at ${at}` : "no set reminder"}` : `${q(title)}: ${at ? `التفكير ${at}` : "من غير ميعاد تفكير"}`),
+  submitAsk: (l: ReplyLang, person: string, title: string) => (l === "english" ? `Hand in ${q(title)} to ${person}?` : `أسلّم ${q(title)} لـ ${person}؟`),
+  submitted: (l: ReplyLang, title: string) => (l === "english" ? `Handed in ${q(title)}` : `اتسلّم ${q(title)}`),
+  reviewAsk: (l: ReplyLang, person: string, title: string, ok: boolean) =>
+    l === "english" ? `Tell ${person} ${ok ? "well done" : "to redo"} ${q(title)}?` : `أقول لـ ${person} ${ok ? "برافو على" : "يعيد"} ${q(title)}؟`,
+  reviewed: (l: ReplyLang, person: string, ok: boolean) => (l === "english" ? `Told ${person}: ${ok ? "well done" : "redo"}` : `قلت لـ ${person}: ${ok ? "برافو" : "يعيدها"}`),
+  noTask: (l: ReplyLang) => (l === "english" ? "I couldn't find that task" : "مالقيتش المهمة دي"),
+  noDaftar: (l: ReplyLang) => (l === "english" ? "I couldn't find that in the Daftar" : "مالقيتهاش في الدفتر"),
+  splitMade: (l: ReplyLang, total: number, people: number, share: number) =>
+    l === "english" ? `Split ${egp(l, total)} between ${people} · about ${egp(l, share)} each · tap to send the link` : `اتقسم ${egp(l, total)} على ${people} · حوالي ${egp(l, share)} للفرد · دوس وابعت اللينك`,
+  splitPaid: (l: ReplyLang, person: string) => (l === "english" ? `${person} paid their share` : `${person} دفع نصيبه`),
+  noSplit: (l: ReplyLang) => (l === "english" ? "I couldn't find that split" : "مالقيتش القسمة دي"),
+  forgot: (l: ReplyLang, n: number) => (l === "english" ? `Forgot ${n} thing${n === 1 ? "" : "s"}` : n === 1 ? "نسيت الحاجة دي" : `نسيت ${n} حاجات`),
+  nothingToForget: (l: ReplyLang) => (l === "english" ? "I don't have that saved" : "مش محفوظة عندي أصلاً"),
+  setting: (l: ReplyLang, what: string) => (l === "english" ? `Settings: ${what}` : `الإعدادات: ${what}`),
+  badSetting: (l: ReplyLang) => (l === "english" ? "That value doesn't fit, try it in Settings" : "القيمة دي مش مظبوطة، جرّب من الإعدادات"),
+  open: (l: ReplyLang, screen: string) => (l === "english" ? `Open ${screen}` : `افتح ${screen}`),
   notFound: (l: ReplyLang, what: "section" | "tracker" | "circle" | "person" | "which_circle", name?: string) => {
     const n = name ? q(name) : "";
     if (l === "english") {
@@ -152,3 +271,27 @@ export function isCancel(text: string): boolean {
 }
 
 export const CANCELLED_REPLY: Record<ReplyLang, string> = { arabic: "تمام، لغيتها.", english: "Okay, cancelled." };
+
+const UNDO = new Set(["تراجع", "رجع", "رجعها", "رجعه", "الغي", "الغيها", "امسح", "امسحها", "اللي", "فات", "عملته", "دي", "ده", "يا", "زكي", "undo", "that", "it", "take", "back", "zaki", "please", "last", "one"]);
+const UNDO_CORE = new Set(["تراجع", "رجعها", "رجعه", "امسحها", "undo", "back"]);
+
+/** A short "take that back": "تراجع", "رجّعها", "undo that". Undoes Zaki's latest change of the user's own. */
+export function isUndo(text: string): boolean {
+  const w = words(text);
+  return w.length > 0 && w.length <= 5 && w.every((x) => UNDO.has(x)) && w.some((x) => UNDO_CORE.has(x));
+}
+
+/**
+ * "I'm home" said to Zaki: offer to tell the family (a card, so nothing reaches them without a
+ * yes). Strict on purpose: "وصلت" alone ("did it arrive?") is not a check-in.
+ */
+export function homeCheckin(text: string): "home" | "arrived" | null {
+  const t = text.toLowerCase().replace(/[ً-ْـ]/g, "").replace(/[إأآ]/g, "ا").replace(/[!.,؟?🌟❤️💛✅🏠]+/gu, " ").trim();
+  if (t.length > 40) return null;
+  if (/^(انا\s+)?(وصلت\s+(البيت|بيتي)|روحت(\s+البيت)?|انا\s+في\s+البيت|في\s+البيت\s+خلاص)(\s+(خلاص|الحمد\s*لله|يا\s+زكي))*$/.test(t)) return "home";
+  if (/^(i'?m|i\s+am)\s+(home|back\s+home)(\s+now)?$|^(got|back)\s+home(\s+safe(ly)?)?$|^home\s+safe$/.test(t)) return "home";
+  if (/^(انا\s+)?وصلت\s+بالسلامة(\s+الحمد\s*لله)?$|^(arrived|got\s+there)\s+safe(ly)?$|^i\s+arrived(\s+safe(ly)?)?$/.test(t)) return "arrived";
+  return null;
+}
+
+export const HOME_REPLY: Record<ReplyLang, string> = { arabic: "حمد الله على السلامة 🌟", english: "Glad you're back safe 🌟" };

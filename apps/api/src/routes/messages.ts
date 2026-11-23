@@ -10,6 +10,7 @@ import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
 import { dailyAiAllowance } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
+import { undoCard } from "../chat/undo";
 import { answerCard } from "../chat/actions";
 import { storedCards } from "../chat/cards";
 import { z } from "zod";
@@ -141,7 +142,10 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     const cards = storedCards(msg?.actionsJson);
     const at = cards.findIndex((c) => c.id === p.data.actionId);
     if (!msg || at < 0) return reply.code(404).send({ error: "not_found" });
-    const { card, notices } = await answerCard(prisma, req.user, cards[at]!, body.data.confirm, now(), { requireSubscription: opts.requireSubscription ?? false });
+    const { card, notices } =
+      "undo" in body.data
+        ? { card: await undoCard(prisma, req.user, cards[at]!, msg.createdAt, now()), notices: [] }
+        : await answerCard(prisma, req.user, cards[at]!, body.data.confirm, now(), { requireSubscription: opts.requireSubscription ?? false });
     cards[at] = card;
     const saved = await prisma.message.update({ where: { id: msg.id }, data: { actionsJson: cards as unknown as Prisma.InputJsonValue } });
     if (notices.length) void pushNotices(prisma, opts.push, notices, app.log);

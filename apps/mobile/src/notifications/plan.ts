@@ -17,6 +17,8 @@ export interface ReminderItem {
   due_at: string | null;
   remind_at: string | null;
   important: boolean;
+  /** Ring like an alarm (own channel, sound, through Do Not Disturb where allowed). Only when the user asked. */
+  alarm?: boolean;
   repeat_every_minutes?: number | null;
   follow_up_at?: string | null;
 }
@@ -27,6 +29,8 @@ export interface PlannedNotification {
   body: string;
   kind: "hint" | "clear" | "repeat" | "followup";
   itemId: string;
+  /** Show on the alarm channel. */
+  alarm?: boolean;
 }
 
 export const CLEAR_LEAD_MS = 30 * 60_000;
@@ -78,6 +82,7 @@ export function planReminderNotifications(
       body: item.nudge ?? item.title,
       kind: "repeat" as const,
       itemId: item.id,
+      ...(item.alarm ? { alarm: true } : {}),
     }));
   }
 
@@ -88,7 +93,8 @@ export function planReminderNotifications(
   } else {
     out.push({ identifier: hintId(item.id), date: remind, body: item.nudge ?? item.title, kind: "hint", itemId: item.id });
     if (due) {
-      const clearAt = item.important ? due : new Date(due.getTime() - CLEAR_LEAD_MS);
+      // An alarm rings at the time itself; important items get the clear line then too.
+      const clearAt = item.important || item.alarm ? due : new Date(due.getTime() - CLEAR_LEAD_MS);
       if (clearAt.getTime() > remind.getTime()) {
         out.push({ identifier: clearId(item.id), date: clearAt, body: clearFor(clearAt), kind: "clear", itemId: item.id });
       }
@@ -99,7 +105,9 @@ export function planReminderNotifications(
   if (follow && opts.followupText && awake(follow)) {
     out.push({ identifier: followupId(item.id), date: follow, body: opts.followupText(item.title), kind: "followup", itemId: item.id });
   }
-  return out.filter((n) => n.date.getTime() > opts.now.getTime());
+  return out
+    .filter((n) => n.date.getTime() > opts.now.getTime())
+    .map((n) => (item.alarm && n.kind !== "followup" ? { ...n, alarm: true } : n));
 }
 
 /** "{title} at {time}" templating for i18n strings. */

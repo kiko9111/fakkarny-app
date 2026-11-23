@@ -1,11 +1,12 @@
 import type { Item } from "@fakkarni/shared";
 import { getDb } from "./database";
 
-interface Row extends Omit<Item, "important" | "user_id"> {
+interface Row extends Omit<Item, "important" | "alarm" | "user_id"> {
   important: number;
+  alarm: number | null;
 }
 
-const toItem = (r: Row): Item => ({ ...r, user_id: "", important: r.important === 1, repeat_every_minutes: r.repeat_every_minutes ?? null });
+const toItem = (r: Row): Item => ({ ...r, user_id: "", important: r.important === 1, alarm: r.alarm === 1, repeat_every_minutes: r.repeat_every_minutes ?? null });
 
 /** Open reminders/tasks for the Upcoming tab, soonest first, undated last. */
 export async function listUpcoming(): Promise<Item[]> {

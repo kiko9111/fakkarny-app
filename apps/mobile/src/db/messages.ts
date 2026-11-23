@@ -91,17 +91,17 @@ export async function upsertItem(i: Item): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO items (id, type, title, due_at, remind_at, important, status, debt_person, debt_amount, debt_direction,
-       follow_up_at, source_message_id, updated_at, created_at, done_at, nudge, repeat_every_minutes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       follow_up_at, source_message_id, updated_at, created_at, done_at, nudge, repeat_every_minutes, alarm)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, due_at=excluded.due_at,
        remind_at=excluded.remind_at, important=excluded.important, status=excluded.status,
        debt_person=excluded.debt_person, debt_amount=excluded.debt_amount, debt_direction=excluded.debt_direction,
        follow_up_at=excluded.follow_up_at, updated_at=excluded.updated_at, done_at=excluded.done_at, nudge=excluded.nudge,
-       repeat_every_minutes=excluded.repeat_every_minutes
+       repeat_every_minutes=excluded.repeat_every_minutes, alarm=excluded.alarm
      WHERE excluded.updated_at >= items.updated_at`,
     i.id, i.type, i.title, i.due_at, i.remind_at, i.important ? 1 : 0, i.status, i.debt_person, i.debt_amount,
     i.debt_direction, i.follow_up_at, i.source_message_id, i.updated_at, i.created_at, i.done_at, i.nudge,
-    i.repeat_every_minutes ?? null,
+    i.repeat_every_minutes ?? null, i.alarm ? 1 : 0,
   );
 }
 

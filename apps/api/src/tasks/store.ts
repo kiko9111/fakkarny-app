@@ -1,6 +1,7 @@
 import { PHOTO_KEEP_DAYS, type CirclePost as WirePost, type CircleTask as WireTask, type PhotoUpload, type TaskRole } from "@fakkarni/shared";
 import type { CirclePost, CircleTask, Prisma, PrismaClient, User } from "../generated/prisma/client";
 import { postUpdate } from "../daftar/store";
+import { activityCard, LABEL } from "../chat/cards";
 import type { Notice } from "../proactive/notify";
 import { zakiCommentLine } from "../circles/zaki";
 import { canNudge, homeworkLine, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
@@ -101,7 +102,10 @@ async function tell(db: Db, t: TaskWithPeople, to: "assigner" | "assignee", kind
   const reader = to === "assigner" ? t.assigner : t.assignee;
   const about = to === "assigner" ? t.assignee : t.assigner;
   const text = taskLine(langOf(reader), kind, about.name, t.title, t.circle.name);
-  await postUpdate(db, reader.id, `task:${t.id}:${key}`, text, now);
+  // A new request is answered right under it: Yes accepts, No declines (also a plain yes/no in the chat).
+  const lang = langOf(reader) === "en" ? "english" : "arabic";
+  const cards = kind === "asked" ? [activityCard(lang, "task_answer", LABEL.taskRequestCard(lang, t.title), `/circle/${t.circleId}`, { kind: "task_answer", taskId: t.id, answer: "accept" }, { kind: "task_answer", taskId: t.id, answer: "decline" })] : [];
+  await postUpdate(db, reader.id, `task:${t.id}:${key}`, text, now, cards as unknown as Prisma.InputJsonValue[]);
   return { userId: reader.id, text };
 }
 
@@ -239,7 +243,10 @@ export async function submitHomework(prisma: PrismaClient, taskId: string, text:
     await post(tx, t, "task_done", now);
     const reader = t.assigner;
     const line = homeworkLine(langOf(reader), "submitted", t.assignee.name, t.title, text ? text.slice(0, 300) : photoCount(langOf(reader), photos.length));
-    await postUpdate(tx, reader.id, `task:${t.id}:submitted:${now.getTime()}`, line, now);
+    // The parent answers right there: Yes = well done, No = do it again.
+    const lang = langOf(reader) === "en" ? "english" : "arabic";
+    const card = activityCard(lang, "homework_review", LABEL.homeworkCard(lang, t.assignee.name ?? "?"), `/circle/${t.circleId}`, { kind: "homework_review", taskId: t.id, verdict: "approved", note: null }, { kind: "homework_review", taskId: t.id, verdict: "redo", note: null });
+    await postUpdate(tx, reader.id, `task:${t.id}:submitted:${now.getTime()}`, line, now, [card as unknown as Prisma.InputJsonValue]);
     await tx.event.create({ data: { userId: t.assigneeId, name: "homework_submitted", propsJson: { photos: photos.length } } });
     return { task: t, notices: [{ userId: reader.id, text: line }] };
   });

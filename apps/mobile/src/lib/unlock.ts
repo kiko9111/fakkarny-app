@@ -101,7 +101,7 @@ export const FEATURE_ROUTE: Record<Feature, string> = { daftar: "/money", people
 
 /** Which place a route belongs to, if any (opening a card there opens the tab). */
 export function featureOfRoute(route: string): Feature | null {
-  if (route.startsWith("/money")) return "daftar";
+  if (route.startsWith("/money") || route.startsWith("/daftar") || route.startsWith("/split")) return "daftar";
   if (route.startsWith("/circle")) return "people";
   if (route.startsWith("/today") || route.startsWith("/trackers") || route.startsWith("/upcoming")) return "today";
   return null;

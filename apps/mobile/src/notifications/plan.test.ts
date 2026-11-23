@@ -29,6 +29,16 @@ describe("planReminderNotifications", () => {
     expect(p[1]!.date.toISOString()).toBe("2026-11-22T16:00:00.000Z");
   });
 
+  it("rings an alarm item on the alarm channel at the time itself", () => {
+    const p = planReminderNotifications({ ...dentist, alarm: true, follow_up_at: "2026-11-22T18:00:00.000Z" }, { now, alwaysDirect: false, clearText, followupText: (t) => t });
+    expect(p.map((n) => [n.kind, n.date.toISOString(), n.alarm ?? false])).toEqual([
+      ["hint", "2026-11-22T15:00:00.000Z", true],
+      ["clear", "2026-11-22T16:00:00.000Z", true],
+      ["followup", "2026-11-22T18:00:00.000Z", false],
+    ]);
+    expect(planReminderNotifications(dentist, { now, alwaysDirect: false, clearText }).some((n) => n.alarm)).toBe(false);
+  });
+
   it("only sends the clear version when the user chose always direct", () => {
     const p = planReminderNotifications(dentist, { now, alwaysDirect: true, clearText });
     expect(p).toHaveLength(1);

@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { APP_ACTION_KINDS, AppAction, FriendResponse, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
+import { APP_ACTION_KINDS, AppAction, FriendResponse, MAX_APP_ACTIONS, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
+import { friendTools, readToolCalls, RespondInput } from "./tools";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
 export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
@@ -132,6 +133,7 @@ const ModelItem = z.object({
   remind_at_local: z.string().nullable(),
   follow_up_at_local: z.string().nullable(),
   important: z.boolean(),
+  alarm: z.boolean(),
   nudge: z.string().nullable(),
   repeat_every_minutes: z.number().nullable(),
   debt: z.object({ person: z.string(), amount: z.number(), direction: z.enum(["owed_to_me", "i_owe"]) }).nullable(),
@@ -144,6 +146,7 @@ const ModelUpdate = z.object({
   remind_at_local: z.string().nullable(),
   follow_up_at_local: z.string().nullable(),
   repeat_every_minutes: z.number().nullable(),
+  alarm: z.boolean().nullable(),
 });
 /**
  * App actions use no nullable fields: the API allows at most 16 union-typed (nullable)
@@ -170,7 +173,18 @@ const ModelAppAction = z.object({
   text: z.string(),
   due_at_local: z.string(),
   remind_at_local: z.string(),
+  ref: z.string(),
+  answer: z.string(),
+  direction: z.string(),
+  people: z.array(z.string()),
+  checkin_kind: z.string(),
+  setting: z.string(),
+  screen: z.string(),
 });
+/**
+ * The single structured output, kept as the fallback when a tool-call turn has no usable
+ * `respond` (and for FAKKARNI_CHAT_TOOLS=0). Normal turns use tools (./tools.ts).
+ */
 export const ModelOutput = z.object({
   reply: z.array(z.string()),
   create_items: z.array(ModelItem),
@@ -197,9 +211,10 @@ function capReplies(reply: string[], max = 3): string[] {
  * own, so one odd action never costs the user their reply.
  */
 export function toAppActions(raw: ModelOutput["app_actions"]): AppAction[] {
-  return raw.slice(0, 3).flatMap((a) => {
+  return raw.slice(0, MAX_APP_ACTIONS).flatMap((a) => {
     const o: Record<string, unknown> = dropNulls(a);
     if (!a.ask_times.length) delete o["ask_times"];
+    if (!a.people?.length) delete o["people"];
     if (!a.family) delete o["family"];
     if (!a.homework) delete o["homework"];
     if (!(a.amount > 0)) {
@@ -224,6 +239,27 @@ export function toFriendResponse(raw: ModelOutput): FriendResponse {
     crisis: raw.crisis,
   });
 }
+
+/** A tool-call turn → strict FriendResponse (throws when `respond` is missing or doesn't fit). */
+export function toolTurnToFriendResponse(content: Anthropic.ContentBlock[]): FriendResponse {
+  const { respond, actions } = readToolCalls(content);
+  if (!respond) throw new Error("no respond call");
+  const r = RespondInput.parse(respond);
+  return FriendResponse.parse({
+    reply: capReplies(r.reply),
+    create_items: r.create_items.map((i) => dropNulls(i)),
+    update_items: r.update_items.map((u) => dropNulls(u)),
+    save_memories: r.save_memories,
+    app_actions: actions,
+    crisis: r.crisis,
+  });
+}
+
+/** Tool calls for chat turns; FAKKARNI_CHAT_TOOLS=0 goes back to the single structured output. */
+const CHAT_TOOLS = process.env["FAKKARNI_CHAT_TOOLS"] !== "0";
+
+const TOOL_TURN_NOTE =
+  "\n\n# How to answer\nAnswer by calling tools, all in one message: `respond` exactly once (your reply, items, memories, crisis flag), plus any app tools the message needs (money, daftar, tracker, circle, task, split, app). You never see tool results: the app runs them after your turn and shows a card under your reply, so write the reply as if they are done, or for a card that waits for the user's OK, ask. Never write text outside the tools.";
 
 const zeroUsage: Usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 const toUsage = (u: Anthropic.Usage): Usage => ({
@@ -267,21 +303,50 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
   return {
     async respond(input) {
       let usage = zeroUsage;
-      // One retry if the output doesn't validate.
+      // One retry if the output doesn't validate. The first try uses tools; when that turn has
+      // no usable `respond` (or the tools request fails), the retry uses the structured output.
       for (let attempt = 0; attempt < 2; attempt++) {
-        const res = await client.messages.parse({
-          model: FRIEND_MODEL,
-          max_tokens: 2000,
-          system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
-          messages: buildMessages(input),
-          output_config: { effort: FRIEND_EFFORT, format: zodOutputFormat(ModelOutput) },
-        });
-        usage = addUsage(usage, toUsage(res.usage));
-        if (res.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
-        if (res.stop_reason === "max_tokens") return { ok: false, reason: "max_tokens", usage };
-        if (!res.parsed_output) continue;
-        try {
-          const output = toFriendResponse(res.parsed_output);
+        let output: FriendResponse | null = null;
+        if (CHAT_TOOLS && attempt === 0) {
+          try {
+            const res = await client.messages.create({
+              model: FRIEND_MODEL,
+              max_tokens: 2000,
+              tools: friendTools(),
+              // "any": a turn always answers through the tools (respond plus any app tools), never loose text.
+              tool_choice: { type: "any" },
+              system: [{ type: "text", text: input.system + TOOL_TURN_NOTE, cache_control: { type: "ephemeral" } }],
+              messages: buildMessages(input),
+              output_config: { effort: FRIEND_EFFORT },
+            });
+            usage = addUsage(usage, toUsage(res.usage));
+            if (res.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
+            if (res.stop_reason === "max_tokens") return { ok: false, reason: "max_tokens", usage };
+            output = toolTurnToFriendResponse(res.content);
+          } catch (err) {
+            // A bad request (e.g. a schema the API rejects) must never cost the reply: retry below.
+            if (err instanceof Anthropic.APIError && err.status !== 400) throw err;
+            continue;
+          }
+        } else {
+          const res = await client.messages.parse({
+            model: FRIEND_MODEL,
+            max_tokens: 2000,
+            system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
+            messages: buildMessages(input),
+            output_config: { effort: FRIEND_EFFORT, format: zodOutputFormat(ModelOutput) },
+          });
+          usage = addUsage(usage, toUsage(res.usage));
+          if (res.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
+          if (res.stop_reason === "max_tokens") return { ok: false, reason: "max_tokens", usage };
+          if (!res.parsed_output) continue;
+          try {
+            output = toFriendResponse(res.parsed_output);
+          } catch {
+            continue;
+          }
+        }
+        {
           // Franco or English back to an Arabic/Franco message: try once more, then take what we get.
           if (input.requireArabic && attempt === 0 && !output.reply.every((r) => /[\u0600-\u06FF]/.test(r))) continue;
           // "Before the 10th" said on the 19th sometimes comes back as the 10th just gone.
@@ -289,8 +354,6 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
           const pastDue = today && output.create_items.some((i) => (i.type === "reminder" || i.type === "task") && i.due_at_local && i.due_at_local.slice(0, 10) < today);
           if (pastDue && attempt === 0) continue;
           return { ok: true, output, usage };
-        } catch {
-          continue;
         }
       }
       return { ok: false, reason: "invalid_output", usage };

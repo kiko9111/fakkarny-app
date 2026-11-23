@@ -120,6 +120,7 @@ export const PatchMeRequest = z
     always_direct: z.boolean(),
     /** An https://ipn.eg/… link from the InstaPay app, or null to remove it. */
     instapay_link: z.string().trim().max(300).nullable(),
+    gender: z.enum(["female", "male"]).nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");

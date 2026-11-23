@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toFriendResponse, type ModelOutput } from "../ai/model";
 import { detectScript, detectScriptInContext, fastReply, looksLikeCrisis, replyLang } from "./rules";
-import { addressAs, mustReplyInArabic, rankMemories, replyScript } from "./context";
+import { addressAs, describeNumbers, mustReplyInArabic, rankMemories, replyScript } from "./context";
 
 describe("detectScript", () => {
   it.each([
@@ -65,16 +65,16 @@ describe("toFriendResponse", () => {
   it("drops nulls so optional fields validate", () => {
     const r = toFriendResponse({
       ...base,
-      create_items: [{ type: "task", title: "Call mom", due_at_local: null, remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, repeat_every_minutes: null, debt: null }],
+      create_items: [{ type: "task", title: "Call mom", due_at_local: null, remind_at_local: null, follow_up_at_local: null, important: false, alarm: false, nudge: null, repeat_every_minutes: null, debt: null }],
     });
-    expect(r.create_items[0]).toEqual({ type: "task", title: "Call mom", important: false });
+    expect(r.create_items[0]).toEqual({ type: "task", title: "Call mom", important: false, alarm: false });
   });
 
   it("rejects bad local dates", () => {
     expect(() =>
       toFriendResponse({
         ...base,
-        create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, nudge: null, repeat_every_minutes: null, debt: null }],
+        create_items: [{ type: "reminder", title: "x", due_at_local: "tomorrow 6pm", remind_at_local: null, follow_up_at_local: null, important: false, alarm: false, nudge: null, repeat_every_minutes: null, debt: null }],
       }),
     ).toThrow();
   });
@@ -131,5 +131,36 @@ describe("replyScript", () => {
     expect(addressAs([])).toMatch(/^a man/);
     expect(addressAs([{ content: "مراتي، وبتشتغل دكتورة" }])).toMatch(/^a man/);
     expect(addressAs([{ content: "بتتكلم عن نفسها بصيغة المؤنث" }])).toMatch(/^a woman/);
+  });
+
+  it("follows the gender setting first", () => {
+    expect(addressAs([], "female")).toMatch(/^a woman/);
+    expect(addressAs([{ content: "بتتكلم عن نفسها بصيغة المؤنث" }], "male")).toMatch(/^a man/);
+  });
+
+  it("gives Zaki the numbers from the user's side", () => {
+    const me = "u1";
+    const at = new Date("2026-11-20T10:00:00Z");
+    const app = {
+      circles: [],
+      trackers: [],
+      sections: [{ id: "s1", name: "أكل", kind: "expense", budget: 3000, circle: null }],
+      numbers: {
+        monthSpend: { s1: 2350 },
+        trackerStats: {},
+        tasks: [
+          { id: "t1", title: "الحساب", homework: true, status: "done", assignerId: me, assigneeId: "u2", dueAt: null, assigner: { name: "كريم" }, assignee: { name: "عمر" } },
+          { id: "t2", title: "تجيب عيش", homework: false, status: "pending", assignerId: "u3", assigneeId: me, dueAt: at, assigner: { name: "منى" }, assignee: { name: "كريم" } },
+        ],
+        daftar: [{ id: "d1", creatorId: "u3", otherName: "كريم", direction: "i_owe", amount: 120, note: null, status: "pending", creator: { name: "منى" } }],
+        splits: [{ id: "p1", title: "عشا", total: 900, peopleJson: [{ name: "كريم", paid: true }, { name: "سارة", paid: false }] }],
+      },
+    } as unknown as Parameters<typeof describeNumbers>[0];
+    const text = describeNumbers(app, me, "Africa/Cairo").join("\n");
+    expect(text).toContain("«أكل» 2,350 of 3,000 (78%)");
+    expect(text).toContain("id=d1 منى owes the user 120, waiting for the user's OK");
+    expect(text).toContain("asked of the user: id=t2 «تجيب عيش» from منى, not answered yet, due 2026-11-20T12:00");
+    expect(text).toContain("waiting for the user's review: id=t1 «الحساب» by عمر");
+    expect(text).toContain("not paid yet: سارة");
   });
 });

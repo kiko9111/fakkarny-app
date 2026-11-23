@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
@@ -17,7 +17,7 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday:
 
 /** One circle: who's OK, requests between its people, what Zaki posted, and the invite that grows it. */
 export default function CircleScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, invite: inviteNow } = useLocalSearchParams<{ id: string; invite?: string }>();
   const [circle, setCircle] = useState<CircleDetail | null>(null);
   const [failed, setFailed] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -59,6 +59,15 @@ export default function CircleScreen() {
       setInviting(false);
     }
   };
+
+  // Zaki's "Invite to …" card opens here with ?invite=1: go straight to the WhatsApp message, once.
+  const autoInvited = useRef(false);
+  useEffect(() => {
+    if (inviteNow !== "1" || autoInvited.current || !circle) return;
+    autoInvited.current = true;
+    void invite();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteNow, circle]);
 
   const act = async (work: () => Promise<void>, leaveScreen: boolean, done?: string) => {
     try {
