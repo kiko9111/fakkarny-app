@@ -51,6 +51,7 @@ export function toWireItem(i: Item): WireItem {
     debt_direction: i.debtDirection,
     follow_up_at: isoOrNull(i.followUpAt),
     repeat_every_minutes: i.repeatEveryMinutes,
+    alarm: i.alarm,
     source_message_id: i.sourceMessageId,
     updated_at: iso(i.updatedAt),
     created_at: iso(i.createdAt),
@@ -88,6 +89,7 @@ export function toWireUser(u: User): WireUser {
     pro: hasPro(u, new Date()),
     always_direct: u.alwaysDirect,
     instapay_link: u.instapayLink,
+    gender: u.gender === "female" || u.gender === "male" ? u.gender : null,
     created_at: iso(u.createdAt),
     last_active_at: isoOrNull(u.lastActiveAt),
   };

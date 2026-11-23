@@ -30,6 +30,9 @@ function open(route: string) {
   else router.push(route as Href);
 }
 
+/** Pending cards that answer or change something (rather than send): the button says Yes. */
+const YES_KINDS = new Set(["task_answer", "daftar_answer", "homework_review", "checkin", "leave_circle", "delete_section", "delete_tracker", "daftar_settle", "daftar_cancel", "task_cancel"]);
+
 /**
  * Under one of Zaki's replies: what he did in the app (tap to open it), or what he wants to do
  * that reaches other people (Send / Cancel). Answering "yes" in the chat works too.
@@ -38,7 +41,7 @@ export const ActionCards = memo(function ActionCards({ serverId, actions }: { se
   const [busy, setBusy] = useState<string | null>(null);
   if (!actions.length) return null;
 
-  const answer = async (card: ChatAction, confirm: boolean) => {
+  const answer = async (card: ChatAction, confirm: boolean | "undo") => {
     if (!serverId || busy) return;
     setBusy(card.id);
     try {
@@ -73,14 +76,19 @@ export const ActionCards = memo(function ActionCards({ serverId, actions }: { se
             {card.status === "pending" ? (
               <View style={styles.buttons}>
                 <Button
-                  label={card.kind === "log_money" ? t.chat.actionAdd : t.chat.actionSend}
-                  icon={card.kind === "log_money" ? "add" : "send"}
+                  label={card.kind === "log_money" ? t.chat.actionAdd : YES_KINDS.has(card.kind) ? t.chat.actionYes : t.chat.actionSend}
+                  icon={card.kind === "log_money" ? "add" : YES_KINDS.has(card.kind) ? "checkmark" : "send"}
                   size="sm"
                   busy={busy === card.id}
                   disabled={!serverId || (busy !== null && busy !== card.id)}
                   onPress={() => void answer(card, true)}
                 />
                 <Button label={t.chat.actionCancel} size="sm" kind="text" disabled={!serverId || busy !== null} onPress={() => void answer(card, false)} />
+              </View>
+            ) : null}
+            {card.status === "done" && card.undoable ? (
+              <View style={styles.buttons}>
+                <Button label={t.chat.actionUndo} icon="arrow-undo" size="sm" kind="text" busy={busy === card.id} disabled={!serverId || busy !== null} onPress={() => void answer(card, "undo")} />
               </View>
             ) : null}
           </>

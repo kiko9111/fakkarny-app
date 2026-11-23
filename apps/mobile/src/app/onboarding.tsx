@@ -5,6 +5,7 @@ import { appleAvailable, authAvailable, googleAvailable, phoneAvailable, sendCod
 import { parseContact } from "@/auth/contact";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
+import { patchMe } from "@/lib/api";
 import { track } from "@/lib/analytics";
 import { unlock } from "@/lib/unlock-store";
 import { reloadApp } from "@/lib/reload";
@@ -22,9 +23,12 @@ export default function OnboardingScreen() {
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Arabic needs it for every "you"; optional here, Zaki asks in the chat when it is not set.
+  const [gender, setGender] = useState<"female" | "male" | null>(null);
 
   const finish = () => {
     track("signin_done", { signed_in: authAvailable });
+    if (gender) void patchMe({ gender }).catch(() => {});
     prefs.set("onboarded", "1");
     // Chat first: a new user starts with Zaki only; the rest opens as it's needed.
     unlock.startFresh();
@@ -110,6 +114,21 @@ export default function OnboardingScreen() {
           {authAvailable ? t.ui.signInLine : t.onboarding.notConfigured}
         </Text>
       </View>
+      {language === "ar-EG" ? (
+        <View style={styles.form}>
+          <Text variant="smallStrong" color={palette.inkSoft} align="center">
+            {t.onboarding.addressAs}
+          </Text>
+          <View style={styles.genders}>
+            <View style={styles.flex}>
+              <Button label={t.settings.female} block kind={gender === "female" ? "filled" : "outline"} onPress={() => setGender("female")} />
+            </View>
+            <View style={styles.flex}>
+              <Button label={t.settings.male} block kind={gender === "male" ? "filled" : "outline"} onPress={() => setGender("male")} />
+            </View>
+          </View>
+        </View>
+      ) : null}
       {authAvailable ? (
         <View style={styles.form}>
           <TextInput
@@ -161,6 +180,7 @@ const styles = StyleSheet.create({
   point: { flexDirection: "row", alignItems: "center", gap: space.md },
   pointIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" },
   langs: { gap: space.sm },
+  genders: { flexDirection: "row", gap: space.sm },
   form: { gap: space.md },
   input: { minHeight: 54, backgroundColor: palette.surfaceStrong, borderRadius: radius.md, borderWidth: 1, borderColor: palette.glassEdge, paddingHorizontal: space.lg, fontSize: 17, fontFamily: fonts.body, color: palette.ink },
   code: { fontSize: 24, fontFamily: fonts.display },

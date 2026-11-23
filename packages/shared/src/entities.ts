@@ -46,6 +46,8 @@ export const User = z.object({
   always_direct: z.boolean(),
   /** The user's own InstaPay payment link, shown to people who owe them. */
   instapay_link: z.string().nullable(),
+  /** How Zaki addresses them in Arabic ("female" / "male"); null until they say. Old servers omit it. */
+  gender: z.enum(["female", "male"]).nullable().default(null),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });
@@ -82,6 +84,8 @@ export const Item = z.object({
   due_at: Instant.nullable(),
   remind_at: Instant.nullable(),
   important: z.boolean(),
+  /** Alarm-style alert (sound, high priority), only when the user asked for one. Old servers omit it. */
+  alarm: z.boolean().default(false),
   /** The friend's indirect question used as the reminder notification text (F5). */
   nudge: z.string().nullable(),
   status: ItemStatus,

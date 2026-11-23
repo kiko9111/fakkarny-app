@@ -16,6 +16,8 @@ const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
 const ACTION_LATER = "later";
 const CHANNEL = "reminders";
+/** Alarm-style reminders the user asked for. A full-screen alarm needs a new native build; this is the loudest a notification can be. */
+const ALARM_CHANNEL = "alarms";
 
 /** Call once at startup: how notifications show, the Android channel, and reminder quick replies. */
 export async function setupNotifications() {
@@ -31,6 +33,14 @@ export async function setupNotifications() {
     await Notifications.setNotificationChannelAsync(CHANNEL, {
       name: t.notifications.channel,
       importance: Notifications.AndroidImportance.HIGH,
+    });
+    await Notifications.setNotificationChannelAsync(ALARM_CHANNEL, {
+      name: t.notifications.alarmChannel,
+      importance: Notifications.AndroidImportance.MAX,
+      bypassDnd: true,
+      vibrationPattern: [0, 600, 300, 600, 300, 600],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      sound: "default",
     });
   }
   await Notifications.setNotificationCategoryAsync(CATEGORY, [
@@ -90,8 +100,9 @@ export async function scheduleItem(item: Item) {
         ...(n.kind === "followup" ? {} : { categoryIdentifier: CATEGORY }),
         data: { type: n.kind === "followup" ? "followup" : "reminder", itemId: item.id, title: item.title, repeating: Boolean(item.repeat_every_minutes) },
         sound: true,
+        ...(n.alarm ? { priority: Notifications.AndroidNotificationPriority.MAX, interruptionLevel: "timeSensitive" as const } : {}),
       },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.date, channelId: CHANNEL },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.date, channelId: n.alarm ? ALARM_CHANNEL : CHANNEL },
     });
   }
 }

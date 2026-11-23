@@ -10,6 +10,7 @@ const item = (o: Partial<Item>): Item => ({
   due_at: null,
   remind_at: null,
   important: false,
+  alarm: false,
   nudge: null,
   status: "open",
   debt_person: null,

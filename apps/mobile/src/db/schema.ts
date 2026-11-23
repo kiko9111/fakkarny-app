@@ -49,4 +49,6 @@ export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE items ADD COLUMN repeat_every_minutes INTEGER;`,
   // v4 — Zaki's action cards under a reply (what he did in the app, or wants to do)
   `ALTER TABLE messages ADD COLUMN actions_json TEXT;`,
+  // v5 — alarm-style reminders, only when the user asked for one
+  `ALTER TABLE items ADD COLUMN alarm INTEGER NOT NULL DEFAULT 0;`,
 ];

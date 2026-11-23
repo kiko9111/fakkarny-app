@@ -15,6 +15,8 @@ export const ExpectedItem = z.object({
   due: LocalMinute.optional(),
   due_date: z.union([LocalDate, z.array(LocalDate)]).optional(),
   important: z.boolean().optional(),
+  /** true = must ring as an alarm; false = must not (alarms only when asked). */
+  alarm: z.boolean().optional(),
   /** Minutes between occurrences of a repeating reminder. */
   repeat: z.number().optional(),
   /** True when the item must carry a follow-up time ("how did it go?"). */
@@ -38,6 +40,15 @@ export const ExpectedAction = z.object({
   ask_times: z.array(z.string()).optional(),
   /** True when the action must leave the section empty (catch-all). */
   no_section: z.boolean().optional(),
+  answer: z.enum(["yes", "no"]).optional(),
+  setting: z.string().optional(),
+  screen: z.string().optional(),
+  checkin_kind: z.string().optional(),
+  direction: z.enum(["owed_to_me", "i_owe"]).optional(),
+  /** Each of these names must be among people (split_bill). */
+  people_all: z.array(z.string()).optional(),
+  /** Any of these substrings in text (settings value, post text, forget). */
+  text_any: z.array(z.string()).optional(),
 });
 
 /** What the user has in the app for this case (IN THE APP in the context). */
@@ -103,6 +114,7 @@ function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["creat
     if (!got.due_at_local || !allowed.includes(got.due_at_local.slice(0, 10))) return false;
   }
   if (exp.important && !got.important) return false;
+  if (exp.alarm !== undefined && Boolean(got.alarm) !== exp.alarm) return false;
   if (exp.repeat !== undefined && got.repeat_every_minutes !== exp.repeat) return false;
   if (exp.follow_up && !got.follow_up_at_local) return false;
   if (exp.debt) {
@@ -123,6 +135,13 @@ function matchAction(exp: z.infer<typeof ExpectedAction>, got: NonNullable<Frien
   if (exp.no_section && got.section) return false;
   if (exp.person_any && !anyIn(got.person ?? "", exp.person_any)) return false;
   if (exp.circle_any && !anyIn(got.circle ?? "", exp.circle_any)) return false;
+  if (exp.answer && got.answer !== exp.answer) return false;
+  if (exp.setting && got.setting !== exp.setting) return false;
+  if (exp.screen && got.screen !== exp.screen) return false;
+  if (exp.checkin_kind && (got.checkin_kind ?? "ok") !== exp.checkin_kind) return false;
+  if (exp.direction && (got.direction ?? "owed_to_me") !== exp.direction) return false;
+  if (exp.people_all && !exp.people_all.every((n) => (got.people ?? []).some((p) => anyIn(p, [n])))) return false;
+  if (exp.text_any && !anyIn(got.text ?? "", exp.text_any)) return false;
   if (exp.ask_times && JSON.stringify([...(got.ask_times ?? [])].sort()) !== JSON.stringify([...exp.ask_times].sort())) return false;
   return true;
 }

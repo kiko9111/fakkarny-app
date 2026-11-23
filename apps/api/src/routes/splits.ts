@@ -4,6 +4,7 @@ import { MarkSplitPaidRequest, MAX_SPLIT_ITEMS, MAX_SPLIT_PEOPLE, normalizeInvit
 import { Prisma, type PrismaClient, type Split as SplitRow } from "../generated/prisma/client";
 import { newInviteCode } from "../circles/rules";
 import { formatAmount, type Lang } from "../daftar/rules";
+import { postUpdate } from "../daftar/store";
 import { splitShareText } from "../split/rules";
 import { computeSplit, inputOf, paidNamesOf, toWireSplit } from "../split/store";
 import { esc, pickLang, renderShell } from "../web/shell";
@@ -258,6 +259,16 @@ export const splitPageRoutes: FastifyPluginAsync<{ prisma: PrismaClient; publicU
     input.items.push({ name: form.data.item, price, eaters: form.data.shared ? [] : [who] });
     const updated = await prisma.split.update({ where: { id: row.id }, data: { ...computeSplit(input, paidNamesOf(row)), webAdds: { increment: 1 } } });
     const share = toWireSplit(updated, "").people[who]!.share;
+    // The person who made the split hears it in their chat (no gendered verb about the friend in Arabic).
+    const owner = await prisma.user.findUnique({ where: { id: row.userId }, select: { language: true } });
+    if (owner) {
+      const ol: Lang = owner.language === "en" ? "en" : "ar";
+      const friend = input.people[who]!.name;
+      const title = updated.title || (ol === "en" ? "the bill" : "الحساب");
+      const money = formatAmount(price, updated.currency, ol);
+      const text = ol === "en" ? `${friend} added ${form.data.item} (${money}) to «${title}»` : `«${title}»: إضافة من ${friend}، ${form.data.item} (${money})`;
+      await postUpdate(prisma, row.userId, `split:${row.id}:add:${updated.webAdds}`, text, new Date());
+    }
     return send(reply, req, updated, lang, t.added(formatAmount(share, updated.currency, lang)));
   });
 };

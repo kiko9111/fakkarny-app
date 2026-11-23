@@ -1,22 +1,77 @@
 import { randomUUID } from "node:crypto";
 import { MAX_SECTIONS, TRACKER_TEMPLATES, type AppAction, type TrackerKind } from "@fakkarni/shared";
-import { Prisma, type PrismaClient, type Tracker, type User } from "../generated/prisma/client";
+import { Prisma, type PrismaClient, type Split, type Tracker, type User } from "../generated/prisma/client";
 import { askZaki } from "../circles/ask";
 import { MAX_CIRCLES_PER_USER } from "../circles/rules";
 import { safeLocalToUtc } from "../pipeline/apply";
 import type { ReplyLang } from "../pipeline/rules";
 import type { Notice } from "../proactive/notify";
 import { addEntry, CATCH_ALL, visibleTo, type SectionWithCircle } from "../money/store";
-import { assignTask } from "../tasks/store";
+import { monthOf, monthRange } from "../money/rules";
+import { assignTask, withPeople as taskPeople, type TaskWithPeople } from "../tasks/store";
+import { withPeople as daftarPeople, type EntryWithPeople } from "../daftar/store";
 import { trackerLabel } from "../trackers/labels";
 import { createTracker, logEntry, toWireTracker } from "../trackers/store";
-import { LABEL, matchByName, storedCards, type PendingPayload, type StoredCard } from "./cards";
+import { LABEL, matchByName, storedCards, type PendingPayload, type StoredCard, type UndoPayload } from "./cards";
+import { planDaftar, runMore, runMorePending } from "./more-actions";
 
 /** What the user has in the app, for resolving names (and for the model's context). */
 export interface AppData {
   circles: { id: string; name: string; kind: string; createdAt: Date; members: { userId: string; name: string | null }[] }[];
   sections: SectionWithCircle[];
   trackers: (Tracker & { circle: { name: string } | null })[];
+  /** The numbers (loaded for the model's context; absent in evals and name-only loads). */
+  numbers?: AppNumbers;
+}
+
+/** "Give Zaki the numbers": so "how much did I spend on food?" needs no extra call. */
+export interface AppNumbers {
+  /** This month's total per section id (a shared book: everyone's entries). */
+  monthSpend: Record<string, number>;
+  /** Today and the streak per tracker id. */
+  trackerStats: Record<string, { today: number; streak: number }>;
+  tasks: TaskWithPeople[];
+  daftar: EntryWithPeople[];
+  splits: Split[];
+}
+
+const NUMBERS_TRACKERS = 12;
+
+/** The numbers block: month totals, tracker streaks, open tasks, Daftar entries and recent splits. */
+export async function loadAppNumbers(prisma: PrismaClient, user: Pick<User, "id" | "timezone">, data: AppData, now: Date): Promise<AppNumbers> {
+  const { from, to } = monthRange(monthOf(now, user.timezone), user.timezone);
+  const [spend, tasks, daftar, splits, stats] = await Promise.all([
+    data.sections.length
+      ? prisma.moneyEntry.groupBy({ by: ["sectionId"], where: { sectionId: { in: data.sections.map((s) => s.id) }, at: { gte: from, lt: to } }, _sum: { amount: true } })
+      : Promise.resolve([]),
+    prisma.circleTask.findMany({
+      where: {
+        OR: [
+          { assigneeId: user.id, status: { in: ["pending", "accepted"] } },
+          { assignerId: user.id, status: { in: ["pending", "accepted"] } },
+          { assignerId: user.id, status: "done", homework: true, submittedAt: { not: null }, review: null },
+        ],
+      },
+      include: taskPeople,
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.daftarEntry.findMany({
+      where: { status: { in: ["pending", "confirmed", "disputed"] }, OR: [{ creatorId: user.id }, { otherUserId: user.id }] },
+      include: daftarPeople,
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.split.findMany({ where: { userId: user.id, createdAt: { gte: new Date(now.getTime() - 30 * 86_400_000) } }, orderBy: { createdAt: "desc" }, take: 5 }),
+    Promise.all(data.trackers.slice(0, NUMBERS_TRACKERS).map(async (t) => [t.id, await toWireTracker(prisma, t, user.timezone, now)] as const)),
+  ]);
+  return {
+    monthSpend: Object.fromEntries(spend.map((g) => [g.sectionId, Math.round(Number(g._sum.amount ?? 0) * 100) / 100])),
+    trackerStats: Object.fromEntries(stats.map(([id, w]) => [id, { today: w.today, streak: w.streak }])),
+    tasks,
+    daftar,
+    splits,
+  };
 }
 
 export async function loadAppData(prisma: PrismaClient, userId: string): Promise<AppData> {
@@ -37,12 +92,30 @@ export async function loadAppData(prisma: PrismaClient, userId: string): Promise
   };
 }
 
+/**
+ * A debt the user mentioned with someone in their circles ("Mona owes me 200") is also offered
+ * for the shared Daftar, where Mona sees and confirms it: a waiting card, never sent on its own.
+ * Debts with anyone else stay private items.
+ */
+export async function debtCards(prisma: PrismaClient, user: User, debts: { person: string; amount: number; direction: "owed_to_me" | "i_owe" }[], lang: ReplyLang, data?: AppData): Promise<StoredCard[]> {
+  if (!debts.length) return [];
+  const ctx = { user, data: data ?? (await loadAppData(prisma, user.id)) };
+  if (!ctx.data.circles.some((c) => c.members.length > 1)) return [];
+  const out: StoredCard[] = [];
+  for (const d of debts.slice(0, 2)) {
+    if (!(d.amount > 0)) continue;
+    const plan = planDaftar(ctx, d.person, d.direction, d.amount, null);
+    if (plan.member) out.push(card(lang, "daftar_add", "pending", LABEL.daftarAsk(lang, plan.payload.otherName, d.amount, d.direction, true), "/money", plan.payload));
+  }
+  return out;
+}
+
 export interface ActionsResult {
   cards: StoredCard[];
   notices: Notice[];
 }
 
-interface Ctx {
+export interface Ctx {
   prisma: PrismaClient;
   user: User;
   lang: ReplyLang;
@@ -51,7 +124,7 @@ interface Ctx {
   requireSubscription: boolean;
 }
 
-const card = (lang: ReplyLang, kind: string, status: StoredCard["status"], label: string, route: string | null = null, payload?: PendingPayload): StoredCard => ({
+export const card = (lang: ReplyLang, kind: string, status: StoredCard["status"], label: string, route: string | null = null, payload?: PendingPayload, undo?: UndoPayload): StoredCard => ({
   id: randomUUID(),
   kind,
   status,
@@ -59,9 +132,10 @@ const card = (lang: ReplyLang, kind: string, status: StoredCard["status"], label
   route,
   lang,
   ...(payload ? { payload } : {}),
+  ...(undo && status === "done" ? { undo } : {}),
 });
 
-const kindOf = (t: Tracker): TrackerKind => (t.kind in TRACKER_TEMPLATES ? (t.kind as TrackerKind) : "custom");
+export const kindOf = (t: Tracker): TrackerKind => (t.kind in TRACKER_TEMPLATES ? (t.kind as TrackerKind) : "custom");
 
 /**
  * Run the model's app actions for this user. Their own things happen now; anything that
@@ -88,7 +162,7 @@ export async function runAppActions(prisma: PrismaClient, user: User, actions: A
   return { cards, notices: notices.filter((n) => n.userId !== user.id) };
 }
 
-type One = { card: StoredCard; notices?: Notice[]; refresh?: boolean };
+export type One = { card: StoredCard; notices?: Notice[]; refresh?: boolean };
 
 async function runOne(ctx: Ctx, a: AppAction): Promise<One> {
   const { lang } = ctx;
@@ -103,7 +177,7 @@ async function runOne(ctx: Ctx, a: AppAction): Promise<One> {
       if (s.ownerId !== ctx.user.id) return { card: card(lang, a.kind, "failed", LABEL.ownerOnly(lang, s.name), `/money/${s.id}`) };
       const budget = a.amount ?? null;
       await ctx.prisma.moneySection.update({ where: { id: s.id }, data: { budget: budget === null ? null : new Prisma.Decimal(budget) } });
-      return { card: card(lang, a.kind, "done", LABEL.budgetSet(lang, s.name, budget), `/money/${s.id}`), refresh: true };
+      return { card: card(lang, a.kind, "done", LABEL.budgetSet(lang, s.name, budget), `/money/${s.id}`, undefined, { kind: "budget", sectionId: s.id, budget: s.budget === null ? null : Number(s.budget) }), refresh: true };
     }
     case "create_tracker":
       return makeTracker(ctx, a);
@@ -111,9 +185,9 @@ async function runOne(ctx: Ctx, a: AppAction): Promise<One> {
       const t = findTracker(ctx, a.tracker ?? a.name, a.tracker_kind);
       if (!t) return { card: card(lang, a.kind, "failed", LABEL.notFound(lang, "tracker", a.tracker ?? a.name), "/trackers") };
       const step = a.amount ?? (TRACKER_TEMPLATES[kindOf(t)].step || 1);
-      await logEntry(ctx.prisma, t, step, "chat", ctx.now, ctx.user.timezone);
+      const entry = await logEntry(ctx.prisma, t, step, "chat", ctx.now, ctx.user.timezone);
       const w = await toWireTracker(ctx.prisma, t, ctx.user.timezone, ctx.now);
-      return { card: card(lang, a.kind, "done", LABEL.trackerLogged(lang, trackerLabel(w.kind, w.name, lang), w.today, w.goal), "/trackers") };
+      return { card: card(lang, a.kind, "done", LABEL.trackerLogged(lang, trackerLabel(w.kind, w.name, lang), w.today, w.goal), "/trackers", undefined, { kind: "tracker_entry", entryId: entry.id }) };
     }
     case "update_tracker": {
       const t = findTracker(ctx, a.tracker ?? a.name, a.tracker_kind);
@@ -121,7 +195,8 @@ async function runOne(ctx: Ctx, a: AppAction): Promise<One> {
       const askTimes = a.ask_times ? [...new Set(a.ask_times)].sort() : null;
       const goal = a.amount ?? null;
       await ctx.prisma.tracker.update({ where: { id: t.id }, data: { ...(askTimes ? { askTimes } : {}), ...(goal ? { goal: new Prisma.Decimal(goal) } : {}) } });
-      return { card: card(lang, a.kind, "done", LABEL.trackerUpdated(lang, trackerLabel(kindOf(t), t.name, lang), askTimes, goal), "/trackers"), refresh: true };
+      const before: UndoPayload = { kind: "tracker_settings", trackerId: t.id, goal: t.goal === null ? null : Number(t.goal), askTimes: t.askTimes };
+      return { card: card(lang, a.kind, "done", LABEL.trackerUpdated(lang, trackerLabel(kindOf(t), t.name, lang), askTimes, goal), "/trackers", undefined, before), refresh: true };
     }
     case "create_circle":
       return makeCircle(ctx, a);
@@ -134,10 +209,12 @@ async function runOne(ctx: Ctx, a: AppAction): Promise<One> {
       if (!text) return { card: card(lang, a.kind, "failed", LABEL.failed(lang)) };
       return { card: card(lang, a.kind, "pending", LABEL.circleAsk(lang, c.name, text), `/circle/${c.id}`, { kind: "ask_circle", circleId: c.id, text }) };
     }
+    default:
+      return runMore(ctx, a);
   }
 }
 
-function findTracker(ctx: Ctx, name: string | undefined, kind: TrackerKind | undefined): AppData["trackers"][number] | null {
+export function findTracker(ctx: Ctx, name: string | undefined, kind: TrackerKind | undefined): AppData["trackers"][number] | null {
   const byName = matchByName(ctx.data.trackers, name, (t) => [t.name, trackerLabel(kindOf(t), null, "arabic").replace(/\s*\S+$/u, ""), trackerLabel(kindOf(t), null, "english").replace(/\s*\S+$/u, ""), t.kind]);
   if (byName) return byName;
   if (kind && kind !== "custom") {
@@ -148,7 +225,7 @@ function findTracker(ctx: Ctx, name: string | undefined, kind: TrackerKind | und
 }
 
 /** The named circle, or the only one when none is named. */
-function pickCircle(ctx: Ctx, name: string | undefined): AppData["circles"][number] | null {
+export function pickCircle(ctx: Ctx, name: string | undefined): AppData["circles"][number] | null {
   if (name) return matchByName(ctx.data.circles, name, (c) => [c.name]);
   return ctx.data.circles.length === 1 ? ctx.data.circles[0]! : null;
 }
@@ -175,7 +252,7 @@ async function logMoney(ctx: Ctx, a: AppAction): Promise<One> {
   }
   const added = await addEntry(prisma, section, user, { amount, note, source: "chat" }, ctx.now);
   await prisma.event.create({ data: { userId: user.id, name: "money_logged", propsJson: { via: "chat_ai", shared: false } } });
-  return { card: card(lang, a.kind, "done", LABEL.moneyLogged(lang, kind, amount, section.name, added.monthTotal), `/money/${section.id}`), notices: added.notices, refresh };
+  return { card: card(lang, a.kind, "done", LABEL.moneyLogged(lang, kind, amount, section.name, added.monthTotal), `/money/${section.id}`, undefined, { kind: "money_entry", entryId: added.entry.id }), notices: added.notices, refresh };
 }
 
 async function createSection(ctx: Ctx, a: AppAction): Promise<One> {
@@ -197,7 +274,8 @@ async function createSection(ctx: Ctx, a: AppAction): Promise<One> {
     data: { ownerId: user.id, circleId: circle?.id ?? null, name, kind: a.money_kind ?? "expense", budget: a.amount ? new Prisma.Decimal(a.amount) : null, createdAt: ctx.now },
   });
   await prisma.event.create({ data: { userId: user.id, name: "money_section_created", propsJson: { kind: made.kind, shared: Boolean(made.circleId), budget: Boolean(made.budget), via: "chat" } } });
-  return { card: card(lang, a.kind, "done", LABEL.sectionMade(lang, name, a.amount ?? null, circle?.name ?? null), `/money/${made.id}`), refresh: true };
+  // A shared book is seen by the circle at once: no undo there.
+  return { card: card(lang, a.kind, "done", LABEL.sectionMade(lang, name, a.amount ?? null, circle?.name ?? null), `/money/${made.id}`, undefined, circle ? undefined : { kind: "section", sectionId: made.id }), refresh: true };
 }
 
 async function makeTracker(ctx: Ctx, a: AppAction): Promise<One> {
@@ -220,7 +298,7 @@ async function makeTracker(ctx: Ctx, a: AppAction): Promise<One> {
   if (made === "limit") return { card: card(lang, a.kind, "failed", LABEL.trackerLimit(lang), "/paywall") };
   if (made === "bad_circle") return { card: card(lang, a.kind, "failed", LABEL.notFound(lang, "circle", a.circle), "/circles") };
   await prisma.event.create({ data: { userId: user.id, name: "tracker_created", propsJson: { kind, via: "chat_ai", shared: Boolean(circle) } } });
-  return { card: card(lang, a.kind, "done", LABEL.trackerMade(lang, trackerLabel(kind, made.name, lang), made.askTimes, circle?.name ?? null), "/trackers"), refresh: true };
+  return { card: card(lang, a.kind, "done", LABEL.trackerMade(lang, trackerLabel(kind, made.name, lang), made.askTimes, circle?.name ?? null), "/trackers", undefined, { kind: "tracker", trackerId: made.id }), refresh: true };
 }
 
 async function makeCircle(ctx: Ctx, a: AppAction): Promise<One> {
@@ -235,7 +313,7 @@ async function makeCircle(ctx: Ctx, a: AppAction): Promise<One> {
     data: { kind, name, createdById: user.id, createdAt: ctx.now, members: { create: { userId: user.id, role: "owner", joinedAt: ctx.now } } },
   });
   await prisma.event.create({ data: { userId: user.id, name: "circle_created", propsJson: { kind, via: "chat" } } });
-  return { card: card(lang, a.kind, "done", LABEL.circleMade(lang, name), `/circle/${circle.id}`), refresh: true };
+  return { card: card(lang, a.kind, "done", LABEL.circleMade(lang, name), `/circle/${circle.id}`, undefined, { kind: "circle", circleId: circle.id }), refresh: true };
 }
 
 const foldEq = (x: string, y: string) => x.trim().toLowerCase() === y.trim().toLowerCase();
@@ -279,8 +357,17 @@ async function planTask(ctx: Ctx, a: AppAction): Promise<One> {
 export async function answerCard(prisma: PrismaClient, user: User, c: StoredCard, confirm: boolean, now: Date, opts: { requireSubscription?: boolean } = {}): Promise<{ card: StoredCard; notices: Notice[] }> {
   if (c.status !== "pending" || !c.payload) return { card: c, notices: [] };
   const { lang } = c;
-  if (!confirm) return { card: { ...c, status: "cancelled", label: `${c.label} · ${LABEL.cancelled(lang)}` }, notices: [] };
-  const p = c.payload;
+  // On someone else's news, "No" is an answer too (decline the request, ask for a redo).
+  const { noPayload, ...plain } = c;
+  if (!confirm && noPayload) return answerCard(prisma, user, { ...plain, payload: noPayload }, true, now, opts);
+  c = plain;
+  if (!confirm) {
+    const { payload: _drop, ...rest } = c;
+    return { card: { ...rest, status: "cancelled", label: `${c.label} · ${LABEL.cancelled(lang)}` }, notices: [] };
+  }
+  const more = await runMorePending(prisma, user, c, now);
+  if (more) return more;
+  const p = c.payload!; // checked at the top
   const done = (label: string, route: string | null): StoredCard => {
     const { payload: _drop, ...rest } = c;
     return { ...rest, status: "done", label, route };
@@ -302,6 +389,7 @@ export async function answerCard(prisma: PrismaClient, user: User, c: StoredCard
     if (made === "too_many") return { card: fail(LABEL.tooMany(lang)), notices: [] };
     return { card: done(LABEL.taskSent(lang, made.task.assignee.name ?? "?", p.title), `/circle/${p.circleId}`), notices: made.notices };
   }
+  if (p.kind !== "ask_circle") return { card: fail(LABEL.failed(lang)), notices: [] };
   const circle = await prisma.circle.findFirst({ where: { id: p.circleId, members: { some: { userId: user.id } } }, include: { members: { select: { userId: true } } } });
   if (!circle) return { card: fail(LABEL.notFound(lang, "circle")), notices: [] };
   const asked = await askZaki(prisma, circle, user, p.text, now, opts.requireSubscription ?? false);

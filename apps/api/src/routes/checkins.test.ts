@@ -51,6 +51,9 @@ describe.skipIf(!hasTestDb)("check-ins and family roles", () => {
     const circle = CircleResponse.parse(res.json()).circle;
     const { invite } = CreateInviteResponse.parse((await app.inject({ method: "POST", url: `/circles/${circle.id}/invites`, headers: owner.h })).json());
     for (const o of others) await app.inject({ method: "POST", url: `/invites/${invite.code}/accept`, headers: o.h });
+    // Joining tells the others (chat line + push); these tests count only what comes after.
+    await new Promise((r) => setTimeout(r, 50));
+    pushed.length = 0;
     return circle;
   };
   const flush = () => new Promise((r) => setTimeout(r, 50));

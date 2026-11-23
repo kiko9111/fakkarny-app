@@ -495,6 +495,30 @@ Rules:
   src/lib/photos.ts `photosAvailable`): photo buttons appear only in builds made after
   2026-11-23. Shrunk to 1600px JPEG on the phone. Do not add any other photo use.
 
+- The whole app from chat (2026-11-23, owner ask "Zaki does everything in the app by talking"):
+  - One AI call per turn, as tool calls (apps/api/src/ai/tools.ts): `respond` (strict: reply, items,
+    memories, crisis; 13 nullable fields, guarded by tools.test.ts) plus non-strict area tools (money,
+    daftar, tracker, circle, task, split, app), each validated with zod into an AppAction. Tool results
+    are never sent back. No usable `respond` or a 400 → the old structured output (`ModelOutput`,
+    flat app_actions). FAKKARNI_CHAT_TOOLS=0 turns tools off.
+  - New action kinds run in apps/api/src/chat/more-actions.ts. The user's own changes happen at once
+    and carry a server-only `undo` payload (wire `undoable`; POST /messages/:id/actions/:aid {undo:true},
+    apps/api/src/chat/undo.ts, 24 h). Anything another person sees is a pending card.
+  - Context carries the numbers (`loadAppNumbers` → `describeNumbers`): month spend per section,
+    Daftar from the user's side, tasks with ids (asked of / by the user, homework to review), splits.
+  - News from other people is a chat line (`postUpdate`, kind "update") that can carry cards
+    (`activityCard`): a task request (Yes accepts / No declines), handed-in homework (Yes = well done /
+    No = redo), a Daftar entry from a circle member (right / not right). `noPayload` makes "no" an
+    answer instead of a cancel, by tap or plain chat yes/no. Joins, check-ins, RSVPs and split web adds
+    also write a line (apps/api/src/circles/ops.ts).
+  - Rule shortcuts (no AI): "تراجع"/"undo" undoes the latest undoable card (`isUndo`); "وصلت البيت"/"I'm
+    home" offers a check-in card (`homeCheckin`); a debt item with a circle member gets an "add to the
+    shared Daftar?" card (`debtCards`).
+  - User.gender ("female"/"male", PATCH /me, onboarding in Arabic, Settings, chat setting "address")
+    decides ADDRESS THE USER AS before the old memory rule; while unset the context asks Zaki to ask once.
+  - Item.alarm: only when the user asks or says yes; the phone schedules it on the "alarms" channel
+    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). A full-screen alarm needs a new native build.
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

@@ -51,6 +51,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       data.slowdownNoticed = false;
     }
     if (b.always_direct !== undefined) data.alwaysDirect = b.always_direct;
+    if (b.gender !== undefined) data.gender = b.gender;
     if (b.instapay_link !== undefined) {
       const link = b.instapay_link ? parseInstapayLink(b.instapay_link) : null;
       if (b.instapay_link && !link) return reply.code(400).send({ error: "invalid_instapay_link" });

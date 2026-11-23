@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldName, isCancel, isConfirm, matchByName, wireActions } from "./cards";
+import { foldName, homeCheckin, isCancel, isConfirm, isUndo, matchByName, wireActions } from "./cards";
 
 describe("names", () => {
   it("folds Arabic and English names so small differences still match", () => {
@@ -37,5 +37,22 @@ describe("wire cards", () => {
     const out = wireActions([{ id: "1", kind: "assign_task", status: "pending", label: "x", route: "/circle/a", lang: "arabic", payload: { secret: true } }, { nope: 1 }, null]);
     expect(out).toEqual([{ id: "1", kind: "assign_task", status: "pending", label: "x", route: "/circle/a" }]);
     expect(wireActions(null)).toEqual([]);
+  });
+});
+
+describe("chat shortcuts", () => {
+  it("knows a short 'take that back'", () => {
+    for (const t of ["تراجع", "رجّعها", "undo", "undo that", "take it back", "امسحها يا زكي"]) expect(isUndo(t), t).toBe(true);
+    for (const t of ["تراجع عن الاشتراك في الجيم بكرة الصبح", "امسح", "back to work", "لا"]) expect(isUndo(t), t).toBe(false);
+  });
+
+  it("knows 'I'm home' and not every 'وصلت'", () => {
+    expect(homeCheckin("وصلت البيت")).toBe("home");
+    expect(homeCheckin("أنا في البيت")).toBe("home");
+    expect(homeCheckin("روّحت الحمد لله")).toBe("home");
+    expect(homeCheckin("I'm home")).toBe("home");
+    expect(homeCheckin("got home safe")).toBe("home");
+    expect(homeCheckin("وصلت بالسلامة")).toBe("arrived");
+    for (const t of ["وصلت؟", "وصلت الرسالة", "هوصل البيت الساعة ٩", "is mom home?", "وصلت البيت وبعدين نزلت تاني اشتريت حاجات كتير"]) expect(homeCheckin(t), t).toBeNull();
   });
 });
