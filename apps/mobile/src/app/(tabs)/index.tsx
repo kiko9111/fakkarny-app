@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { FlatList, KeyboardAvoidingView, StyleSheet, View } from "react-native";
+import { router, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
 import { ChatInput } from "@/chat/ChatInput";
@@ -10,8 +10,12 @@ import { TypingIndicator } from "@/chat/TypingIndicator";
 import { useChat } from "@/chat/useChat";
 import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
+import { track } from "@/lib/analytics";
 import { getMe } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { unlock } from "@/lib/unlock-store";
+import { fill } from "@/circles/logic";
+import { suggestTracker } from "@/trackers/logic";
+import { Button, glass, IconButton, Note, palette, space, Text, ZakiAvatar } from "@/ui";
 
 const GREETING: LocalMessage = {
   client_id: "local:greeting",
@@ -21,10 +25,37 @@ const GREETING: LocalMessage = {
   created_at: new Date(0).toISOString(),
   sync_status: "synced",
   saved: null,
+  server_id: null,
+  actions: [],
 };
+
+/** The header: Zaki's face, his name, and what he is doing right now. */
+function ZakiHeader({ typing }: { typing: boolean }) {
+  return (
+    <View style={styles.header}>
+      <ZakiAvatar size={36} />
+      <View>
+        <Text variant="headline" style={styles.headerName}>
+          {t.ui.tabZaki}
+        </Text>
+        <Text variant="caption" color={typing ? palette.primaryInk : palette.ok}>
+          {typing ? t.ui.zakiTyping : t.ui.zakiOnline}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export default function ChatScreen() {
   const { messages, loaded, typing, locked, send } = useChat();
+  // "عايز أتعود على القراية كل يوم" → offer a tracker with one tap (rules on the phone, no AI call).
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const say = (text: string) => {
+    const followUp = unlock.onUserMessage(text);
+    setSuggestion(suggestTracker(text));
+    void send(text).then(followUp).catch(() => {});
+  };
+  const navigation = useNavigation();
   // New users are asked to start the trial; lapsed subscribers see that everything is saved.
   const [neverSubscribed, setNeverSubscribed] = useState(true);
   useEffect(() => {
@@ -34,6 +65,13 @@ export default function ChatScreen() {
   const network = useNetworkState();
   const offline = network.isConnected === false || network.isInternetReachable === false;
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: () => <ZakiHeader typing={typing && !offline} />,
+    });
+  }, [navigation, typing, offline]);
+
+  const fresh = loaded && messages.length === 0;
   // Inverted list: newest at the bottom, keyboard-friendly.
   const data = useMemo(() => {
     const all = loaded && messages.length === 0 ? [GREETING] : messages;
@@ -45,7 +83,9 @@ export default function ChatScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
       {offline ? (
         <View style={styles.offline}>
-          <Text style={styles.offlineText}>{t.chat.offline}</Text>
+          <Note icon="cloud-offline-outline" tone="warn">
+            {t.chat.offline}
+          </Note>
         </View>
       ) : null}
       <FlatList
@@ -54,22 +94,51 @@ export default function ChatScreen() {
         data={data}
         inverted
         keyExtractor={(m) => m.client_id}
-        renderItem={({ item }) => <MessageBubble message={item} />}
+        // In the inverted list, index-1 sits just below on screen and index+1 just above.
+        renderItem={({ item, index }) => <MessageBubble message={item} lastInRun={data[index - 1]?.role !== item.role} firstInRun={data[index + 1]?.role !== item.role} />}
         ListHeaderComponent={typing && !offline ? <TypingIndicator /> : undefined}
         keyboardShouldPersistTaps="handled"
       />
       {locked ? (
         // FR-9: chat locks without a subscription; history stays readable, queued messages send after subscribing.
         <View style={styles.lock}>
-          <Text style={styles.lockText}>{neverSubscribed ? t.paywall.lockedNew : t.paywall.locked}</Text>
-          <Pressable style={styles.lockButton} onPress={() => router.push("/paywall")}>
-            <Text style={styles.lockButtonText}>{t.paywall.cta}</Text>
-          </Pressable>
+          <Text variant="body" align="center">
+            {neverSubscribed ? t.paywall.lockedNew : t.paywall.locked}
+          </Text>
+          <Button label={t.paywall.cta} icon="sparkles" block onPress={() => router.push("/paywall")} />
         </View>
       ) : (
         <>
-          <QuickReplies options={t.chat.quickReplies} onPick={(text) => void send(text)} />
-          <ChatInput onSend={(text) => void send(text)} />
+          {suggestion ? (
+            <View style={styles.suggest}>
+              <ZakiAvatar size={28} />
+              <Text variant="small" style={styles.flexText}>
+                {fill(t.trackers.suggest, { name: suggestion })}
+              </Text>
+              <Button
+                label={t.trackers.suggestAction}
+                size="sm"
+                icon="add"
+                onPress={() => {
+                  const name = suggestion;
+                  track("tracker_suggest_tapped");
+                  setSuggestion(null);
+                  router.push({ pathname: "/tracker/new", params: { name } });
+                }}
+              />
+              <IconButton name="close" label={t.ui.cancel} onPress={() => setSuggestion(null)} size={32} />
+            </View>
+          ) : null}
+          {/* A new chat gets starters made for a busy household; later, the usual quick replies. */}
+          <QuickReplies
+            options={fresh ? t.chat.starters : t.chat.quickReplies}
+            onPick={(text) => {
+              const index = (fresh ? t.chat.starters : t.chat.quickReplies).indexOf(text);
+              track(fresh ? "starter_tapped" : "quick_reply", { index });
+              say(text);
+            }}
+          />
+          <ChatInput onSend={say} />
         </>
       )}
     </KeyboardAvoidingView>
@@ -77,12 +146,12 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.bg },
-  list: { paddingHorizontal: 12, paddingVertical: 8 },
-  offline: { backgroundColor: "#FFF3CD", paddingHorizontal: 12, paddingVertical: 6 },
-  offlineText: { color: "#7A5B00", fontSize: 13, textAlign: "center" },
-  lock: { padding: 16, gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#E5DDD5", backgroundColor: colors.bg },
-  lockText: { color: colors.text, textAlign: "center", fontSize: 15 },
-  lockButton: { backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 12, alignItems: "center" },
-  lockButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  flex: { flex: 1, backgroundColor: palette.bg },
+  header: { flexDirection: "row", alignItems: "center", gap: space.sm + 2 },
+  headerName: { lineHeight: 22 },
+  list: { paddingHorizontal: space.md, paddingVertical: space.sm },
+  suggest: { flexDirection: "row", alignItems: "center", gap: space.sm, marginHorizontal: space.md, marginBottom: space.xs, padding: space.sm, borderRadius: 18, ...glass },
+  flexText: { flex: 1 },
+  offline: { paddingHorizontal: space.md, paddingTop: space.xs },
+  lock: { padding: space.lg, gap: space.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line, backgroundColor: palette.surface },
 });

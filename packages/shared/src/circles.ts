@@ -26,6 +26,18 @@ export function checkinOrder(familyType: FamilyType | null | undefined): Checkin
   return ["arrived", "home", "on_way", "ok", "medicine"];
 }
 
+/**
+ * Every circle (family, friends, work, gym, any name) gets every feature. A new circle has
+ * CIRCLE_TRIAL_DAYS of everything; after that the basics (tasks, Daftar, check-ins, a first
+ * nudge per task) stay free for good, and the extras (Zaki's weekly summary, more nudges)
+ * need Pro from any member who opens them.
+ */
+export const CIRCLE_TRIAL_DAYS = 14;
+/** Nudges per task that stay free after the trial (MAX_NUDGES is the overall cap). */
+export const FREE_NUDGES_PER_TASK = 1;
+export const circleTrialUntil = (createdAt: Date) => new Date(createdAt.getTime() + CIRCLE_TRIAL_DAYS * 86400_000);
+export const circleExtras = (createdAt: Date, pro: boolean, now: Date) => pro || now < circleTrialUntil(createdAt);
+
 export const Circle = z.object({
   id: z.string(),
   kind: CircleKind,
@@ -36,8 +48,16 @@ export const Circle = z.object({
   /** Family circles only, when the owner picked one. */
   family_type: FamilyType.nullable().default(null),
   created_at: Instant,
+  /** End of the circle's full-feature trial. */
+  trial_until: Instant.optional(),
+  /** Whether the extras are open for the caller (trial, or the caller has Pro). */
+  extras: z.boolean().default(true),
 });
 export type Circle = z.infer<typeof Circle>;
+
+/** Zaki's weekly summary of a circle: template lines, no AI. An extra (trial or Pro). */
+export const CircleSummary = z.object({ lines: z.array(z.string()), since: Instant });
+export type CircleSummary = z.infer<typeof CircleSummary>;
 
 export const CircleMember = z.object({
   user_id: z.string(),

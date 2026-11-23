@@ -13,6 +13,7 @@ import {
   Platform,
   Tone,
 } from "./enums";
+import { ChatAction } from "./chat-actions";
 
 /**
  * Wire shapes of the PRD §6 data model, as sent between app and API.
@@ -68,6 +69,8 @@ export const Message = z.object({
   client_id: z.string().min(1),
   kind: MessageKind,
   created_at: Instant,
+  /** Cards for what Zaki did or asks to do in the app (old servers send none). */
+  actions: z.array(ChatAction).default([]),
 });
 export type Message = z.infer<typeof Message>;
 

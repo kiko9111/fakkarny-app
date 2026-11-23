@@ -1,13 +1,17 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { z } from "zod";
-import { CreateTaskRequest, IftarRequest, RespondTaskRequest, RsvpRequest, type CircleFeedResponse, type ListTasksResponse, type TaskResponse } from "@fakkarni/shared";
-import type { PrismaClient } from "../generated/prisma/client";
+import { CreateTaskRequest, IftarRequest, RespondTaskRequest, RsvpRequest, TaskRemindRequest, type CircleFeedResponse, type ListTasksResponse, type TaskResponse } from "@fakkarni/shared";
+import type { PrismaClient, User } from "../generated/prisma/client";
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
-import { canCancel, canFinish, canNudge, canRespond, MAX_OPEN_PER_PAIR, postLine } from "../tasks/rules";
-import { announce, cancel, finish, langOf, nudge, respond, roleOf, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
+import { circleExtras, FREE_NUDGES_PER_TASK } from "@fakkarni/shared";
+import { hasProAccess } from "../billing/family";
+import { canCancel, canFinish, canNudge, canRespond, canSetRemind, postLine } from "../tasks/rules";
+import { assignTask, cancel, finish, langOf, nudge, respond, roleOf, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
 
 export interface TaskRoutesOptions {
+  /** Off (stores not set up yet): every circle keeps its extras. */
+  requireSubscription?: boolean;
   prisma: PrismaClient;
   authenticate: preHandlerAsyncHookHandler;
   now?: () => Date;
@@ -20,6 +24,7 @@ const IdParam = z.object({ id: z.uuid() });
 export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opts) => {
   const { prisma } = opts;
   const now = opts.now ?? (() => new Date());
+  const proFor = async (user: User): Promise<boolean> => !opts.requireSubscription || (await hasProAccess(prisma, user, now()));
   app.addHook("preHandler", opts.authenticate);
 
   const isMember = async (circleId: string, userId: string) => Boolean(await prisma.circleMember.findUnique({ where: { circleId_userId: { circleId, userId } } }));
@@ -108,19 +113,10 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     const body = CreateTaskRequest.safeParse(req.body);
     if (!params.success) return reply.code(404).send({ error: "not_found" });
     if (!body.success || body.data.assignee_id === req.user.id) return reply.code(400).send({ error: "invalid_body" });
-    const circleId = params.data.id;
-    // Both people have to be in the circle.
-    const members = await prisma.circleMember.count({ where: { circleId, userId: { in: [req.user.id, body.data.assignee_id] } } });
-    if (members !== 2) return reply.code(404).send({ error: "not_found" });
-    const open = await prisma.circleTask.count({ where: { assignerId: req.user.id, assigneeId: body.data.assignee_id, status: { in: ["pending", "accepted"] } } });
-    if (open >= MAX_OPEN_PER_PAIR) return reply.code(409).send({ error: "too_many" });
-    const at = now();
-    const task = await prisma.circleTask.create({
-      data: { circleId, assignerId: req.user.id, assigneeId: body.data.assignee_id, title: body.data.title, dueAt: body.data.due_at ? new Date(body.data.due_at) : null, createdAt: at },
-      include: withPeople,
-    });
-    await prisma.event.create({ data: { userId: req.user.id, name: "task_assigned", propsJson: { has_due: Boolean(task.dueAt) } } });
-    return reply.code(201).send(done({ task, notices: await announce(prisma, task, at) }, req.user.id));
+    const made = await assignTask(prisma, { circleId: params.data.id, assignerId: req.user.id, assigneeId: body.data.assignee_id, title: body.data.title, dueAt: body.data.due_at ? new Date(body.data.due_at) : null, remindAt: body.data.remind_at ? new Date(body.data.remind_at) : null, homework: body.data.homework ?? false, note: body.data.note || null }, now());
+    if (made === "not_members") return reply.code(404).send({ error: "not_found" });
+    if (made === "too_many") return reply.code(409).send({ error: "too_many" });
+    return reply.code(201).send(done(made, req.user.id));
   });
 
   app.post("/tasks/:id/respond", async (req, reply) => {
@@ -131,6 +127,23 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     const outcome = canRespond(found.t.status, found.role) ? await respond(prisma, found.t.id, body.data.answer, now()) : null;
     if (!outcome) return reply.code(409).send({ error: "not_allowed" });
     return done(outcome, req.user.id);
+  });
+
+  /** Change when Zaki reminds the assignee. On an accepted task this moves their own reminder too. */
+  app.post("/tasks/:id/remind", async (req, reply) => {
+    const found = await mine(req.params, req.user.id);
+    const body = TaskRemindRequest.safeParse(req.body);
+    if (!found) return reply.code(404).send({ error: "not_found" });
+    if (!body.success) return reply.code(400).send({ error: "invalid_body" });
+    if (!canSetRemind(found.t.status, found.role)) return reply.code(409).send({ error: "not_allowed" });
+    const remindAt = body.data.remind_at ? new Date(body.data.remind_at) : null;
+    const task = await prisma.$transaction(async (tx) => {
+      if (found.t.itemId) {
+        await tx.item.updateMany({ where: { id: found.t.itemId, userId: found.t.assigneeId }, data: { remindAt: remindAt ?? found.t.dueAt, ...(remindAt || found.t.dueAt ? { type: "reminder" } : {}) } });
+      }
+      return tx.circleTask.update({ where: { id: found.t.id }, data: { remindAt }, include: withPeople });
+    });
+    return { task: toWireTask(task, req.user.id, now()) } satisfies TaskResponse;
   });
 
   app.post("/tasks/:id/done", async (req, reply) => {
@@ -153,6 +166,11 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
   app.post("/tasks/:id/nudge", async (req, reply) => {
     const found = await mine(req.params, req.user.id);
     if (!found) return reply.code(404).send({ error: "not_found" });
+    // After the circle's trial, the first nudge per task stays free; more are a Pro extra.
+    if (canNudge(found.t, found.role, now()) && found.t.nudges >= FREE_NUDGES_PER_TASK) {
+      const circle = await prisma.circle.findUnique({ where: { id: found.t.circleId }, select: { createdAt: true } });
+      if (circle && !circleExtras(circle.createdAt, await proFor(req.user), now())) return reply.code(402).send({ error: "circle_extras" });
+    }
     const outcome = canNudge(found.t, found.role, now()) ? await nudge(prisma, found.t, now()) : null;
     if (!outcome) return reply.code(409).send({ error: "not_allowed" });
     return done(outcome, req.user.id);

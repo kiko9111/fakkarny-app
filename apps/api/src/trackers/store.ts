@@ -3,13 +3,14 @@ import { hasProAccess } from "../billing/family";
 import { Prisma, type PrismaClient, type Tracker, type User } from "../generated/prisma/client";
 import type { ReplyLang } from "../pipeline/rules";
 import { matchTrackCommand, matchTrackerLog, titleMatchesKind } from "./match";
+import { TRACKER_LABEL, trackerLabel } from "./labels";
 import { trackerStats } from "./stats";
 
 const STREAK_DAYS = 370;
 const kindOf = (t: Pick<Tracker, "kind">): TrackerKind => TrackerKind.catch("custom").parse(t.kind);
 
 /** A tracker with its numbers, in the user's local days. */
-export async function toWireTracker(prisma: PrismaClient, t: Tracker, tz: string, now: Date): Promise<WireTracker> {
+export async function toWireTracker(prisma: PrismaClient, t: Tracker & { circle?: { name: string } | null }, tz: string, now: Date): Promise<WireTracker> {
   const kind = kindOf(t);
   const tpl = TRACKER_TEMPLATES[kind];
   const goal = t.goal === null ? null : Number(t.goal);
@@ -18,20 +19,47 @@ export async function toWireTracker(prisma: PrismaClient, t: Tracker, tz: string
     prisma.trackerEntry.aggregate({ where: { trackerId: t.id }, _sum: { amount: true } }),
   ]);
   const stats = trackerStats(recent.map((e) => ({ amount: Number(e.amount), at: e.at })), tz, now, { goal: tpl.cumulative ? null : goal, streaks: tpl.unit === "count" });
-  return { id: t.id, kind, name: t.name, unit: tpl.unit, goal, cumulative: tpl.cumulative, ...stats, total: Number(all._sum.amount ?? 0), pack: t.pack === "ramadan" ? "ramadan" : null, created_at: t.createdAt.toISOString() };
+  return { id: t.id, kind, name: t.name, unit: tpl.unit, goal, cumulative: tpl.cumulative, ...stats, total: Number(all._sum.amount ?? 0), pack: t.pack === "ramadan" ? "ramadan" : null,
+    ask_times: t.askTimes,
+    unit_label: t.unitLabel,
+    circle_id: t.circleId,
+    circle_name: t.circle?.name ?? null,
+    created_at: t.createdAt.toISOString(),
+  };
 }
 
 /** Trackers this user may keep: 1 on the free plan, no limit with Pro (own, earned or Family). */
 export const trackerLimit = async (prisma: PrismaClient, user: User, now: Date): Promise<number | null> => ((await hasProAccess(prisma, user, now)) ? null : FREE_TRACKERS);
 
-export async function createTracker(prisma: PrismaClient, user: User, input: { kind: TrackerKind; name?: string; goal?: number }, now: Date): Promise<Tracker | "limit"> {
+export async function createTracker(
+  prisma: PrismaClient,
+  user: User,
+  input: { kind: TrackerKind; name?: string; goal?: number; ask_times?: string[]; unit_label?: string; circle_id?: string | null },
+  now: Date,
+): Promise<Tracker | "limit" | "bad_circle"> {
   const limit = await trackerLimit(prisma, user, now);
   // Pack trackers (Ramadan) are a gift: they never use the free slot.
   if (limit !== null && (await prisma.tracker.count({ where: { userId: user.id, pack: null } })) >= limit) return "limit";
+  if (input.circle_id && !(await canShareIn(prisma, user.id, input.circle_id, input.kind))) return "bad_circle";
   const goal = input.goal ?? TRACKER_TEMPLATES[input.kind].goal;
   return prisma.tracker.create({
-    data: { userId: user.id, kind: input.kind, name: input.kind === "custom" ? input.name ?? null : null, goal: goal === null ? null : new Prisma.Decimal(goal), createdAt: now },
+    data: {
+      userId: user.id,
+      kind: input.kind,
+      name: input.kind === "custom" ? input.name ?? null : null,
+      goal: goal === null ? null : new Prisma.Decimal(goal),
+      askTimes: [...new Set(input.ask_times ?? [])].sort(),
+      unitLabel: input.kind === "custom" ? input.unit_label ?? null : null,
+      circleId: input.circle_id ?? null,
+      createdAt: now,
+    },
   });
+}
+
+/** A tracker can be shared with a circle the owner is in, and never when it counts money. */
+export async function canShareIn(prisma: PrismaClient, userId: string, circleId: string, kind: TrackerKind): Promise<boolean> {
+  if (TRACKER_TEMPLATES[kind].unit === "money") return false;
+  return (await prisma.circleMember.count({ where: { circleId, userId } })) === 1;
 }
 
 /** Add the Ramadan trackers the user does not follow yet. Free for everyone, in season only. */
@@ -47,27 +75,29 @@ export async function addRamadanPack(prisma: PrismaClient, user: User, now: Date
   return made;
 }
 
-export const logEntry = (prisma: PrismaClient, trackerId: string, amount: number, source: "tap" | "chat", now: Date) =>
-  prisma.trackerEntry.create({ data: { trackerId, amount: new Prisma.Decimal(amount), source, at: now } });
+/** Log one entry. On a tracker shared with a circle, reaching today's goal is posted there. */
+export async function logEntry(prisma: PrismaClient, tracker: Tracker, amount: number, source: "tap" | "chat", now: Date, tz: string) {
+  const entry = await prisma.trackerEntry.create({ data: { trackerId: tracker.id, amount: new Prisma.Decimal(amount), source, at: now } });
+  await postGoalIfMet(prisma, tracker, tz, amount, now);
+  return entry;
+}
 
-const LABEL: Record<TrackerKind, Record<ReplyLang, string>> = {
-  water: { arabic: "المية 💧", english: "water 💧" },
-  prayer: { arabic: "الصلاة 🤲", english: "prayers 🤲" },
-  gym: { arabic: "التمرين 💪", english: "workouts 💪" },
-  quran: { arabic: "القرآن 📖", english: "Quran 📖" },
-  medicine: { arabic: "الدوا 💊", english: "medicine 💊" },
-  study: { arabic: "المذاكرة 📚", english: "studying 📚" },
-  spending: { arabic: "المصاريف 🧾", english: "spending 🧾" },
-  savings: { arabic: "التحويش 🐷", english: "savings 🐷" },
-  fasting: { arabic: "الصيام 🌙", english: "fasting 🌙" },
-  charity: { arabic: "الصدقة 🤍", english: "charity 🤍" },
-  custom: { arabic: "", english: "" },
-};
+/** "Omar hit today's goal for «reading» 🎯 (5 days in a row)": once a day, the moment it is reached. */
+async function postGoalIfMet(prisma: PrismaClient, tracker: Tracker, tz: string, amount: number, now: Date) {
+  const kind = kindOf(tracker);
+  const tpl = TRACKER_TEMPLATES[kind];
+  if (!tracker.circleId || tracker.goal === null || tpl.unit === "money" || tpl.cumulative) return;
+  const goal = Number(tracker.goal);
+  const w = await toWireTracker(prisma, tracker, tz, now);
+  if (w.today < goal || w.today - amount >= goal) return;
+  await prisma.circlePost.create({ data: { circleId: tracker.circleId, event: "tracker_goal", actorId: tracker.userId, title: `${kind}|${tracker.name ?? ""}|${w.streak}`, createdAt: now } });
+}
+
 const num = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 /** Zaki's answer after logging, with the number that matters. Templates only. */
-export function loggedLine(lang: ReplyLang, w: Pick<WireTracker, "kind" | "unit" | "goal" | "cumulative" | "today" | "total" | "streak">, amount: number): string {
-  const label = LABEL[w.kind][lang];
+export function loggedLine(lang: ReplyLang, w: Pick<WireTracker, "kind" | "unit" | "goal" | "cumulative" | "today" | "total" | "streak"> & { name?: string | null }, amount: number): string {
+  const label = trackerLabel(w.kind, w.name, lang);
   const ar = lang === "arabic";
   if (w.unit === "money") {
     if (w.cumulative) {
@@ -97,10 +127,10 @@ export async function trackerFastPath(prisma: PrismaClient, user: User, text: st
   const ar = lang === "arabic";
   const wanted = matchTrackCommand(text);
   if (wanted) {
-    const label = LABEL[wanted][lang];
+    const label = TRACKER_LABEL[wanted][lang];
     if (await prisma.tracker.findFirst({ where: { userId: user.id, kind: wanted } })) return { text: ar ? `أنا متابع معاك ${label} أصلاً 😄 قولّي كل ما تعمل وأنا أسجّل.` : `I'm already following ${label} with you 😄 Just tell me each time and I'll log it.`, upsell: false };
     const made = await createTracker(prisma, user, { kind: wanted }, now);
-    if (made === "limit") return { text: ar ? `نفسي أتابع معاك ${label} كمان! الخطة المجانية فيها متابعة واحدة، وزكي برو بيفتحهم كلهم 🌟` : `I'd love to follow ${label} with you too! The free plan has one tracker, and Zaki Pro opens them all 🌟`, upsell: true };
+    if (made === "limit" || made === "bad_circle") return { text: ar ? `نفسي أتابع معاك ${label} كمان! الخطة المجانية فيها متابعة واحدة، وزكي برو بيفتحهم كلهم 🌟` : `I'd love to follow ${label} with you too! The free plan has one tracker, and Zaki Pro opens them all 🌟`, upsell: true };
     await prisma.event.create({ data: { userId: user.id, name: "tracker_created", propsJson: { kind: wanted, via: "chat" } } });
     return { text: ar ? `تمام! بدأت أتابع معاك ${label} قولّي كل ما تعمل، أو دوس عليها في صفحة المتابعة 🌟` : `Done! I'm now following ${label} with you. Tell me each time, or tap it on the Trackers page 🌟`, upsell: false };
   }
@@ -110,7 +140,7 @@ export async function trackerFastPath(prisma: PrismaClient, user: User, text: st
   if (!hit) return null; // Not something they follow: let Zaki answer normally.
   const tracker = await prisma.tracker.findFirst({ where: { userId: user.id, kind: hit.kind }, orderBy: { createdAt: "asc" } });
   if (!tracker) return null;
-  await logEntry(prisma, tracker.id, hit.amount, "chat", now);
+  await logEntry(prisma, tracker, hit.amount, "chat", now, user.timezone);
   await prisma.event.create({ data: { userId: user.id, name: "tracker_logged", propsJson: { kind: hit.kind, via: "chat" } } });
   // "خدت الدوا" may also answer an open reminder about it: logged here, then Zaki (the model)
   // still sees the message so it can close that reminder.

@@ -38,6 +38,20 @@ export async function adminStats(prisma: PrismaClient, metrics: Metrics, now: Da
     SELECT user_id::text AS user_id, COALESCE(SUM((props_json->>'cost_usd')::float), 0) AS cost, COUNT(*) AS calls
     FROM events WHERE name = 'ai_call' AND created_at >= ${month}
     GROUP BY user_id ORDER BY cost DESC`;
+  // Growth (north star: weekly active circles = 2+ members and something posted in 7 days).
+  const [activeCircles] = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT COUNT(*) AS n FROM (
+      SELECT p.circle_id FROM circle_posts p
+      WHERE p.created_at >= ${week}
+      GROUP BY p.circle_id
+      HAVING (SELECT COUNT(*) FROM circle_members m WHERE m.circle_id = p.circle_id) >= 2
+    ) c`;
+  const [invites] = await prisma.$queryRaw<{ created: bigint; web_confirms: bigint | null }[]>`
+    SELECT COUNT(*) AS created, SUM(web_confirms) AS web_confirms FROM invites WHERE created_at >= ${week}`;
+  const funnel = await prisma.$queryRaw<{ name: string; n: bigint; users: bigint }[]>`
+    SELECT name, COUNT(*) AS n, COUNT(DISTINCT user_id) AS users FROM events
+    WHERE created_at >= ${week} AND (name LIKE 'app:%' OR name IN ('chat_intent', 'referral_reward', 'referral_welcome'))
+    GROUP BY name ORDER BY n DESC LIMIT 40`;
   const planCount = Object.fromEntries(plans.map((p) => [p.plan, p._count._all])) as Record<string, number>;
   const paying = (planCount["monthly"] ?? 0) + (planCount["yearly"] ?? 0);
   const everSubscribed = paying + (planCount["trial"] ?? 0) + (planCount["expired"] ?? 0);
@@ -63,6 +77,12 @@ export async function adminStats(prisma: PrismaClient, metrics: Metrics, now: Da
       top_users: costRows.slice(0, 10).map((r) => ({ user: r.user_id.slice(0, 8), cost_usd: Number(r.cost), calls: Number(r.calls) })),
     },
     errors_24h: metrics.summary(),
+    growth_7d: {
+      active_circles: Number(activeCircles?.n ?? 0),
+      invites_created: Number(invites?.created ?? 0),
+      invite_web_confirms: Number(invites?.web_confirms ?? 0),
+      events: funnel.map((r) => ({ name: r.name, count: Number(r.n), users: Number(r.users) })),
+    },
   };
 }
 
@@ -77,6 +97,8 @@ function page(s: Stats): string {
 <style>body{font-family:system-ui,sans-serif;margin:24px auto;max-width:860px;padding:0 16px;color:#1f1a17;background:#fffbf5}h1{font-size:22px}h2{font-size:15px;color:#6b625b;margin-top:28px}table{border-collapse:collapse;width:100%;background:#fff}th,td{padding:8px 10px;border-bottom:1px solid #eee;text-align:left}th{font-weight:500;color:#6b625b;width:55%}.warn{color:#b3261e;font-weight:600}</style></head><body>
 <h1>Zaki admin</h1><p>No chat content is shown here. Generated ${s.generated_at}.</p>
 <h2>Users</h2><table>${row("Total", s.users.total)}${row("New (7 days)", s.users.new_7d)}${row("Active (24 h)", s.users.active_1d)}${row("Active (7 days)", s.users.active_7d)}${row("User messages (24 h)", s.messages_1d)}</table>
+<h2>Growth (7 days)</h2><table>${row("Weekly active circles (north star)", s.growth_7d.active_circles)}${row("Invite links made", s.growth_7d.invites_created)}${row("Invite web confirms", s.growth_7d.invite_web_confirms)}</table>
+<h2>Events (7 days: count / people)</h2><table>${s.growth_7d.events.map((e) => row(e.name.replace(/[<>&]/g, ""), `${e.count} / ${e.users}`)).join("")}</table>
 <h2>Subscriptions</h2><table>${row("No plan yet", s.plans.none)}${row("Trial", s.plans.trial)}${row("Monthly", s.plans.monthly)}${row("Yearly", s.plans.yearly)}${row("Expired", s.plans.expired)}${row("Paying share of ever-subscribed", pct(s.conversion.paid_share_of_subscribed))}</table>
 <h2>AI cost (30 days)</h2><table>${row("Total", usd(c.total_usd))}${row("Per active user", usd(c.per_active_user_usd))}${row("Per paying user (target under $1.50)", usd(c.per_paying_user_usd), c.per_paying_user_usd > c.target_per_paying_user_usd ? "warn" : "")}
 ${c.top_users.map((u) => row(`User ${u.user}…`, `${usd(u.cost_usd)} · ${u.calls} calls`)).join("")}</table>

@@ -6,6 +6,7 @@ import type {
   User as WireUser,
 } from "@fakkarni/shared";
 import type { Item, Memory, Message, User } from "./generated/prisma/client";
+import { wireActions } from "./chat/cards";
 
 /** DB rows (camelCase, Date) → wire shapes (snake_case, ISO strings). */
 
@@ -30,6 +31,7 @@ export function toWireMessage(m: Message, newKinds = false): WireMessage {
     client_id: m.clientId,
     kind: !newKinds && (m.kind === "upsell" || m.kind === "update") ? "chat" : m.kind,
     created_at: iso(m.createdAt),
+    actions: wireActions(m.actionsJson),
   };
 }
 

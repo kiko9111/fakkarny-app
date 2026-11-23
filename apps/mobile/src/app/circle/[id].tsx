@@ -1,36 +1,38 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember } from "@fakkarni/shared";
-import { ItemRow, SectionTitle } from "@/components/ItemRow";
+import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
-import { t } from "@/i18n";
-import { answerInvite, askCheckin, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, removeCircleMember, setFamilyRole } from "@/lib/api";
+import { t, dateLocale } from "@/i18n";
+import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
-import { colors } from "@/lib/theme";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
+import { AskZakiBox, FeedPost } from "@/circles/FeedPost";
+import { TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
+import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
-const confirm = (message: string, onYes: () => void) =>
-  Alert.alert(message, undefined, [
-    { text: t.circles.cancel, style: "cancel" },
-    { text: t.circles.yes, style: "destructive", onPress: onYes },
-  ]);
+const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
+const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
-/** One circle: requests between its people, what Zaki posted, who is in it, and the invite that grows it. */
+/** One circle: who's OK, requests between its people, what Zaki posted, and the invite that grows it. */
 export default function CircleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [circle, setCircle] = useState<CircleDetail | null>(null);
   const [failed, setFailed] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [feed, setFeed] = useState<CircleFeedResponse>({ posts: [], tasks: [] });
+  const [summary, setSummary] = useState<string[] | null>(null);
+  const [trackers, setTrackers] = useState<SharedTracker[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [c, f] = await Promise.all([getCircle(id), getCircleFeed(id)]);
+      const [c, f, tr] = await Promise.all([getCircle(id), getCircleFeed(id), getCircleTrackers(id).catch(() => [])]);
       setCircle(c);
       setFeed(f);
+      setTrackers(tr);
       setFailed(false);
+      setSummary(c.extras ? (await getCircleSummary(id).catch(() => null))?.lines ?? null : null);
     } catch {
       setFailed(true);
     }
@@ -52,55 +54,54 @@ export default function CircleScreen() {
       await Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
       void load();
     } catch {
-      Alert.alert(t.circles.failed);
+      notify(t.circles.failed, "error");
     } finally {
       setInviting(false);
     }
   };
 
-  const act = async (work: () => Promise<void>, leaveScreen: boolean) => {
+  const act = async (work: () => Promise<void>, leaveScreen: boolean, done?: string) => {
     try {
       await work();
+      if (done) notify(done);
       if (leaveScreen) router.back();
       else void load();
     } catch {
-      Alert.alert(t.circles.failed);
+      notify(t.circles.failed, "error");
     }
   };
 
   const sendCheckin = async (kind: CheckinKind) => {
     try {
       setCircle(await checkIn(id, kind));
-      Alert.alert(t.family.checkedIn);
+      notify(t.family.checkedIn);
       void load();
     } catch {
-      Alert.alert(t.circles.failed);
+      notify(t.circles.failed, "error");
     }
   };
-  const ask = async (userId: string) => {
+  const askOne = async (userId: string) => {
     try {
       await askCheckin(id, userId);
-      Alert.alert(t.family.asked);
+      notify(t.family.asked);
     } catch (err) {
-      Alert.alert(err instanceof HttpError && err.status === 409 ? t.family.askedTooSoon : t.circles.failed);
+      notify(err instanceof HttpError && err.status === 409 ? t.family.askedTooSoon : t.circles.failed, err instanceof HttpError && err.status === 409 ? "info" : "error");
     }
   };
   const pickRole = async (userId: string, role: FamilyRole | null) => {
     try {
       setCircle(await setFamilyRole(id, userId, role));
     } catch {
-      Alert.alert(t.circles.failed);
+      notify(t.circles.failed, "error");
     }
   };
-  const iftar = (pick: IftarDay) => void act(async () => (await inviteToIftar(id, iftarDate(pick, new Date())), Alert.alert(t.ramadan.sent)), false);
-  // Three choices fit an Android alert.
+  const iftar = (pick: IftarDay) => void act(() => inviteToIftar(id, iftarDate(pick, new Date())), false, t.ramadan.sent);
   const askIftarDay = () =>
-    Alert.alert(t.ramadan.iftarWhen, undefined, [
-      { text: t.ramadan.days.today, onPress: () => iftar("today") },
-      { text: t.ramadan.days.tomorrow, onPress: () => iftar("tomorrow") },
-      { text: t.ramadan.days.friday, onPress: () => iftar("friday") },
+    ask(t.ramadan.iftarWhen, undefined, [
+      { label: t.ramadan.days.today, onPress: () => iftar("today") },
+      { label: t.ramadan.days.tomorrow, onPress: () => iftar("tomorrow") },
+      { label: t.ramadan.days.friday, onPress: () => iftar("friday") },
     ]);
-  const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 
   if (!circle) {
     return (
@@ -108,148 +109,213 @@ export default function CircleScreen() {
         <Stack.Screen options={{ title: "" }} />
         {failed ? (
           <>
-            <Text style={styles.muted}>{t.circles.offline}</Text>
-            <Pressable onPress={() => void load()}>
-              <Text style={styles.link}>{t.circles.retry}</Text>
-            </Pressable>
+            <Note icon="cloud-offline-outline">{t.circles.offline}</Note>
+            <Button label={t.circles.retry} kind="tonal" onPress={() => void load()} />
           </>
         ) : (
-          <ActivityIndicator color={colors.accent} />
+          <ActivityIndicator color={palette.primary} />
         )}
       </View>
     );
   }
 
+  const family = circle.kind === "family";
+  const tint = family ? palette.family : palette.friends;
+  const tintSoft = family ? palette.familySoft : palette.friendsSoft;
   const owner = circle.role === "owner";
   const me = circle.members.find((m) => m.is_me);
-  const label = (m: CircleMember) => (m.is_me ? t.circles.you : m.name ?? t.circles.noName);
+  const label = (m: CircleMember) => (m.is_me ? t.ui.you : m.name ?? t.circles.noName);
   const joined = circle.open_invites.reduce((n, i) => n + i.joins, 0);
+  const others = circle.members.length > 1;
+  const trialDays = circle.trial_until ? Math.max(0, Math.ceil((new Date(circle.trial_until).getTime() - Date.now()) / 86400_000)) : 0;
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+    <Screen>
       <Stack.Screen options={{ title: circle.name }} />
 
-      <Pressable style={[styles.primary, inviting && styles.dim]} disabled={inviting} onPress={() => void invite()} accessibilityRole="button">
-        {inviting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t.circles.invite}</Text>}
-      </Pressable>
-      <Text style={styles.muted}>{t.circles.inviteHint}</Text>
-      <Text style={styles.reward}>{t.circles.inviteReward}</Text>
-      {joined > 0 ? <Text style={styles.muted}>{fill(t.circles.joinedCount, { n: joined })}</Text> : null}
+      <Card tone={tintSoft} style={styles.hero}>
+        <View style={styles.heroHead}>
+          <IconTile name={family ? "home" : "people"} color={tint} bg={palette.surface} size={52} />
+          <View style={styles.flex}>
+            <Text variant="title">{circle.name}</Text>
+            <Text variant="small" color={palette.inkSoft}>
+              {fill(t.ui.members, { n: circle.members.length })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.faces}>
+          {circle.members.slice(0, 6).map((m) => (
+            <View key={m.user_id} style={styles.face}>
+              <PersonAvatar name={label(m)} size={34} color={tint} bg={palette.surface} />
+            </View>
+          ))}
+        </View>
+        <Button label={t.ui.invite} kind="whatsapp" icon="logo-whatsapp" busy={inviting} block onPress={() => void invite()} />
+        <Text variant="caption" color={palette.inkSoft}>
+          {t.circles.inviteHint} {joined > 0 ? fill(t.circles.joinedCount, { n: joined }) : ""}
+        </Text>
+        <Text variant="smallStrong" color={palette.ok}>
+          {plain(t.circles.inviteReward)}
+        </Text>
+      </Card>
 
-      <SectionTitle>{t.family.checkinTitle}</SectionTitle>
+      <SectionHeader title={t.circles.summaryTitle} />
+      {circle.extras ? (
+        <Card>
+          <View style={styles.summaryHead}>
+            <ZakiAvatar size={32} />
+            {trialDays > 0 ? <Badge label={fill(t.circles.trialLeft, { n: trialDays })} tone="primary" /> : null}
+          </View>
+          {(summary ?? []).map((line) => (
+            <Text key={line} variant="body">
+              {line}
+            </Text>
+          ))}
+        </Card>
+      ) : (
+        <Card>
+          <Text variant="small" color={palette.inkSoft}>
+            {t.circles.summaryLocked}
+          </Text>
+          <Button label={t.circles.seePro} kind="tonal" size="sm" icon="sparkles-outline" onPress={() => router.push("/paywall")} style={styles.center2} />
+        </Card>
+      )}
+
+      <SectionHeader title={t.ui.checkInPrompt} />
       <View style={styles.chips}>
         {checkinOrder(circle.family_type).map((kind) => (
-          <Pressable key={kind} style={styles.chip} onPress={() => void sendCheckin(kind)} accessibilityRole="button">
-            <Text style={styles.chipText}>{t.family.checkins[kind]}</Text>
-          </Pressable>
+          <Chip key={kind} label={plain(t.family.checkins[kind])} icon={CHECKIN_ICON[kind]} tone="family" onPress={() => void sendCheckin(kind)} />
         ))}
       </View>
 
-      <SectionTitle>{t.tasks.title}</SectionTitle>
-      {circle.members.length > 1 ? (
-        <Pressable style={styles.ask} onPress={() => router.push({ pathname: "/task/new", params: { circle: id } })} accessibilityRole="button">
-          <Text style={styles.askText}>{t.tasks.ask}</Text>
-        </Pressable>
+      <SectionHeader title={t.ui.feedTitle} />
+      <Card>
+        <AskZakiBox
+          onAsk={async (text) => {
+            try {
+              const post = await askZakiInCircle(id, text);
+              setFeed((f) => ({ ...f, posts: [post, ...f.posts] }));
+            } catch {
+              notify(t.tasks.failed, "error");
+            }
+          }}
+        />
+      </Card>
+      {feed.posts.length === 0 ? (
+        <Text variant="small" color={palette.inkSoft} align="center">
+          {t.ui.feedEmpty}
+        </Text>
       ) : null}
-      {feed.tasks.length === 0 ? <Text style={styles.muted}>{circle.members.length > 1 ? t.tasks.empty : t.tasks.noMembers}</Text> : null}
+      {feed.posts.slice(0, 30).map((p) => (
+        <FeedPost
+          key={p.id}
+          circleId={id}
+          post={p}
+          onChange={(next) => setFeed((f) => ({ ...f, posts: f.posts.map((x) => (x.id === next.id ? next : x)) }))}
+          extra={
+            p.kind === "iftar" ? (
+              <View style={styles.chips}>
+                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => void act(() => answerInvite(id, p.id, true), false)} />
+                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => void act(() => answerInvite(id, p.id, false), false)} />
+              </View>
+            ) : undefined
+          }
+        />
+      ))}
+
+      <SectionHeader title={t.ui.tasksTitle} action={others ? plain(t.tasks.ask) : undefined} onAction={() => router.push({ pathname: "/task/new", params: { circle: id } })} />
+      {feed.tasks.length === 0 ? (
+        <Card>
+          <Text variant="small" color={palette.inkSoft} align="center">
+            {others ? t.tasks.empty : t.tasks.noMembers}
+          </Text>
+          {others ? <Button label={plain(t.tasks.ask)} kind="tonal" size="sm" icon="add" onPress={() => router.push({ pathname: "/task/new", params: { circle: id } })} style={styles.center2} /> : null}
+        </Card>
+      ) : null}
       {sortTasks(feed.tasks).map((task) => (
         <TaskCard key={task.id} task={task} onChanged={() => void load()} />
       ))}
 
-      {isRamadanSeason(new Date()) && circle.members.length > 1 ? (
-        <Pressable style={styles.ask} onPress={askIftarDay} accessibilityRole="button">
-          <Text style={styles.askText}>{t.ramadan.iftar}</Text>
-        </Pressable>
-      ) : null}
-
-      {feed.posts.length ? <SectionTitle>{t.tasks.zakiTitle}</SectionTitle> : null}
-      {feed.posts.slice(0, 20).map((p) => (
-        <View key={p.id} style={styles.post}>
-          <Text style={styles.postBy}>🌟 {t.tasks.zaki}</Text>
-          <Text style={styles.postText}>{p.text}</Text>
-          {p.kind === "iftar" ? (
-            <View style={styles.chips}>
-              <Pressable style={[styles.chip, p.my_rsvp === true && styles.chipOn]} onPress={() => void act(() => answerInvite(id, p.id, true), false)} accessibilityRole="button">
-                <Text style={[styles.chipText, p.my_rsvp === true && styles.chipTextOn]}>{t.ramadan.going}</Text>
-              </Pressable>
-              <Pressable style={[styles.chip, p.my_rsvp === false && styles.chipOn]} onPress={() => void act(() => answerInvite(id, p.id, false), false)} accessibilityRole="button">
-                <Text style={[styles.chipText, p.my_rsvp === false && styles.chipTextOn]}>{t.ramadan.notGoing}</Text>
-              </Pressable>
+      <SectionHeader title={t.trackers.circleTitle} action={t.trackers.circleAdd} onAction={() => router.push({ pathname: "/tracker/new", params: { circle: id } })} />
+      {trackers.length === 0 ? (
+        <Card>
+          <Text variant="small" color={palette.inkSoft} align="center">
+            {t.trackers.circleEmpty}
+          </Text>
+        </Card>
+      ) : (
+        <Card style={styles.members}>
+          {trackers.map((tr, n) => (
+            <View key={tr.id} style={[styles.member, n > 0 && styles.memberLine]}>
+              <IconTile name={TRACKER_ICON[tr.kind]} />
+              <View style={styles.flex}>
+                <Text variant="bodyStrong">{trackerName(tr)}</Text>
+                <Text variant="small" color={palette.inkSoft}>
+                  {[tr.is_mine ? t.trackers.mine : tr.owner_name ?? t.circles.noName, tr.goal ? fill(t.trackers.ofGoalToday, { n: tr.today, goal: tr.goal }) : fill(t.trackers.today, { n: tr.today })].join(" · ")}
+                </Text>
+              </View>
+              {tr.streak >= 2 ? <Badge label={fill(t.ui.streakDays, { n: tr.streak })} tone="ok" /> : null}
             </View>
-          ) : null}
-        </View>
-      ))}
+          ))}
+        </Card>
+      )}
 
-      <SectionTitle>{t.circles.membersTitle}</SectionTitle>
-      {circle.members.map((m) => (
-        <View key={m.user_id} style={styles.member}>
-          <ItemRow
-            title={label(m)}
-            meta={
-              [m.role === "owner" ? t.circles.owner : null, m.family_role ? t.family.roles[m.family_role] : null, m.last_checkin ? `${t.family.checkins[m.last_checkin.kind]} · ${when(m.last_checkin.at)}` : null]
-                .filter(Boolean)
-                .join(" · ") || undefined
-            }
-            action={m.is_me ? undefined : t.family.ask}
-            onAction={m.is_me ? undefined : () => void ask(m.user_id)}
-          />
-          {owner && !m.is_me ? (
-            <Pressable onPress={() => confirm(fill(t.circles.removeConfirm, { name: label(m) }), () => void act(() => removeCircleMember(id, m.user_id), false))} accessibilityRole="button">
-              <Text style={styles.removeText}>{t.circles.remove}</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ))}
+      <Button label={t.circles.bookAction} kind="outline" icon="receipt-outline" block onPress={() => router.push({ pathname: "/money/new", params: { circle: id } })} />
 
-      {circle.kind === "family" && me ? (
+      {isRamadanSeason(new Date()) && others ? <Button label={plain(t.ramadan.iftar)} kind="outline" icon="moon-outline" block onPress={askIftarDay} /> : null}
+
+      <SectionHeader title={t.ui.people} />
+      <Card style={styles.members}>
+        {circle.members.map((m, n) => (
+          <View key={m.user_id} style={[styles.member, n > 0 && styles.memberLine]}>
+            <PersonAvatar name={label(m)} color={tint} bg={tintSoft} />
+            <View style={styles.flex}>
+              <Text variant="bodyStrong">{label(m)}</Text>
+              <Text variant="small" color={palette.inkSoft} numberOfLines={2}>
+                {[m.role === "owner" ? t.circles.owner : null, m.family_role ? t.family.roles[m.family_role] : null, m.last_checkin ? fill(t.ui.lastSeen, { what: plain(t.family.checkins[m.last_checkin.kind]), when: ago(m.last_checkin.at) }) : null]
+                  .filter(Boolean)
+                  .join(" · ") || " "}
+              </Text>
+            </View>
+            {!m.is_me ? <IconButton name="hand-left-outline" label={t.family.ask} color={tint} onPress={() => void askOne(m.user_id)} /> : null}
+            {owner && !m.is_me ? <IconButton name="person-remove-outline" label={t.circles.remove} color={palette.danger} onPress={() => confirm(fill(t.circles.removeConfirm, { name: label(m) }), t.circles.yes, () => void act(() => removeCircleMember(id, m.user_id), false), t.circles.cancel)} /> : null}
+          </View>
+        ))}
+      </Card>
+
+      {family && me ? (
         <>
-          <SectionTitle>{t.family.roleTitle}</SectionTitle>
+          <SectionHeader title={t.ui.yourRole} />
           <View style={styles.chips}>
             {FamilyRole.options.map((role) => (
-              <Pressable key={role} style={[styles.chip, me.family_role === role && styles.chipOn]} onPress={() => void pickRole(me.user_id, me.family_role === role ? null : role)} accessibilityRole="button">
-                <Text style={[styles.chipText, me.family_role === role && styles.chipTextOn]}>{t.family.roles[role]}</Text>
-              </Pressable>
+              <Chip key={role} label={t.family.roles[role]} tone="family" selected={me.family_role === role} onPress={() => void pickRole(me.user_id, me.family_role === role ? null : role)} />
             ))}
           </View>
         </>
       ) : null}
 
-      {me ? (
-        <Pressable style={styles.quiet} onPress={() => confirm(t.circles.leaveConfirm, () => void act(() => removeCircleMember(id, me.user_id), true))}>
-          <Text style={styles.danger}>{t.circles.leave}</Text>
-        </Pressable>
-      ) : null}
-      {owner ? (
-        <Pressable style={styles.quiet} onPress={() => confirm(t.circles.deleteConfirm, () => void act(() => deleteCircle(id), true))}>
-          <Text style={styles.danger}>{t.circles.delete}</Text>
-        </Pressable>
-      ) : null}
-    </ScrollView>
+      <View style={styles.danger}>
+        {me ? <Button label={t.circles.leave} kind="danger" icon="exit-outline" onPress={() => confirm(t.circles.leaveConfirm, t.circles.yes, () => void act(() => removeCircleMember(id, me.user_id), true), t.circles.cancel)} /> : null}
+        {owner ? <Button label={t.circles.delete} kind="danger" icon="trash-outline" onPress={() => confirm(t.circles.deleteConfirm, t.circles.yes, () => void act(() => deleteCircle(id), true), t.circles.cancel)} /> : null}
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 8 },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", gap: 10, padding: 24 },
-  primary: { backgroundColor: "#25A35A", borderRadius: 16, paddingVertical: 14, alignItems: "center" },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  dim: { opacity: 0.6 },
-  muted: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: "left" },
-  reward: { color: colors.ok, fontSize: 14, fontWeight: "600", textAlign: "left" },
-  link: { color: colors.accent, fontWeight: "600", fontSize: 15 },
-  ask: { borderWidth: 1, borderColor: colors.accent, borderRadius: 16, paddingVertical: 12, alignItems: "center" },
-  askText: { color: colors.accent, fontSize: 16, fontWeight: "700" },
-  post: { backgroundColor: "#fff", borderRadius: 14, padding: 12, gap: 2 },
-  postBy: { color: colors.accent, fontSize: 12, fontWeight: "700", textAlign: "left" },
-  postText: { color: colors.text, fontSize: 15, lineHeight: 22, textAlign: "left" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { borderWidth: 1, borderColor: colors.accent, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
-  chipOn: { backgroundColor: colors.accent },
-  chipText: { color: colors.accent, fontWeight: "600" },
-  chipTextOn: { color: "#fff" },
-  member: { gap: 2 },
-  removeText: { color: colors.error, fontSize: 12, textAlign: "right", paddingHorizontal: 8 },
-  quiet: { alignItems: "center", paddingVertical: 10 },
-  danger: { color: colors.error, fontSize: 14 },
+  flex: { flex: 1, minWidth: 0 },
+  center: { flex: 1, backgroundColor: palette.bg, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
+  center2: { alignSelf: "center" },
+  hero: { gap: space.md },
+  summaryHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  heroHead: { flexDirection: "row", alignItems: "center", gap: space.md },
+  faces: { flexDirection: "row", paddingStart: 6 },
+  face: { marginStart: -6, borderRadius: 20, borderWidth: 2, borderColor: palette.surface },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  post: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  postBody: { ...glass, flex: 1, borderRadius: 18, borderTopStartRadius: 6, padding: space.md, gap: 2 },
+  members: { paddingVertical: space.xs, gap: 0 },
+  member: { flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md },
+  memberLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
+  danger: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: space.sm, marginTop: space.lg },
 });

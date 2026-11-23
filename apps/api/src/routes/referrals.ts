@@ -4,11 +4,14 @@ import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import { canClaim, newReferralCode, normalizeReferralCode, REFERRAL_MAX_DAYS_PER_MONTH } from "../billing/referral";
 import { referralDaysThisMonth as daysThisMonth, rewardInviter } from "../billing/referral-store";
 import { toWireUser } from "../serialize";
+import { baseUrl } from "./circles";
 
 export interface ReferralRoutesOptions {
   prisma: PrismaClient;
   authenticate: preHandlerAsyncHookHandler;
   now?: () => Date;
+  /** PUBLIC_URL, for the personal invite link. */
+  publicUrl?: string;
 }
 
 /** The user's code, created on first use (retry on the rare collision). */
@@ -31,8 +34,10 @@ export const referralRoutes: FastifyPluginAsync<ReferralRoutesOptions> = async (
   app.addHook("preHandler", opts.authenticate);
 
   app.get("/me/referral", async (req) => {
+    const code = await ensureCode(prisma, req.user);
     const res: ReferralResponse = {
-      code: await ensureCode(prisma, req.user),
+      code,
+      url: `${baseUrl(req, opts.publicUrl)}/r/${code}`,
       days_this_month: await daysThisMonth(prisma, req.user.id, now()),
       max_days_per_month: REFERRAL_MAX_DAYS_PER_MONTH,
     };

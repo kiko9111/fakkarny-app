@@ -9,6 +9,8 @@ export interface PipelineInput {
   now: Date;
   /** AI messages allowed today (free plan); null or absent = unlimited (Pro, or not enforced). */
   aiAllowance?: number | null;
+  /** Paid extras are enforced (REQUIRE_SUBSCRIPTION=1); passed on to circle actions. */
+  requireSubscription?: boolean;
 }
 
 export interface PipelineResult {

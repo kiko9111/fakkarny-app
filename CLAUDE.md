@@ -66,6 +66,9 @@ Rules:
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
   the development, preview and production environments, not in the repo. Android test
   build: `npx eas-cli@latest build --profile preview --platform android` in apps/mobile.
+  The cloud session can't reach expo.dev, so .github/workflows/android-build.yml starts that
+  build from GitHub (secret EXPO_TOKEN) whenever the last commit of a push has a message containing
+  "[android-build]"; the EAS build page link is the install link for testers.
 - EAS Update is configured (updates.url, runtimeVersion policy appVersion; channels
   development / preview / production). Builds made after 2026-11-21 can take
   JavaScript-only fixes over the air: `npx eas-cli@latest update --branch preview
@@ -303,6 +306,17 @@ Rules:
   follow-up from the clock, items and user state) → `writeProactive` (short AI prompt,
   template fallback) → stored as a friend Message + Expo push. The phone pulls them
   with GET /messages?after=. Set DISABLE_JOBS=1 to run an API without the scheduler.
+- Status checks (owner ask, 2026-11-22: "ask the status of everything, not just remind"):
+  apps/api/src/proactive/status.ts (pure, tested) picks one subject per tick, in order: a
+  reminder/task whose time passed 45 min to 3 days ago and is still open, a debt open 7+ days,
+  an untimed task 3+ days old, and from 18:00 a tracker with nothing logged today. Template
+  words only (no AI call), stored as kind "followup" with client_id
+  `status:<item|tracker>:<id>:<iso>`, pushed like other proactive messages, and they take the
+  place of a plain check-in. Not nagging: waking hours away from the morning/night windows,
+  never within 30 min of the user's last message, max 2 a day, 3 h apart, per-subject
+  cool-downs, and a 48 h pause after 2 unanswered in a row. In the chat pipeline a plain yes
+  (`isPlainYes`) to the latest status check marks the item done or logs one tracker step by
+  rules; any other answer goes to the model as free reminder work.
 - Everything shows in the chat (owner decision, 2026-11-21). The local notification
   still fires on the phone, and `postDueReminders` (proactive tick) writes the same
   nudge into the chat as a friend Message of kind "reminder" (client_id
@@ -334,6 +348,105 @@ Rules:
   then `npx prisma migrate deploy` (in apps/api, DATABASE_URL set). Interactive:
   `npm run prisma:migrate -w @fakkarni/api -- --name <change>`. Local SQLite schema
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
+- Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
+  parts, TextField, feedback, ThemePicker, glass). Screens use it, not src/lib/theme (kept only as
+  an alias). Look = the liquid-glass logo (owner pick): a soft colour mesh behind every screen
+  (assets/bg/mesh-*.jpg via `Backdrop`; navigators use `screenLayout={withGround}` so each screen
+  carries its own mesh and mounted screens underneath never show through; headers use
+  `GlassHeader`), frosted translucent surfaces (`glass` token: white 68% + bright edge + tinted
+  shadow; real backdrop blur on web only), large radii, glossy pill buttons. No blur or gradient
+  native module: the mesh and Zaki art are images. Themes the user picks: Sunrise (default), Mint
+  or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads). Session has
+  its own calm mesh. Family, friends and Session keep fixed colours in every theme. One font
+  family, IBM Plex Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use
+  `notify`/`confirm`/`ask` from src/ui/feedback instead of Alert. Dates use `dateLocale`.
+- Logo and icons: the liquid-glass spark smile. The app icon, Android adaptive layers, splash,
+  favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
+  SVG; keep them in step if the mark changes. The splash is configured through the
+  expo-splash-screen plugin in app.json.
+- Chat first (owner decision, 2026-11-22; tab bar always shown since 2026-11-23): a new user
+  sees Zaki's chat and the Me tab. The first version hid the bar and put Settings in the header:
+  the owner read the missing bar as a broken build, and `router.push` to a tab with `href: null`
+  does nothing. The bar and `Screen` pad by the bottom safe-area inset (Android is edge-to-edge;
+  3-button navigation is 48dp and covered the composer). Since 2026-11-23 (owner decision) a tab
+  never appears silently: Zaki introduces it in the chat (money talk: Daftar; family/friends
+  words: People; third active day: Today) with an Open card, written on the phone by
+  `addLocalFriendMessage` (never synced, client_id `local:intro:*`); the tab opens on the tap.
+  "Open the Daftar" opens at once; "what can you do?" gets the overview with every card
+  (src/lib/unlock.ts, pure + tested; state in prefs "unlocked" via src/lib/unlock-store.ts).
+  An accepted invite or Daftar link opens its tab directly. No saved state = a user from before
+  chat-first: everything stays open. Story: "Zaki remembers so you don't have to".
+- Sign-in is required at onboarding (owner decision, 2026-11-23); only a build without sign-in
+  configured shows "Start" without it.
+- Growth plan (2026-11-23, doc https://claude.ai/artifact/G2Z59tkVagTUrDvsschK1R): beachhead user
+  is a mom running a household; first chat shows household starters (`t.chat.starters`).
+- Personal invite link: GET /me/referral returns `url` (…/r/CODE); the public page
+  (apps/api/src/routes/referral-page.ts) shows the inviter's first name only. The app route
+  /ref/[code] claims it (POST /referrals/claim), parked in prefs `pending_referral` until after
+  onboarding. A typed code that is not a circle invite is tried as a personal code. Both sides
+  get 7 Pro days (`REFERRAL_WELCOME_DAYS`, once per invitee; inviter capped at 28 a month).
+  "Invite a friend" sits on the out-of-messages (upsell) bubble and in Me.
+- Product analytics: the phone sends counted events (`APP_EVENTS` in
+  packages/shared/src/analytics.ts; queue src/lib/analytics-queue.ts, screen views from the root
+  layout) to POST /events, stored as Event "app:<name>". Every chat turn writes a `chat_intent`
+  event (item types, memories, card kinds, reply kind; never words). /admin shows weekly active
+  circles (north star), invite counts and the event table. Add a name to APP_EVENTS to track
+  something new; never put text, names or amounts in props.
+- Native modules: existing builds take JS over the air (runtimeVersion appVersion), so
+  a new native module must be optional: check `requireOptionalNativeModule` and require it
+  lazily (see src/lib/contacts.ts, expo-contacts for "Pick from contacts" in Daftar, which
+  asks permission only on tap and reads only the picked name).
+- Browser preview: `node scripts/build-web-preview.mjs out.html` in apps/mobile builds a
+  single-file web app on sample data (EXPO_PUBLIC_DEMO=1, fake API in src/demo/server.web.ts,
+  SQLite on sql.js). `*.web.ts` files keep the native bundle unchanged. The script inlines
+  fonts, PNG and JPG assets; add any new asset type to it.
+- Custom circles and extras (2026-11-22): any circle name; every circle gets every feature.
+  Extras (weekly summary, more than one nudge per task, @Zaki summary) are free for 14 days
+  from the circle's creation, then need Pro (`circleExtras` in packages/shared/src/circles.ts;
+  402 `circle_extras` opens the paywall). Off while REQUIRE_SUBSCRIPTION=0.
+- Task reminder time and homework: circle_tasks.remind_at / homework / note. The assigner sets
+  when Zaki reminds (while pending), the assignee can change it (POST /tasks/:id/remind,
+  `canSetRemind`); on accept the Item gets remind_at ?? due_at. Homework is a task flag with a
+  note/link the child opens and taps done on.
+- Tracker builder: trackers.ask_times (local "HH:MM", max 3), unit_label, circle_id (shared
+  with a circle; money trackers never shared; leaving a circle unshares). Zaki asks at those
+  times (`trackerAskDue`, proactive tick, status client_id so a plain yes logs a step). A
+  shared tracker reaching its goal posts `tracker_goal` in the circle. Chat suggests trackers
+  (`suggestTracker`, mobile, pure).
+- Wider Daftar (money): tables money_sections / money_entries, routes apps/api/src/routes/money.ts,
+  rules apps/api/src/money/rules.ts (pure). Sections start empty; budgets warn at 80% and
+  100% once per month in the chat (client_id `budget:<id>:<month>:<level>`). Circle shared
+  books split entries among chosen members; settle-up lines; others hear via chat + push and
+  a `book_entry` feed post. Chat logging by rules (`moneyFastPath`, conversation step 1a′),
+  strict: debts, plans and questions fall through. Month gift on the 1st, 10:00–13:00 local
+  (client_id `gift:<month>`). Records only.
+- Circle feed: post_reactions / post_comments. React, short comments (200 chars), delete own,
+  and @Zaki (in a comment or POST /circles/:id/zaki): remind everyone (once per 3 h),
+  ask check-ins, summary (extras), help. Zaki's comments store an event key
+  (`zaki:<kind>|data`) rendered per reader by `zakiCommentLine`; no AI call. Not a group chat.
+- Chat actions (owner ask, 2026-11-22: "the chat must add to Daftar, circles and trackers"): the
+  model returns `app_actions` (packages/shared/src/chat-actions.ts: log_money, create_section,
+  set_budget, create_tracker, log_tracker, update_tracker, create_circle, assign_task, ask_circle;
+  max 3). It names things and the server resolves the names (`matchByName` / `foldName` in
+  apps/api/src/chat/cards.ts) against the "IN THE APP" block of the context. apps/api/src/chat/actions.ts
+  runs them after apply, never on a crisis turn, and stores cards on the reply
+  (messages.actions_json; wire `Message.actions`: id/kind/status/label/route). The user's own things
+  happen at once; anything that reaches other people (assign_task, ask_circle, logging into a shared
+  book, also from the money fast path) is a pending card holding resolved ids in a server-only
+  `payload`, confirmed by tapping (POST /messages/:id/actions/:actionId {confirm}) or by a plain chat
+  yes/no (`isConfirm` / `isCancel`, conversation step 0a, within 6 h). The answer reply carries the
+  same card id so the phone updates the old card (apps/mobile/src/db/messages.ts). Card wording lives
+  in `LABEL` (cards.ts), never model text. Phone: SQLite v4 `actions_json`, src/chat/ActionCards.tsx.
+- Structured output limits: the API answers 400 "Schema is too complex" to every request whose
+  output schema has more than 16 union-typed (nullable) or 24 optional parameters, counted across
+  the whole schema. PR #33 crossed it (29 nullable fields) and every chat turn fell back to "my
+  brain froze". `ModelOutput` keeps app actions non-nullable ("", 0, [], false = not given;
+  `toAppActions`), and src/ai/model.test.ts fails the build past the limits. Check it whenever a
+  field is added to the model schema.
+- Understanding: persona 2026-11-23.1 adds "Understanding the user" (typos, short replies, two
+  readings) and the app_actions rules with examples. evals/cases/understanding.jsonl (act-*, und-*)
+  checks app actions too (`expect.actions`; extra actions count as a problem). Not yet measured
+  with a model key.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

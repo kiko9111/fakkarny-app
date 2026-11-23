@@ -1,3 +1,5 @@
+import { TrackerKind } from "@fakkarni/shared";
+import { trackerLabel } from "../trackers/labels";
 import type { TaskRole, TaskStatus } from "@fakkarni/shared";
 
 /** Pure rules and wording for assigned tasks. No AI: every line here is a template. */
@@ -12,6 +14,8 @@ export const MAX_OPEN_PER_PAIR = 30;
 
 export const canRespond = (status: TaskStatus, role: TaskRole) => status === "pending" && role === "assignee";
 export const canFinish = (status: TaskStatus, role: TaskRole) => status === "accepted" && role === "assignee";
+/** The assigner picks the reminder time while asking; once it is theirs, the assignee decides. */
+export const canSetRemind = (status: TaskStatus, role: TaskRole) => (role === "assigner" && status === "pending") || (role === "assignee" && (status === "pending" || status === "accepted"));
 export const canCancel = (status: TaskStatus, role: TaskRole) => role === "assigner" && (status === "pending" || status === "accepted");
 
 /** Nudges go only to a task that is still open, and never in a burst. */
@@ -80,6 +84,21 @@ export function postLine(lang: Lang, event: string, actor: string | null | undef
   }
   if (event === "rsvp:yes") return lang === "en" ? `${a}: I'm coming, inshallah ✋` : `${a}: جاي إن شاء الله ✋`;
   if (event === "rsvp:no") return lang === "en" ? `${a}: I can't make it this time 💛` : `${a}: مش هقدر المرة دي 💛`;
+  if (event === "zaki_ask") return lang === "en" ? `${a} to Zaki: “${what}”` : `${a} لزكي: «${what}»`;
+  if (event === "book_entry") {
+    // title = "book name|amount"
+    const [book = "", amount = "0"] = (title ?? "").split("|");
+    const n = Number(amount).toLocaleString("en-US", { maximumFractionDigits: 2 });
+    return lang === "en" ? `${a} added EGP ${n} to “${book}” 🧾` : `${a}: ${n} جنيه في «${book}» 🧾`;
+  }
+  if (event === "tracker_goal") {
+    // title = "kind|custom name|streak"
+    const [kind = "custom", name = "", streakText = "0"] = (title ?? "").split("|");
+    const label = trackerLabel(TrackerKind.catch("custom").parse(kind), name || null, lang === "en" ? "english" : "arabic");
+    const streak = Number(streakText);
+    const run = streak >= 2 ? (lang === "en" ? ` ${streak} days in a row 🔥` : ` ${streak} يوم ورا بعض 🔥`) : "";
+    return lang === "en" ? `${a} reached today's goal for ${label} 🎯${run}` : `${a}: هدف النهارده في ${label} اتقفل 🎯${run}`;
+  }
   if (event.startsWith("checkin:")) {
     const said = CHECKIN_SAID[event.slice(8)]?.[lang];
     // A check-in is the member's own words, passed on: first person, so it fits anyone.

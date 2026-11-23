@@ -17,6 +17,7 @@ import { mustReplyInArabic, renderContext } from "../apps/api/src/pipeline/conte
 import { localToUtc } from "../apps/api/src/lib/time";
 import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
+import type { AppData } from "../apps/api/src/chat/actions";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -64,7 +65,16 @@ function contextFor(c: EvalCase): string {
         sourceMessageId: null, updatedAt: now, createdAt: now, doneAt: null,
       }) as unknown as Item,
   );
-  return renderContext({ user, now, memories: [], openItems, summary: null, recent: turnsOf(c) as unknown as Message[] });
+  return renderContext({ user, now, memories: [], openItems, summary: null, recent: turnsOf(c) as unknown as Message[], app: appFor(c, now) });
+}
+
+/** The case's circles, sections and trackers in the shape the API loads them (names only matter). */
+function appFor(c: EvalCase, now: Date): AppData | undefined {
+  if (!c.app) return undefined;
+  const circles = c.app.circles.map((x, n) => ({ id: `c${n}`, name: x.name, kind: x.kind, createdAt: now, members: [{ userId: "eval-user", name: null }, ...x.members.map((m, k) => ({ userId: `m${n}-${k}`, name: m }))] }));
+  const sections = c.app.sections.map((x, n) => ({ id: `s${n}`, ownerId: "eval-user", circleId: x.circle ? "c" : null, name: x.name, kind: x.kind, budget: x.budget ?? null, createdAt: now, circle: x.circle ? { name: x.circle } : null }));
+  const trackers = c.app.trackers.map((x, n) => ({ id: `t${n}`, userId: "eval-user", kind: x.kind, name: x.name ?? null, goal: x.goal ?? null, askTimes: [], unitLabel: null, circleId: null, pack: null, createdAt: now, circle: null }));
+  return { circles, sections, trackers } as unknown as AppData;
 }
 
 async function mapLimit<T, R>(xs: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {

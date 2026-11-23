@@ -1,36 +1,38 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { billingAvailable, getPlanOptions, purchase, restore, type PlanOption } from "@/billing";
 import { isFamily, isYearly } from "@/billing/options";
 import { language, t } from "@/i18n";
 import { legalUrl } from "@/lib/api-url";
 import { API_URL } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { glass, Badge, Button, Icon, notify, palette, plain, radius, Screen, shadow, space, Text, ZakiAvatar } from "@/ui";
 
 /** Zaki Pro, Family and the founders' offer. Prices come from the store (regional pricing). */
 export default function PaywallScreen() {
   const [options, setOptions] = useState<PlanOption[] | null>(null);
   const [selected, setSelected] = useState<PlanOption | null>(null);
   const [busy, setBusy] = useState(false);
+  const preview = Platform.OS === "web";
 
   useEffect(() => {
-    if (!billingAvailable) return setOptions([]);
+    if (!billingAvailable && !preview) return setOptions([]);
     getPlanOptions()
       .then((opts) => {
         setOptions(opts);
-        setSelected(opts[0] ?? null);
+        setSelected(opts.find((o) => o.kind === "pro_yearly") ?? opts[0] ?? null);
       })
       .catch(() => setOptions([]));
-  }, []);
+  }, [preview]);
 
   const buy = async () => {
     if (!selected) return;
+    if (preview) return notify(t.ui.demoPurchase, "info");
     setBusy(true);
     try {
       if (await purchase(selected)) router.back();
     } catch (err) {
-      if (!(err as { userCancelled?: boolean }).userCancelled) Alert.alert(t.paywall.failed);
+      if (!(err as { userCancelled?: boolean }).userCancelled) notify(t.paywall.failed, "error");
     } finally {
       setBusy(false);
     }
@@ -40,78 +42,109 @@ export default function PaywallScreen() {
     setBusy(true);
     try {
       if (await restore()) router.back();
-      else Alert.alert(t.paywall.nothingToRestore);
+      else notify(t.paywall.nothingToRestore, "info");
     } catch {
-      Alert.alert(t.paywall.failed);
+      notify(t.paywall.failed, "error");
     } finally {
       setBusy(false);
     }
   };
 
+  const point = (text: string) => (
+    <View key={text} style={styles.point}>
+      <Icon name="checkmark-circle" size={20} color={palette.ok} />
+      <Text variant="body" style={styles.flex}>
+        {text}
+      </Text>
+    </View>
+  );
+
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{t.paywall.title}</Text>
-      <Text style={styles.subtitle}>{t.paywall.subtitle}</Text>
-
-      {options === null ? <ActivityIndicator color={colors.accent} /> : null}
-      {options !== null && options.length === 0 ? <Text style={styles.note}>{t.paywall.unavailable}</Text> : null}
-
-      {options?.map((o) => (
-        <Pressable key={o.kind} onPress={() => setSelected(o)} style={[styles.option, selected?.kind === o.kind && styles.optionOn]}>
-          <View style={styles.flex}>
-            <Text style={styles.optionTitle}>{t.paywall.plans[o.kind]}</Text>
-            {o.kind === "founders" ? <Text style={styles.trial}>{t.paywall.foundersNote}</Text> : null}
-            {isFamily(o.kind) ? <Text style={styles.planNote}>{t.paywall.familyNote}</Text> : null}
-            {o.hasTrial ? <Text style={styles.trial}>{t.paywall.trial}</Text> : null}
-          </View>
-          <Text style={styles.price}>
-            {o.price} {isYearly(o.kind) ? t.paywall.perYear : t.paywall.perMonth}
-          </Text>
-        </Pressable>
-      ))}
-
-      {options && options.length > 0 ? (
-        <Pressable style={[styles.cta, busy && styles.dim]} disabled={busy} onPress={() => void buy()}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>{selected?.hasTrial ? t.paywall.ctaTrial : t.paywall.cta}</Text>}
-        </Pressable>
-      ) : null}
-
-      {billingAvailable ? (
-        <Pressable onPress={() => void doRestore()} disabled={busy}>
-          <Text style={styles.restore}>{t.paywall.restore}</Text>
-        </Pressable>
-      ) : null}
-      <Text style={styles.terms}>{t.paywall.terms}</Text>
-      <View style={styles.legalRow}>
-        <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))}>
-          <Text style={styles.restore}>{t.paywall.termsLink}</Text>
-        </Pressable>
-        <Pressable onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))}>
-          <Text style={styles.restore}>{t.paywall.privacyLink}</Text>
-        </Pressable>
+    <Screen contentStyle={styles.content}>
+      <View style={styles.hero}>
+        <ZakiAvatar size={72} glow />
+        <Text variant="display" align="center">
+          {plain(t.paywall.title)}
+        </Text>
+        <Text variant="body" color={palette.inkSoft} align="center">
+          {t.paywall.subtitle}
+        </Text>
       </View>
-      <Text style={styles.terms}>{t.settings.aiDisclosure}</Text>
-    </ScrollView>
+      <View style={styles.points}>{[t.ui.proPoint1, t.ui.proPoint2, t.ui.proPoint3, t.ui.proPoint4].map(point)}</View>
+
+      {options === null ? <ActivityIndicator color={palette.primary} /> : null}
+      {options !== null && options.length === 0 ? (
+        <Text variant="small" color={palette.inkSoft} align="center">
+          {t.paywall.unavailable}
+        </Text>
+      ) : null}
+
+      {options?.map((o) => {
+        const on = selected?.kind === o.kind;
+        return (
+          <Pressable key={o.kind} onPress={() => setSelected(o)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={[styles.option, on && styles.optionOn]}>
+            <View style={[styles.radio, on && styles.radioOn]}>{on ? <View style={styles.radioDot} /> : null}</View>
+            <View style={styles.flex}>
+              <View style={styles.optionHead}>
+                <Text variant="bodyStrong">{t.paywall.plans[o.kind]}</Text>
+                {o.kind === "pro_yearly" ? <Badge label={t.ui.bestValue} tone="primary" /> : null}
+              </View>
+              {o.kind === "founders" ? (
+                <Text variant="small" color={palette.ok}>
+                  {t.paywall.foundersNote}
+                </Text>
+              ) : null}
+              {isFamily(o.kind) ? (
+                <Text variant="small" color={palette.inkSoft}>
+                  {t.paywall.familyNote}
+                </Text>
+              ) : null}
+              {o.hasTrial ? (
+                <Text variant="small" color={palette.ok}>
+                  {t.paywall.trial}
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.price}>
+              <Text variant="headline">{o.price}</Text>
+              <Text variant="caption" color={palette.inkSoft}>
+                {isYearly(o.kind) ? t.paywall.perYear : t.paywall.perMonth}
+              </Text>
+            </View>
+          </Pressable>
+        );
+      })}
+
+      {options && options.length > 0 ? <Button label={selected?.hasTrial ? t.paywall.ctaTrial : t.paywall.cta} size="lg" block busy={busy} icon="sparkles" onPress={() => void buy()} /> : null}
+      <Text variant="caption" color={palette.inkSoft} align="center">
+        {t.ui.planNote}
+      </Text>
+
+      {billingAvailable ? <Button label={t.paywall.restore} kind="text" size="sm" disabled={busy} onPress={() => void doRestore()} style={styles.center} /> : null}
+      <Text variant="caption" color={palette.inkFaint} align="center">
+        {t.paywall.terms}
+      </Text>
+      <View style={styles.legalRow}>
+        <Button label={t.paywall.termsLink} kind="text" size="sm" onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))} />
+        <Button label={t.paywall.privacyLink} kind="text" size="sm" onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))} />
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  legalRow: { flexDirection: "row", justifyContent: "center", gap: 24 },
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 24, gap: 14 },
-  title: { fontSize: 24, fontWeight: "700", color: colors.text, textAlign: "center" },
-  subtitle: { fontSize: 16, color: colors.muted, textAlign: "center", marginBottom: 8 },
-  note: { color: colors.muted, textAlign: "center" },
-  option: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 2, borderColor: "transparent" },
-  optionOn: { borderColor: colors.accent },
-  flex: { flex: 1 },
-  optionTitle: { fontSize: 17, fontWeight: "600", color: colors.text, textAlign: "left" },
-  trial: { color: colors.ok, marginTop: 2, textAlign: "left" },
-  planNote: { color: colors.muted, marginTop: 2, textAlign: "left" },
-  price: { fontSize: 15, color: colors.text },
-  cta: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 16, alignItems: "center", marginTop: 6 },
-  dim: { opacity: 0.6 },
-  ctaText: { color: "#fff", fontSize: 18, fontWeight: "700" },
-  restore: { color: colors.accent, textAlign: "center", fontWeight: "600" },
-  terms: { color: colors.muted, fontSize: 12, textAlign: "center" },
+  flex: { flex: 1, minWidth: 0 },
+  content: { padding: space.xl, gap: space.md, maxWidth: 560, width: "100%", alignSelf: "center" },
+  hero: { alignItems: "center", gap: space.sm },
+  points: { ...glass, gap: space.sm, borderRadius: radius.lg, padding: space.lg, marginBottom: space.sm },
+  point: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  option: { ...glass, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.lg, padding: space.lg, borderWidth: 2, borderColor: palette.glassEdge },
+  optionOn: { borderColor: palette.primary, backgroundColor: "#FFFAF6" },
+  optionHead: { flexDirection: "row", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: palette.lineStrong, alignItems: "center", justifyContent: "center" },
+  radioOn: { borderColor: palette.primary },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: palette.primary },
+  price: { alignItems: "flex-end" },
+  center: { alignSelf: "center" },
+  legalRow: { flexDirection: "row", justifyContent: "center", gap: space.sm },
 });

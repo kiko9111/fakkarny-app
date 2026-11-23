@@ -1,25 +1,26 @@
 import { useCallback, useState } from "react";
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text } from "react-native";
+import { StyleSheet } from "react-native";
 import { useFocusEffect } from "expo-router";
 import type { Memory } from "@fakkarni/shared";
-import { ItemRow } from "@/components/ItemRow";
 import { t } from "@/i18n";
 import { deleteMemory, listMemories } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { Card, confirm, EmptyState, IconButton, IconTile, ListRow, notify, palette, plain, Screen, space } from "@/ui";
 
 /** FR-4: the user can view and delete any memory. */
 export default function MemoriesScreen() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setMemories(await listMemories());
     } catch {
-      Alert.alert(t.saved.offline);
+      notify(t.saved.offline, "error");
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
   }, []);
 
@@ -29,28 +30,34 @@ export default function MemoriesScreen() {
     }, [load]),
   );
 
+  const remove = (m: Memory) =>
+    confirm(m.subject, t.memories.remove, () =>
+      void deleteMemory(m.id)
+        .then(() => setMemories((all) => all.filter((x) => x.id !== m.id)))
+        .catch(() => notify(t.saved.offline, "error")),
+    );
+
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
-      {!loading && memories.length === 0 ? <Text style={styles.empty}>{t.memories.empty}</Text> : null}
-      {memories.map((m) => (
-        <ItemRow
-          key={m.id}
-          title={m.subject}
-          meta={m.content}
-          action={t.memories.remove}
-          onAction={() =>
-            void deleteMemory(m.id)
-              .then(() => setMemories((all) => all.filter((x) => x.id !== m.id)))
-              .catch(() => Alert.alert(t.saved.offline))
-          }
-        />
-      ))}
-    </ScrollView>
+    <Screen onRefresh={() => void load()} refreshing={loading} contentStyle={styles.content}>
+      {loaded && memories.length === 0 ? <EmptyState title={plain(t.memories.empty)} /> : null}
+      {memories.length ? (
+        <Card style={styles.list}>
+          {memories.map((m) => (
+            <ListRow
+              key={m.id}
+              leading={<IconTile name="bookmark-outline" size={40} />}
+              title={m.subject}
+              meta={m.content}
+              trailing={<IconButton name="trash-outline" label={t.memories.remove} color={palette.inkSoft} onPress={() => remove(m)} />}
+            />
+          ))}
+        </Card>
+      ) : null}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 8 },
-  empty: { color: colors.muted, textAlign: "center", marginTop: 40 },
+  content: { padding: space.lg, gap: space.md },
+  list: { paddingVertical: space.xs, paddingHorizontal: 0 },
 });

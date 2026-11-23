@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { CircleMember, FamilyType } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
-import { colors } from "@/lib/theme";
-import { dueAt, dueChoices, type DueChoice } from "@/tasks/logic";
+import { dueAt, dueChoices, remindAt, remindChoices, type DueChoice, type RemindChoice } from "@/tasks/logic";
+import { Button, Chip, EmptyState, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * Ask someone in the circle to do something. They get the request from Zaki and decide;
@@ -18,8 +18,13 @@ export default function NewTaskScreen() {
   const [familyType, setFamilyType] = useState<FamilyType | null>(null);
   const [title, setTitle] = useState("");
   const [due, setDue] = useState<DueChoice>("none");
+  const [remind, setRemind] = useState<RemindChoice>("due");
+  const [homework, setHomework] = useState(false);
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [choices] = useState(() => dueChoices(new Date()));
+  const dueIso = dueAt(due, new Date());
+  const reminds = remindChoices(new Date(), dueIso);
 
   useEffect(() => {
     getCircle(circle)
@@ -37,60 +42,78 @@ export default function NewTaskScreen() {
     if (!ready || busy || !who) return;
     setBusy(true);
     try {
-      await createTask(circle, { assignee_id: who, title: title.trim(), due_at: dueAt(due, new Date()) });
+      const now = new Date();
+      const dueAtIso = dueAt(due, now);
+      await createTask(circle, {
+        assignee_id: who,
+        title: title.trim(),
+        due_at: dueAtIso,
+        remind_at: remindAt(reminds.includes(remind) ? remind : "due", now, dueAtIso),
+        homework,
+        note: homework && note.trim() ? note.trim() : null,
+      });
       router.back();
     } catch {
-      Alert.alert(t.tasks.failed);
+      notify(t.tasks.failed, "error");
       setBusy(false);
     }
   };
 
-  const chip = (key: string, label: string, on: boolean, onPress: () => void) => (
-    <Pressable key={key} style={[styles.chip, on && styles.chipOn]} onPress={onPress} accessibilityRole="button">
-      <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
-    </Pressable>
+  const label = (text: string) => (
+    <Text variant="smallStrong" color={palette.inkSoft}>
+      {text}
+    </Text>
   );
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.tasks.newTitle }} />
-      {members === null ? <ActivityIndicator color={colors.accent} /> : null}
-      {members?.length === 0 ? <Text style={styles.hint}>{t.tasks.noMembers}</Text> : null}
+      {members === null ? <ActivityIndicator color={palette.primary} /> : null}
+      {members?.length === 0 ? <EmptyState title={plain(t.tasks.noMembers)} /> : null}
       {members?.length ? (
         <>
-          <Text style={styles.label}>{t.tasks.who}</Text>
-          <View style={styles.row}>{members.map((m) => chip(m.user_id, m.name ?? t.circles.noName, who === m.user_id, () => setWho(m.user_id)))}</View>
-          <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder={t.tasks.what} maxLength={120} />
+          {label(t.tasks.who)}
+          <View style={styles.row}>
+            {members.map((m) => (
+              <Chip key={m.user_id} icon="person-outline" label={m.name ?? t.circles.noName} selected={who === m.user_id} onPress={() => setWho(m.user_id)} />
+            ))}
+          </View>
+          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={homework ? t.tasks.homeworkIdea : t.tasks.what} maxLength={120} />
+          <View style={styles.row}>
+            <Chip icon="school-outline" label={t.tasks.homeworkToggle} selected={homework} onPress={() => setHomework((h) => !h)} />
+          </View>
+          {homework ? <TextField label={t.tasks.homeworkNote} value={note} onChangeText={setNote} placeholder="https://…" maxLength={500} multiline /> : null}
           {familyType && !title.trim() ? (
             <>
-              <Text style={styles.label}>{t.family.ideasTitle}</Text>
-              <View style={styles.row}>{t.family.ideas[familyType].split("|").map((idea) => chip(idea, idea, false, () => setTitle(idea)))}</View>
+              {label(t.family.ideasTitle)}
+              <View style={styles.row}>
+                {t.family.ideas[familyType].split("|").map((idea) => (
+                  <Chip key={idea} tone="family" label={plain(idea)} onPress={() => setTitle(plain(idea))} />
+                ))}
+              </View>
             </>
           ) : null}
-          <Text style={styles.label}>{t.tasks.when}</Text>
-          <View style={styles.row}>{choices.map((c) => chip(c, t.tasks.due[c], due === c, () => setDue(c)))}</View>
-          <Pressable style={[styles.primary, (!ready || busy) && styles.dim]} disabled={!ready || busy} onPress={() => void submit()} accessibilityRole="button">
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t.tasks.send}</Text>}
-          </Pressable>
-          <Text style={styles.hint}>{t.tasks.intro}</Text>
+          {label(t.tasks.when)}
+          <View style={styles.row}>
+            {choices.map((c) => (
+              <Chip key={c} label={t.tasks.due[c]} selected={due === c} onPress={() => setDue(c)} />
+            ))}
+          </View>
+          {label(t.tasks.remindWhen)}
+          <View style={styles.row}>
+            {reminds.map((c) => (
+              <Chip key={c} icon={c === "due" ? undefined : "alarm-outline"} label={t.tasks.remind[c]} selected={remind === c} onPress={() => setRemind(c)} />
+            ))}
+          </View>
+          <Button label={t.tasks.send} icon="send" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
+          <Note icon="hand-left-outline">{plain(t.tasks.intro)}</Note>
         </>
       ) : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 24, gap: 12 },
-  label: { color: colors.muted, fontSize: 13, textAlign: "left" },
-  input: { backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17, color: colors.text, writingDirection: "auto" },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { borderWidth: 1, borderColor: colors.accent, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8 },
-  chipOn: { backgroundColor: colors.accent },
-  chipText: { color: colors.accent, fontWeight: "600" },
-  chipTextOn: { color: "#fff" },
-  primary: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14, alignItems: "center" },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  dim: { opacity: 0.5 },
-  hint: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: "center" },
+  content: { padding: space.xl, gap: space.md },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
 });

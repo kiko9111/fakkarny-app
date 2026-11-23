@@ -7,6 +7,9 @@ const isAwakeForNotice = (user: User, now: Date) => isAwake(now, user.timezone, 
 import { nextOccurrences } from "@fakkarni/shared";
 import { detectScript, replyLang, type ReplyLang } from "../pipeline/rules";
 import { planProactive, type ProactivePlan } from "./plan";
+import { monthGift } from "../money/gift";
+import { GIFT_FROM_HOUR, GIFT_UNTIL_HOUR, previousMonth } from "../money/rules";
+import { COOLDOWN_DAYS, planStatusCheck, statusClientId, trackerAskDue, type StatusCheck } from "./status";
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
 
@@ -133,6 +136,14 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
     items: items.map((i) => ({ ...i, type: i.type, status: i.status })),
     unpromptedToday,
   });
+  // A status check ("did you get to …?") takes the place of a plain check-in: it has a reason.
+  if (!plan || plan.kind === "checkin") {
+    const check = await statusCheckFor(prisma, user, now);
+    if (check) {
+      await sendStatusCheck(deps, user, check, now);
+      return { kind: "followup", itemIds: [], facts: [], slowdownNotice: false };
+    }
+  }
   if (!plan) return null;
 
   const script = await scriptFor(prisma, user);
@@ -166,7 +177,97 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
     return rows;
   });
 
-  // Free push; the message is already in the chat for the next sync (GET /messages).
+  await pushToUser(deps, user, stored.map((m) => m.text).join("\n"), kind);
+  return plan;
+}
+
+/** Gather what a status check needs and let the pure planner pick one (or none). */
+async function statusCheckFor(prisma: PrismaClient, user: User, now: Date): Promise<StatusCheck | null> {
+  const since = new Date(now.getTime() - COOLDOWN_DAYS.debt * 86400_000);
+  const dayStart = new Date(now.getTime() - 26 * 3600_000);
+  const [items, trackers, past] = await Promise.all([
+    prisma.item.findMany({ where: { userId: user.id, status: "open", type: { in: ["reminder", "task", "debt"] } }, take: 200 }),
+    prisma.tracker.findMany({ where: { userId: user.id }, include: { entries: { where: { at: { gte: dayStart } }, select: { at: true } } } }),
+    prisma.message.findMany({ where: { userId: user.id, role: "friend", clientId: { startsWith: "status:" }, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, select: { clientId: true, createdAt: true } }),
+  ]);
+  const today = toLocalIso(now, user.timezone).slice(0, 10);
+  return planStatusCheck({
+    now,
+    timezone: user.timezone,
+    wakeTime: user.wakeTime,
+    sleepTime: user.sleepTime,
+    lastUserMessageAt: user.lastUserMessageAt,
+    items: items.map((i) => ({ ...i, debtAmount: i.debtAmount === null ? null : Number(i.debtAmount) })),
+    trackers: trackers.map((t) => ({ id: t.id, kind: t.kind, loggedToday: t.entries.filter((e) => toLocalIso(e.at, user.timezone).startsWith(today)).length })),
+    history: past.map((m) => ({
+      subject: m.clientId!.split(":").slice(1, 3).join(":"),
+      at: m.createdAt,
+      answered: !!user.lastUserMessageAt && user.lastUserMessageAt > m.createdAt,
+    })),
+  });
+}
+
+/** Zaki's end-of-month gift: on the 1st, late morning, once, when last month had any money logged. */
+export async function sendMonthGift(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  const local = toLocalIso(now, user.timezone);
+  const hour = Number(local.slice(11, 13));
+  if (local.slice(8, 10) !== "01" || hour < GIFT_FROM_HOUR || hour >= GIFT_UNTIL_HOUR) return false;
+  const month = previousMonth(local.slice(0, 7));
+  const clientId = `gift:${month}`;
+  if (await deps.prisma.message.findFirst({ where: { userId: user.id, clientId }, select: { id: true } })) return false;
+  const gift = await monthGift(deps.prisma, user, now, month);
+  if (!gift.lines.length) return false;
+  const text = gift.lines.join("\n");
+  await deps.prisma.message.createMany({ data: [{ userId: user.id, role: "friend", kind: "update", text, clientId, createdAt: now }], skipDuplicates: true });
+  await deps.prisma.event.create({ data: { userId: user.id, name: "month_gift", propsJson: {} } });
+  await pushToUser(deps, user, gift.lines[0]!, "update");
+  return true;
+}
+
+/** Tracker questions at the times the user picked in the builder. Template words, no AI call. */
+export async function askTrackers(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  const trackers = await deps.prisma.tracker.findMany({
+    where: { userId: user.id, NOT: { askTimes: { isEmpty: true } } },
+    include: { entries: { where: { at: { gte: new Date(now.getTime() - 26 * 3600_000) } }, select: { at: true, amount: true } } },
+  });
+  if (!trackers.length) return false;
+  const today = toLocalIso(now, user.timezone).slice(0, 10);
+  const past = await deps.prisma.message.findMany({
+    where: { userId: user.id, role: "friend", clientId: { startsWith: "status:tracker:" }, createdAt: { gte: new Date(now.getTime() - 26 * 3600_000) } },
+    select: { clientId: true, createdAt: true },
+  });
+  const check = trackerAskDue(
+    trackers.map((t) => ({
+      id: t.id,
+      kind: t.kind,
+      name: t.name,
+      askTimes: t.askTimes,
+      goal: t.goal === null ? null : Number(t.goal),
+      today: t.entries.filter((e) => toLocalIso(e.at, user.timezone).startsWith(today)).reduce((n, e) => n + Number(e.amount), 0),
+    })),
+    now,
+    user.timezone,
+    user.wakeTime,
+    user.sleepTime,
+    past.map((m) => ({ subject: m.clientId!.split(":").slice(1, 3).join(":"), at: m.createdAt })),
+  );
+  if (!check) return false;
+  await sendStatusCheck(deps, user, check, now);
+  return true;
+}
+
+/** Template words, no AI call. Kind "followup" so builds that predate status checks show it. */
+async function sendStatusCheck(deps: TickDeps, user: User, check: StatusCheck, now: Date) {
+  const script = await scriptFor(deps.prisma, user);
+  const text = check.text[script];
+  await deps.prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text, clientId: statusClientId(check.subject, now), createdAt: now } });
+  await deps.prisma.event.create({ data: { userId: user.id, name: "status_check", propsJson: { subject: check.subject.split(":")[0]! } } });
+  await pushToUser(deps, user, text, "followup");
+}
+
+/** Free push; the message is already in the chat for the next sync (GET /messages). */
+async function pushToUser(deps: TickDeps, user: User, body: string, kind: MessageKind) {
+  const { prisma } = deps;
   const devices = await prisma.device.findMany({ where: { userId: user.id, pushToken: { not: null } } });
   if (devices.length) {
     try {
@@ -174,7 +275,7 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
         devices.map((d) => ({
           to: d.pushToken!,
           title: "Zaki",
-          body: stored.map((m) => m.text).join("\n"),
+          body,
           sound: "default" as const,
           data: { type: "message", kind },
         })),
@@ -186,7 +287,6 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
       deps.log?.warn({ err: (err as Error).name }, "push failed");
     }
   }
-  return plan;
 }
 
 /** Runs every minute (pg-boss cron): one proactive message at most per user per tick. */
@@ -198,7 +298,9 @@ export async function runTick(deps: TickDeps, now = new Date()): Promise<number>
   for (const user of users) {
     try {
       await postDueReminders(deps.prisma, user, now);
-      if (await runForUser(deps, user, now)) sent++;
+      if (await sendMonthGift(deps, user, now)) sent++;
+      else if (await askTrackers(deps, user, now)) sent++;
+      else if (await runForUser(deps, user, now)) sent++;
     } catch (err) {
       deps.log?.error({ err: (err as Error).name, userId: user.id }, "proactive message failed");
     }

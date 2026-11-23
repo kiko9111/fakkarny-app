@@ -1,0 +1,27 @@
+# Android test build on EAS (free plan), so testers get an installable APK link.
+# Runs when a pushed commit message contains "[android-build]", or by hand from the
+# Actions tab once this file is on the default branch. Needs the repository secret
+# EXPO_TOKEN (expo.dev > Account settings > Access tokens). The build uses the EAS
+# "preview" environment variables, and the build page link can be shared with testers.
+name: Android test build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[android-build]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Start the EAS build
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli@latest build --profile preview --platform android --non-interactive --no-wait

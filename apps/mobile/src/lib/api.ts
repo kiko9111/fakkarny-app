@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
 import {
+  Message as WireMessage,
   AcceptInviteResponse,
   SessionMessage,
   SessionResponse,
@@ -8,6 +9,19 @@ import {
   type StartSessionRequest,
   ListTrackersResponse,
   TrackerResponse,
+  SharedTrackersResponse,
+  MoneyOverview,
+  PostResponse,
+  type CirclePost,
+  type ReactionKey,
+  SectionResponse,
+  SectionDetail,
+  MonthGift,
+  type MoneySection,
+  type CreateSectionRequest,
+  type AddMoneyEntryRequest,
+  type SharedTracker,
+  type UpdateTrackerRequest,
   type CreateTrackerRequest,
   type Tracker,
   CircleFeedResponse,
@@ -21,6 +35,7 @@ import {
   type DaftarEntry,
   BillingOffersResponse,
   CircleResponse,
+  CircleSummary,
   CreateInviteResponse,
   InvitePreview,
   ListCirclesResponse,
@@ -45,11 +60,15 @@ import {
   type Item,
   type PatchItemRequest,
   type PostMessageRequest,
+  ReferralResponse,
+  type PostEventsRequest,
 } from "@fakkarni/shared";
 import { getInstallId } from "@/db/kv";
 import { HttpError } from "@/sync/queue";
 import { resolveApiUrl } from "./api-url";
 import { accessToken } from "./supabase";
+import { isDemo } from "./demo";
+import { demoRequest } from "@/demo/server";
 
 export const API_URL = resolveApiUrl({
   envUrl: process.env.EXPO_PUBLIC_API_URL,
@@ -59,6 +78,13 @@ export const API_URL = resolveApiUrl({
 const TIMEOUT_MS = 20_000;
 
 async function request(path: string, init: RequestInit = {}): Promise<unknown> {
+  if (isDemo) {
+    try {
+      return await demoRequest(path, init);
+    } catch (err) {
+      throw new HttpError((err as { status?: number }).status ?? 500);
+    }
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
@@ -91,6 +117,12 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
 
 export async function postMessage(body: PostMessageRequest): Promise<PostMessageResponse> {
   return PostMessageResponse.parse(await request("/messages", { method: "POST", body: JSON.stringify(body) }));
+}
+
+/** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */
+export async function actOnChatAction(messageId: string, actionId: string, confirm: boolean): Promise<WireMessage> {
+  const res = (await request(`/messages/${encodeURIComponent(messageId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify({ confirm }) })) as { message: unknown };
+  return WireMessage.parse(res.message);
 }
 
 export async function patchItem(id: string, body: PatchItemRequest): Promise<Item> {
@@ -177,6 +209,11 @@ export async function askCheckin(circleId: string, userId: string): Promise<void
   await request(`/circles/${circleId}/members/${userId}/ask-checkin`, { method: "POST" });
 }
 
+/** Zaki's weekly summary (an extra: 402 after the circle's trial without Pro). */
+export async function getCircleSummary(id: string): Promise<CircleSummary> {
+  return CircleSummary.parse(await request(`/circles/${id}/summary`));
+}
+
 export async function getCircle(id: string): Promise<CircleDetail> {
   return CircleResponse.parse(await request(`/circles/${id}`)).circle;
 }
@@ -241,6 +278,20 @@ export async function getCircleFeed(circleId: string): Promise<CircleFeedRespons
   return CircleFeedResponse.parse(await request(`/circles/${circleId}/feed`));
 }
 
+// The circle feed: reactions, short comments, and asking Zaki in front of the circle.
+export async function reactPost(circleId: string, postId: string, key: ReactionKey | null): Promise<CirclePost> {
+  return PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/react`, { method: "POST", body: JSON.stringify({ key }) })).post;
+}
+export async function commentPost(circleId: string, postId: string, text: string): Promise<CirclePost> {
+  return PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/comments`, { method: "POST", body: JSON.stringify({ text }) })).post;
+}
+export async function deleteComment(circleId: string, commentId: string): Promise<void> {
+  await request(`/circles/${circleId}/comments/${commentId}`, { method: "DELETE" });
+}
+export async function askZakiInCircle(circleId: string, text: string): Promise<CirclePost> {
+  return PostResponse.parse(await request(`/circles/${circleId}/zaki`, { method: "POST", body: JSON.stringify({ text }) })).post;
+}
+
 export async function createTask(circleId: string, body: CreateTaskRequest): Promise<CircleTask> {
   return TaskResponse.parse(await request(`/circles/${circleId}/tasks`, { method: "POST", body: JSON.stringify(body) })).task;
 }
@@ -253,6 +304,9 @@ const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Pr
 export const finishTask = taskAction("done");
 export const cancelTask = taskAction("cancel");
 export const nudgeTask = taskAction("nudge");
+export async function remindTask(id: string, remind_at: string | null): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/tasks/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) })).task;
+}
 
 // Trackers dashboard. Needs a connection; chat messages feed it on the server too.
 export async function listTrackers(): Promise<ListTrackersResponse> {
@@ -264,6 +318,14 @@ export async function createTracker(body: CreateTrackerRequest): Promise<Tracker
 }
 
 /** One tap (no amount) adds the template's step; money trackers send the amount. */
+export async function updateTracker(id: string, body: UpdateTrackerRequest): Promise<Tracker> {
+  return TrackerResponse.parse(await request(`/trackers/${id}`, { method: "PATCH", body: JSON.stringify(body) })).tracker;
+}
+
+export async function getCircleTrackers(circleId: string): Promise<SharedTracker[]> {
+  return SharedTrackersResponse.parse(await request(`/circles/${circleId}/trackers`)).trackers;
+}
+
 export async function logTracker(id: string, amount?: number): Promise<Tracker> {
   return TrackerResponse.parse(await request(`/trackers/${id}/entries`, { method: "POST", body: JSON.stringify(amount === undefined ? {} : { amount }) })).tracker;
 }
@@ -319,4 +381,41 @@ export async function inviteToIftar(circleId: string, on: string): Promise<void>
 
 export async function answerInvite(circleId: string, postId: string, going: boolean): Promise<void> {
   await request(`/circles/${circleId}/posts/${postId}/rsvp`, { method: "POST", body: JSON.stringify({ going }) });
+}
+
+// Wider Daftar: expense / income sections and circle shared books. Needs a connection.
+export async function getMoney(month?: string): Promise<MoneyOverview> {
+  return MoneyOverview.parse(await request(`/money${month ? `?month=${month}` : ""}`));
+}
+export async function createSection(body: CreateSectionRequest): Promise<MoneySection> {
+  return SectionResponse.parse(await request("/money/sections", { method: "POST", body: JSON.stringify(body) })).section;
+}
+export async function getSection(id: string, month?: string): Promise<SectionDetail> {
+  return SectionDetail.parse(await request(`/money/sections/${id}${month ? `?month=${month}` : ""}`));
+}
+export async function deleteSection(id: string): Promise<void> {
+  await request(`/money/sections/${id}`, { method: "DELETE" });
+}
+export async function addMoney(id: string, body: AddMoneyEntryRequest): Promise<MoneySection> {
+  return SectionResponse.parse(await request(`/money/sections/${id}/entries`, { method: "POST", body: JSON.stringify(body) })).section;
+}
+export async function deleteMoneyEntry(id: string): Promise<void> {
+  await request(`/money/entries/${id}`, { method: "DELETE" });
+}
+export async function getMonthGift(): Promise<MonthGift> {
+  return MonthGift.parse(await request("/money/gift"));
+}
+
+// Invite rewards: a personal link; the friend and the inviter both get Pro days.
+export async function getReferral(): Promise<ReferralResponse> {
+  return ReferralResponse.parse(await request("/me/referral"));
+}
+
+export async function claimReferral(code: string): Promise<User> {
+  return MeResponse.parse(await request("/referrals/claim", { method: "POST", body: JSON.stringify({ code }) })).user;
+}
+
+/** Product analytics: counted events, never content (src/lib/analytics.ts). */
+export async function postEvents(body: PostEventsRequest): Promise<void> {
+  await request("/events", { method: "POST", body: JSON.stringify(body) });
 }

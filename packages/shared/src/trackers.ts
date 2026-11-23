@@ -61,16 +61,57 @@ export const Tracker = z.object({
   streak: z.number().int().nonnegative(),
   /** Set for trackers that came with a seasonal pack (they do not count against the free limit). */
   pack: z.enum(["ramadan"]).nullable().default(null),
+  /** The last 30 local days, oldest first (for the graph). */
+  month: z.array(z.number()).default([]),
+  /** Local "HH:MM" times the user picked for Zaki to ask "did you … today?". */
+  ask_times: z.array(z.string()).default([]),
+  /** The user's own word for one step ("pages", "km"), builder trackers only. */
+  unit_label: z.string().nullable().default(null),
+  /** Shared with this circle: its members see the tracker's progress. */
+  circle_id: z.string().nullable().default(null),
+  circle_name: z.string().nullable().default(null),
   created_at: Instant,
 });
 export type Tracker = z.infer<typeof Tracker>;
+
+/** "07:30": a local time of day for tracker questions. */
+export const AskTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export const MAX_ASK_TIMES = 3;
 
 export const CreateTrackerRequest = z.object({
   kind: TrackerKind,
   name: z.string().trim().min(1).max(40).optional(),
   goal: z.number().positive().max(100_000_000).optional(),
+  ask_times: z.array(AskTime).max(MAX_ASK_TIMES).optional(),
+  unit_label: z.string().trim().min(1).max(20).optional(),
+  circle_id: z.uuid().nullable().optional(),
 });
 export type CreateTrackerRequest = z.infer<typeof CreateTrackerRequest>;
+
+/** Change a tracker after the builder: ask times, sharing, goal. */
+export const UpdateTrackerRequest = z.object({
+  goal: z.number().positive().max(100_000_000).nullable().optional(),
+  ask_times: z.array(AskTime).max(MAX_ASK_TIMES).optional(),
+  circle_id: z.uuid().nullable().optional(),
+});
+export type UpdateTrackerRequest = z.infer<typeof UpdateTrackerRequest>;
+
+/** A circle member's shared tracker, as the circle sees it (no money trackers, ever). */
+export const SharedTracker = z.object({
+  id: z.string(),
+  owner_name: z.string().nullable(),
+  is_mine: z.boolean(),
+  kind: TrackerKind,
+  name: z.string().nullable(),
+  unit_label: z.string().nullable(),
+  goal: z.number().nullable(),
+  today: z.number(),
+  streak: z.number().int().nonnegative(),
+  week: z.array(z.number()).length(7),
+});
+export type SharedTracker = z.infer<typeof SharedTracker>;
+export const SharedTrackersResponse = z.object({ trackers: z.array(SharedTracker) });
+export type SharedTrackersResponse = z.infer<typeof SharedTrackersResponse>;
 
 export const LogTrackerRequest = z.object({ amount: z.number().positive().max(100_000_000).optional() });
 export type LogTrackerRequest = z.infer<typeof LogTrackerRequest>;

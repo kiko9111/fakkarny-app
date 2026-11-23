@@ -1,18 +1,23 @@
 import { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import type { CircleTask } from "@fakkarni/shared";
+import { Linking, StyleSheet, View } from "react-native";
+import type { CircleTask, TaskStatus } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
-import { t } from "@/i18n";
-import { cancelTask, finishTask, nudgeTask, respondTask } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { t, dateLocale } from "@/i18n";
+import { router } from "expo-router";
+import { HttpError } from "@/sync/queue";
+import { cancelTask, finishTask, nudgeTask, remindTask, respondTask } from "@/lib/api";
 import { pullItems } from "@/sync/items";
-import { taskActions, type TaskAction } from "./logic";
+import { Badge, Button, Card, Chip, confirm, Icon, notify, palette, space, Text } from "@/ui";
+import { firstLink, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
 
-const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
+const TONE: Record<TaskStatus, "neutral" | "ok" | "warn" | "danger" | "primary"> = { pending: "warn", accepted: "primary", declined: "neutral", done: "ok", cancelled: "neutral" };
+const ACTION_ICON: Partial<Record<TaskAction, "checkmark" | "close" | "notifications-outline" | "checkmark-done">> = { accept: "checkmark", decline: "close", done: "checkmark-done", nudge: "notifications-outline" };
 
 /** One assigned task with the actions this person can take. `onChanged` reloads the list. */
 export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const work = async (fn: () => Promise<unknown>, after?: string) => {
     setBusy(true);
@@ -20,10 +25,14 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
       await fn();
       // Accepting makes the task one of the user's reminders; cancelling/finishing closes it.
       void pullItems();
-      if (after) Alert.alert(after);
+      if (after) notify(after);
       onChanged();
-    } catch {
-      Alert.alert(t.tasks.failed);
+    } catch (err) {
+      // More nudges after a circle's trial are a Pro extra.
+      if (err instanceof HttpError && err.status === 402) {
+        notify(t.circles.extrasNeeded, "info");
+        router.push("/paywall");
+      } else notify(t.tasks.failed, "error");
     } finally {
       setBusy(false);
     }
@@ -31,56 +40,90 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
 
   const run = (action: TaskAction) => {
     if (busy) return;
-    if (action === "cancel") {
-      Alert.alert(t.tasks.cancelConfirm, undefined, [
-        { text: t.tasks.no, style: "cancel" },
-        { text: t.tasks.yes, style: "destructive", onPress: () => void work(() => cancelTask(task.id)) },
-      ]);
-      return;
-    }
+    if (action === "cancel") return confirm(t.tasks.cancelConfirm, t.tasks.yes, () => void work(() => cancelTask(task.id)), t.tasks.no);
     if (action === "nudge") return void work(() => nudgeTask(task.id), t.tasks.nudged);
     if (action === "done") return void work(() => finishTask(task.id));
     return void work(() => respondTask(task.id, action));
   };
+
+  const open = task.status === "pending" || task.status === "accepted";
+  // Mirrors the server: the assigner while pending, the assignee while it is open.
+  const canRemind = (task.role === "assigner" && task.status === "pending") || (task.role === "assignee" && open);
+  const pickRemind = (c: RemindChoice) => {
+    setPicking(false);
+    void work(() => remindTask(task.id, remindAt(c, new Date(), task.due_at)), t.tasks.remindChanged);
+  };
+  const link = firstLink(task.note);
 
   const assigner = task.assigner_name ?? t.circles.noName;
   const assignee = task.assignee_name ?? t.circles.noName;
   const who = task.role === "assignee" ? fill(t.tasks.fromLine, { name: assigner }) : task.role === "assigner" ? fill(t.tasks.toLine, { name: assignee }) : fill(t.tasks.watchLine, { assignee, assigner });
   const actions = taskActions(task);
   return (
-    <View style={[styles.card, busy && styles.dim]}>
+    <Card style={busy ? styles.dim : undefined}>
       <View style={styles.head}>
-        <Text style={[styles.title, task.status === "done" && styles.struck]}>{task.title}</Text>
-        <Text style={[styles.status, (task.status === "accepted" || task.status === "done") && styles.ok]}>{t.tasks.status[task.status]}</Text>
+        <Text variant="bodyStrong" color={task.status === "done" ? palette.inkFaint : palette.ink} style={[styles.title, task.status === "done" && styles.struck]}>
+          {task.title}
+        </Text>
+        {task.homework ? <Badge label={t.tasks.homework} tone="primary" /> : null}
+        <Badge label={t.tasks.status[task.status]} tone={TONE[task.status]} />
       </View>
-      <Text style={styles.line}>{showCircle ? `${who} · ${task.circle_name}` : who}</Text>
-      {task.due_at && task.status !== "done" ? <Text style={styles.note}>{when(task.due_at)}</Text> : null}
-      {actions.length ? (
+      <View style={styles.meta}>
+        <Icon name="person-outline" size={14} color={palette.inkSoft} />
+        <Text variant="small" color={palette.inkSoft} style={styles.flex}>
+          {showCircle ? `${who} · ${task.circle_name}` : who}
+        </Text>
+      </View>
+      {task.due_at && task.status !== "done" ? (
+        <View style={styles.meta}>
+          <Icon name="time-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.inkSoft}>
+            {when(task.due_at)}
+          </Text>
+        </View>
+      ) : null}
+      {task.remind_at && open ? (
+        <View style={styles.meta}>
+          <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.inkSoft}>
+            {fill(t.tasks.remindLine, { when: when(task.remind_at) })}
+          </Text>
+        </View>
+      ) : null}
+      {task.homework && task.note ? (
+        <View style={styles.meta}>
+          <Icon name="school-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.ink} style={styles.flex}>
+            {task.note}
+          </Text>
+        </View>
+      ) : null}
+      {link ? <Button label={t.tasks.openLink} size="sm" kind="outline" icon="open-outline" onPress={() => void Linking.openURL(link)} /> : null}
+      {picking ? (
         <View style={styles.actions}>
-          {actions.map((a, n) => (
-            <Pressable key={a} disabled={busy} onPress={() => run(a)} style={({ pressed }) => [styles.action, n === 0 && styles.primary, pressed && styles.dim]} accessibilityRole="button">
-              <Text style={[styles.actionText, n === 0 && styles.primaryText]}>{t.tasks.actions[a]}</Text>
-            </Pressable>
+          {remindChoices(new Date(), task.due_at).map((c) => (
+            <Chip key={c} icon="alarm-outline" label={t.tasks.remind[c]} onPress={() => pickRemind(c)} />
           ))}
         </View>
       ) : null}
-    </View>
+      {actions.length ? (
+        <View style={styles.actions}>
+          {actions.map((a, n) => (
+            <Button key={a} label={t.tasks.actions[a]} size="sm" icon={ACTION_ICON[a]} kind={n === 0 ? "filled" : a === "cancel" ? "danger" : "outline"} disabled={busy} onPress={() => run(a)} />
+          ))}
+          {canRemind && !picking ? <Button label={t.tasks.changeRemind} size="sm" kind="text" icon="alarm-outline" disabled={busy} onPress={() => setPicking(true)} /> : null}
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: "#fff", borderRadius: 14, padding: 14, gap: 4 },
   dim: { opacity: 0.6 },
-  head: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text, textAlign: "left" },
-  struck: { textDecorationLine: "line-through", color: colors.muted },
-  status: { fontSize: 12, color: colors.muted },
-  ok: { color: colors.ok },
-  line: { fontSize: 14, color: colors.text, textAlign: "left" },
-  note: { fontSize: 13, color: colors.muted, textAlign: "left" },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
-  action: { borderWidth: 1, borderColor: colors.accent, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
-  actionText: { color: colors.accent, fontWeight: "600" },
-  primary: { backgroundColor: colors.accent },
-  primaryText: { color: "#fff" },
+  flex: { flex: 1 },
+  head: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  title: { flex: 1 },
+  struck: { textDecorationLine: "line-through" },
+  meta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
 });

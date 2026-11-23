@@ -47,4 +47,6 @@ export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE items ADD COLUMN nudge TEXT;`,
   // v3 — repeating reminders ("every hour"): minutes between occurrences
   `ALTER TABLE items ADD COLUMN repeat_every_minutes INTEGER;`,
+  // v4 — Zaki's action cards under a reply (what he did in the app, or wants to do)
+  `ALTER TABLE messages ADD COLUMN actions_json TEXT;`,
 ];

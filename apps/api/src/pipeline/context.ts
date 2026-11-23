@@ -2,6 +2,7 @@ import type { Item, Memory, Message, PrismaClient, Summary, User } from "../gene
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
 import { detectScriptInContext, type Script } from "./rules";
+import { loadAppData, type AppData } from "../chat/actions";
 
 export const RECENT_MESSAGES = 15;
 export const MAX_MEMORIES = 20;
@@ -15,6 +16,8 @@ export interface ConversationContext {
   summary: Summary | null;
   /** Oldest first; the last one is the message being answered. */
   recent: Message[];
+  /** Circles, money sections and trackers, so the model can name them in app_actions. */
+  app?: AppData;
 }
 
 /**
@@ -29,7 +32,7 @@ export function rankMemories(memories: Memory[], recentText: string, limit = MAX
 }
 
 export async function loadContext(prisma: PrismaClient, user: User, now: Date): Promise<ConversationContext> {
-  const [recentDesc, memories, openItems, summary] = await Promise.all([
+  const [recentDesc, memories, openItems, summary, app] = await Promise.all([
     prisma.message.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: RECENT_MESSAGES }),
     prisma.memory.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 500 }),
     prisma.item.findMany({
@@ -38,6 +41,7 @@ export async function loadContext(prisma: PrismaClient, user: User, now: Date): 
       take: MAX_OPEN_ITEMS,
     }),
     prisma.summary.findFirst({ where: { userId: user.id }, orderBy: { periodEnd: "desc" } }),
+    loadAppData(prisma, user.id),
   ]);
   const recent = recentDesc.reverse();
   return {
@@ -47,7 +51,45 @@ export async function loadContext(prisma: PrismaClient, user: User, now: Date): 
     openItems,
     summary,
     recent,
+    app,
   };
+}
+
+const money = (n: unknown) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+/** What the user has in the app, by name, for app_actions. Kept short: names, not ids. */
+export function describeApp(app: AppData | undefined, userId: string): string[] {
+  if (!app) return [];
+  const lines: string[] = ["", "IN THE APP (use these names in app_actions; never invent a circle, person, section or tracker):"];
+  lines.push(
+    `- CIRCLES: ${
+      app.circles.length
+        ? app.circles
+            .map((c) => {
+              const others = c.members.filter((m) => m.userId !== userId).map((m) => m.name ?? "(no name)");
+              return `«${c.name}» (${c.kind}; with ${others.length ? others.join(", ") : "nobody yet"})`;
+            })
+            .join(" · ")
+        : "none yet"
+    }`,
+  );
+  lines.push(
+    `- MONEY SECTIONS: ${
+      app.sections.length
+        ? app.sections.map((s) => `«${s.name}» (${s.kind}${s.budget !== null ? `, budget ${money(s.budget)}/month` : ""}${s.circle ? `, shared book with «${s.circle.name}»` : ""})`).join(" · ")
+        : "none yet"
+    }`,
+  );
+  lines.push(
+    `- TRACKERS: ${
+      app.trackers.length
+        ? app.trackers
+            .map((t) => `${t.kind === "custom" ? `«${t.name ?? "custom"}»` : t.kind}${t.goal !== null ? ` (goal ${money(t.goal)}/day)` : ""}${t.askTimes.length ? ` asks at ${t.askTimes.join(", ")}` : ""}${t.circle ? `, shared with «${t.circle.name}»` : ""}`)
+            .join(" · ")
+        : "none yet"
+    }`,
+  );
+  return lines;
 }
 
 const local = (d: Date | null, tz: string) => (d ? toLocalIso(d, tz) : null);
@@ -124,6 +166,7 @@ export function renderContext(ctx: ConversationContext): string {
   lines.push("");
   lines.push("OPEN ITEMS (use these ids in update_items):");
   lines.push(ctx.openItems.length ? ctx.openItems.map((i) => describeItem(i, tz)).join("\n") : "- (none)");
+  lines.push(...describeApp(ctx.app, user.id));
   if (ctx.summary) {
     lines.push("");
     lines.push(`EARLIER CONVERSATION (summary up to ${local(ctx.summary.periodEnd, tz)}):`);

@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { FriendResponse } from "@fakkarni/shared";
+import { APP_ACTION_KINDS, AppAction, FriendResponse, MoneyKind, TrackerKind } from "@fakkarni/shared";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
 export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
@@ -48,8 +48,10 @@ export interface FriendModelInput {
   todayLocal?: string;
 }
 
+/** The model's validated answer. app_actions may be left out (scripted test models). */
+export type FriendOutput = Omit<FriendResponse, "app_actions"> & { app_actions?: FriendResponse["app_actions"] };
 export type FriendModelResult =
-  | { ok: true; output: FriendResponse; usage: Usage }
+  | { ok: true; output: FriendOutput; usage: Usage }
   | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
 
 /** One Session turn: what Zaki says, whether this is a crisis, and at most one small step. */
@@ -94,11 +96,38 @@ const ModelUpdate = z.object({
   follow_up_at_local: z.string().nullable(),
   repeat_every_minutes: z.number().nullable(),
 });
+/**
+ * App actions use no nullable fields: the API allows at most 16 union-typed (nullable)
+ * parameters across the whole output schema, and items + updates already use 12. A 400
+ * "schema too complex" there fails every turn. Unused fields come back as "", 0, [] or
+ * false and are dropped in `toAppActions`.
+ */
+const ModelAppAction = z.object({
+  kind: z.enum(APP_ACTION_KINDS),
+  name: z.string(),
+  title: z.string(),
+  section: z.string(),
+  tracker: z.string(),
+  circle: z.string(),
+  person: z.string(),
+  amount: z.number(),
+  money_kind: z.string(),
+  tracker_kind: z.string(),
+  unit: z.string(),
+  ask_times: z.array(z.string()),
+  family: z.boolean(),
+  homework: z.boolean(),
+  note: z.string(),
+  text: z.string(),
+  due_at_local: z.string(),
+  remind_at_local: z.string(),
+});
 export const ModelOutput = z.object({
   reply: z.array(z.string()),
   create_items: z.array(ModelItem),
   update_items: z.array(ModelUpdate),
   save_memories: z.array(z.object({ kind: z.enum(["person", "place", "preference", "fact"]), subject: z.string(), content: z.string() })),
+  app_actions: z.array(ModelAppAction),
   crisis: z.boolean(),
 });
 export type ModelOutput = z.infer<typeof ModelOutput>;
@@ -113,6 +142,28 @@ function capReplies(reply: string[], max = 3): string[] {
   return clean.length <= max ? clean : [...clean.slice(0, max - 1), clean.slice(max - 1).join(" ")];
 }
 
+/**
+ * Model app actions → valid AppActions. "", 0, [] and false mean "not given"; amount 0 on
+ * set_budget means "remove the budget". An action that still doesn't fit is dropped on its
+ * own, so one odd action never costs the user their reply.
+ */
+export function toAppActions(raw: ModelOutput["app_actions"]): AppAction[] {
+  return raw.slice(0, 3).flatMap((a) => {
+    const o: Record<string, unknown> = dropNulls(a);
+    if (!a.ask_times.length) delete o["ask_times"];
+    if (!a.family) delete o["family"];
+    if (!a.homework) delete o["homework"];
+    if (!(a.amount > 0)) {
+      if (a.kind === "set_budget") o["amount"] = null;
+      else delete o["amount"];
+    }
+    if (!MoneyKind.safeParse(a.money_kind).success) delete o["money_kind"];
+    if (!TrackerKind.safeParse(a.tracker_kind).success) delete o["tracker_kind"];
+    const parsed = AppAction.safeParse(o);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
 /** Loose model output → strict FriendResponse (throws ZodError if it doesn't fit). */
 export function toFriendResponse(raw: ModelOutput): FriendResponse {
   return FriendResponse.parse({
@@ -120,6 +171,7 @@ export function toFriendResponse(raw: ModelOutput): FriendResponse {
     create_items: raw.create_items.map((i) => dropNulls(i)),
     update_items: raw.update_items.map((u) => dropNulls(u)),
     save_memories: raw.save_memories,
+    app_actions: toAppActions(raw.app_actions ?? []),
     crisis: raw.crisis,
   });
 }

@@ -2,7 +2,8 @@ import type { CirclePost as WirePost, CircleTask as WireTask, TaskRole } from "@
 import type { CirclePost, CircleTask, Prisma, PrismaClient, User } from "../generated/prisma/client";
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
-import { canNudge, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
+import { zakiCommentLine } from "../circles/zaki";
+import { canNudge, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Person = Pick<User, "id" | "name" | "language">;
@@ -22,6 +23,9 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
     circle_name: t.circle.name,
     title: t.title,
     due_at: t.dueAt?.toISOString() ?? null,
+    remind_at: t.remindAt?.toISOString() ?? null,
+    homework: t.homework,
+    note: t.note,
     status: t.status,
     role,
     assigner_name: t.assigner.name,
@@ -33,16 +37,52 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
   };
 }
 
-/** Zaki's circle posts, written for this reader. Names come from the people as they are now. */
+/** How many comments a feed item carries inline (the newest ones). */
+const INLINE_COMMENTS = 20;
+
+/** Zaki's circle posts, written for this reader, with reactions and the latest comments. Names come from the people as they are now. */
 export async function wirePosts(db: Db, posts: CirclePost[], lang: Lang, viewerId?: string): Promise<WirePost[]> {
   // The viewer's own answers to invitations (an rsvp post keeps the invitation's id in targetId).
   const mine = new Map(posts.filter((p) => p.event.startsWith("rsvp:") && p.actorId === viewerId && p.targetId).map((p) => [p.targetId!, p.event === "rsvp:yes"]));
-  const ids = [...new Set(posts.flatMap((p) => [p.actorId, p.targetId]).filter((id): id is string => Boolean(id)))];
+  const postIds = posts.map((p) => p.id);
+  const [reactions, comments, counts] = postIds.length
+    ? await Promise.all([
+        db.postReaction.findMany({ where: { postId: { in: postIds } }, select: { postId: true, userId: true, key: true } }),
+        db.postComment.findMany({ where: { postId: { in: postIds } }, orderBy: { createdAt: "desc" }, take: postIds.length * INLINE_COMMENTS }),
+        db.postComment.groupBy({ by: ["postId"], where: { postId: { in: postIds } }, _count: { _all: true } }),
+      ])
+    : [[], [], []];
+  const ids = [...new Set([...posts.flatMap((p) => [p.actorId, p.targetId]), ...comments.map((c) => c.userId)].filter((id): id is string => Boolean(id)))];
   const names = new Map((await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  const countOf = new Map(counts.map((c) => [c.postId, c._count._all]));
   return posts.flatMap((p) => {
     const text = postLine(lang, p.event, p.actorId ? names.get(p.actorId) : null, p.targetId ? names.get(p.targetId) : null, p.title);
+    if (!text) return [];
     const iftar = p.event === "iftar";
-    return text ? [{ id: p.id, text, created_at: p.createdAt.toISOString(), kind: iftar ? ("iftar" as const) : null, my_rsvp: iftar ? mine.get(p.id) ?? null : null }] : [];
+    const mineHere = reactions.filter((r) => r.postId === p.id);
+    const byKey = new Map<string, number>();
+    for (const r of mineHere) byKey.set(r.key, (byKey.get(r.key) ?? 0) + 1);
+    const here = comments
+      .filter((c) => c.postId === p.id)
+      .slice(0, INLINE_COMMENTS)
+      .reverse()
+      .flatMap((c) => {
+        const line = c.userId ? c.text : c.zakiEvent ? zakiCommentLine(lang, c.zakiEvent) : null;
+        return line ? [{ id: c.id, author_name: c.userId ? names.get(c.userId) ?? null : null, is_mine: c.userId === viewerId, is_zaki: !c.userId, text: line, created_at: c.createdAt.toISOString() }] : [];
+      });
+    return [
+      {
+        id: p.id,
+        text,
+        created_at: p.createdAt.toISOString(),
+        kind: iftar ? ("iftar" as const) : null,
+        my_rsvp: iftar ? mine.get(p.id) ?? null : null,
+        reactions: [...byKey].map(([key, count]) => ({ key, count })),
+        my_reaction: mineHere.find((r) => r.userId === viewerId)?.key ?? null,
+        comments: here,
+        comment_count: countOf.get(p.id) ?? 0,
+      },
+    ];
   });
 }
 
@@ -80,7 +120,7 @@ export async function respond(prisma: PrismaClient, taskId: string, answer: "acc
     let t = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, include: withPeople });
     if (status === "accepted") {
       const item = await tx.item.create({
-        data: { userId: t.assigneeId, type: t.dueAt ? "reminder" : "task", title: t.title, dueAt: t.dueAt, remindAt: t.dueAt, createdAt: now },
+        data: { userId: t.assigneeId, type: t.dueAt || t.remindAt ? "reminder" : "task", title: t.title, dueAt: t.dueAt, remindAt: t.remindAt ?? t.dueAt, createdAt: now },
       });
       t = await tx.circleTask.update({ where: { id: t.id }, data: { itemId: item.id }, include: withPeople });
       await post(tx, t, "task_accepted", now);
@@ -141,4 +181,27 @@ export async function nudge(prisma: PrismaClient, t: TaskWithPeople, now: Date):
     await tx.event.create({ data: { userId: t.assignerId, name: "task_nudged", propsJson: { status: t.status } } });
     return { task, notices: [notice] };
   });
+}
+
+/**
+ * Ask a circle member to do something (accept first: only the two people hear about it until
+ * the assignee says yes). Used by POST /circles/:id/tasks and by the chat (chat/actions.ts).
+ */
+export async function assignTask(
+  prisma: PrismaClient,
+  input: { circleId: string; assignerId: string; assigneeId: string; title: string; dueAt: Date | null; remindAt: Date | null; homework: boolean; note: string | null },
+  now: Date,
+): Promise<Outcome | "not_members" | "too_many"> {
+  if (input.assignerId === input.assigneeId) return "not_members";
+  // Both people have to be in the circle.
+  const members = await prisma.circleMember.count({ where: { circleId: input.circleId, userId: { in: [input.assignerId, input.assigneeId] } } });
+  if (members !== 2) return "not_members";
+  const open = await prisma.circleTask.count({ where: { assignerId: input.assignerId, assigneeId: input.assigneeId, status: { in: ["pending", "accepted"] } } });
+  if (open >= MAX_OPEN_PER_PAIR) return "too_many";
+  const task = await prisma.circleTask.create({
+    data: { circleId: input.circleId, assignerId: input.assignerId, assigneeId: input.assigneeId, title: input.title, dueAt: input.dueAt, remindAt: input.remindAt, homework: input.homework, note: input.note, createdAt: now },
+    include: withPeople,
+  });
+  await prisma.event.create({ data: { userId: input.assignerId, name: "task_assigned", propsJson: { has_due: Boolean(task.dueAt), has_remind: Boolean(task.remindAt), homework: task.homework } } });
+  return { task, notices: await announce(prisma, task, now) };
 }

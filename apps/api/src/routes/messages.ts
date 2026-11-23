@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  ActOnChatActionRequest,
   ListMessagesQuery,
   PostMessageRequest,
   type ListMessagesResponse,
@@ -9,6 +10,9 @@ import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
 import { dailyAiAllowance } from "../billing/plan";
 import type { MessagePipeline } from "../pipeline/types";
+import { answerCard } from "../chat/actions";
+import { storedCards } from "../chat/cards";
+import { z } from "zod";
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
 import type { preHandlerAsyncHookHandler } from "fastify";
@@ -101,8 +105,9 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     // Chat is never locked: free users get a daily AI allowance, then a warm Pro nudge.
     let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
-    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance });
+    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false });
     if (result.notices?.length) void pushNotices(prisma, opts.push, result.notices, app.log);
+    await countIntent(prisma, user.id, message.id, result).catch(() => {});
     const res: PostMessageResponse = {
       message: toWireMessage(message, readsNewKinds(req)),
       replies: result.replies.map((m) => toWireMessage(m, readsNewKinds(req))),
@@ -125,4 +130,48 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     const res: ListMessagesResponse = { messages: rows.map((m) => toWireMessage(m, readsNewKinds(req))) };
     return res;
   });
+
+  /** Send or cancel one of Zaki's waiting action cards ("Ask Mona to buy bread?"). */
+  app.post("/messages/:id/actions/:actionId", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const p = ActionParam.safeParse(req.params);
+    const body = ActOnChatActionRequest.safeParse(req.body);
+    if (!p.success) return reply.code(404).send({ error: "not_found" });
+    if (!body.success) return reply.code(400).send({ error: "invalid_body" });
+    const msg = await prisma.message.findFirst({ where: { id: p.data.id, userId: req.user.id } });
+    const cards = storedCards(msg?.actionsJson);
+    const at = cards.findIndex((c) => c.id === p.data.actionId);
+    if (!msg || at < 0) return reply.code(404).send({ error: "not_found" });
+    const { card, notices } = await answerCard(prisma, req.user, cards[at]!, body.data.confirm, now(), { requireSubscription: opts.requireSubscription ?? false });
+    cards[at] = card;
+    const saved = await prisma.message.update({ where: { id: msg.id }, data: { actionsJson: cards as unknown as Prisma.InputJsonValue } });
+    if (notices.length) void pushNotices(prisma, opts.push, notices, app.log);
+    return { message: toWireMessage(saved, readsNewKinds(req)) };
+  });
 };
+
+const ActionParam = z.object({ id: z.uuid(), actionId: z.uuid() });
+
+/**
+ * Analytics: what one chat turn did, counted (owner ask 2026-11-23: count anything in the chat,
+ * never the words). Item types, memories, card kinds and the reply kind; no text, no amounts.
+ */
+async function countIntent(
+  prisma: PrismaClient,
+  userId: string,
+  messageId: string,
+  result: { replies: { kind: string; actionsJson?: unknown }[]; items: { type: string; sourceMessageId: string | null; remindAt: Date | null }[]; memories: unknown[] },
+) {
+  const props: Record<string, number | string> = {};
+  for (const i of result.items) {
+    if (i.sourceMessageId !== messageId) continue;
+    const key = i.type === "debt" ? "debts" : i.remindAt ? "reminders" : `${i.type}s`;
+    props[key] = (Number(props[key]) || 0) + 1;
+  }
+  if (result.memories.length) props.memories = result.memories.length;
+  const kinds = result.replies.flatMap((r) => (Array.isArray(r.actionsJson) ? (r.actionsJson as { kind?: unknown }[]).map((c) => String(c.kind ?? "")) : [])).filter(Boolean);
+  if (kinds.length) props.actions = [...new Set(kinds)].join(",").slice(0, 60);
+  const kind = result.replies.find((r) => r.kind !== "chat")?.kind;
+  if (kind) props.reply = kind;
+  props.intent = Object.keys(props).length ? "act" : "talk";
+  await prisma.event.create({ data: { userId, name: "chat_intent", propsJson: props } });
+}

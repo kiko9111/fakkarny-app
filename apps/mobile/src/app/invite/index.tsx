@@ -1,32 +1,37 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { router, Stack } from "expo-router";
 import { inviteCodeFromText } from "@fakkarni/shared";
 import { t } from "@/i18n";
-import { colors } from "@/lib/theme";
+import { Button, IconTile, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /** "I have an invite": paste the WhatsApp link or type the code from the web page. */
 export default function EnterInviteScreen() {
   const [text, setText] = useState("");
   const code = inviteCodeFromText(text);
+  // A friend's personal link (…/r/CODE or fakkarni://ref/CODE) is a gift, not a circle.
+  const personal = /(?:\/r\/|ref\/)([A-Za-z0-9]{4,16})/.exec(text)?.[1]?.toUpperCase();
+  const go = () =>
+    personal
+      ? router.replace({ pathname: "/ref/[code]", params: { code: personal } })
+      : code && router.replace({ pathname: "/invite/[code]", params: { code } });
 
   return (
-    <View style={styles.page}>
+    <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.circles.codeTitle }} />
-      <Text style={styles.hint}>{t.circles.codeHint}</Text>
-      <TextInput style={styles.input} value={text} onChangeText={setText} placeholder={t.circles.codePlaceholder} autoCapitalize="characters" autoCorrect={false} autoFocus textAlign="center" />
-      <Pressable style={[styles.primary, !code && styles.dim]} disabled={!code} onPress={() => code && router.replace({ pathname: "/invite/[code]", params: { code } })} accessibilityRole="button">
-        <Text style={styles.primaryText}>{t.circles.next}</Text>
-      </Pressable>
-    </View>
+      <View style={styles.hero}>
+        <IconTile name="ticket-outline" size={64} />
+        <Text variant="body" color={palette.inkSoft} align="center">
+          {plain(t.circles.codeHint)}
+        </Text>
+      </View>
+      <TextField big value={text} onChangeText={setText} placeholder={t.circles.codePlaceholder} autoCapitalize="characters" autoCorrect={false} autoFocus textAlign="center" returnKeyType="go" onSubmitEditing={go} />
+      <Button label={t.circles.next} size="lg" block disabled={!code && !personal} onPress={go} />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg, padding: 24, gap: 14 },
-  hint: { color: colors.muted, fontSize: 15, textAlign: "center" },
-  input: { backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 18, color: colors.text },
-  primary: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14, alignItems: "center" },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  dim: { opacity: 0.5 },
+  content: { padding: space.xl, gap: space.lg },
+  hero: { alignItems: "center", gap: space.md, marginTop: space.sm },
 });

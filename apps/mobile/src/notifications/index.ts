@@ -7,7 +7,7 @@ import type { Item } from "@fakkarni/shared";
 import { kvGet, kvSet } from "@/db/kv";
 import { prefs } from "@/lib/prefs";
 import { upsertItem } from "@/db/messages";
-import { t } from "@/i18n";
+import { t, dateLocale } from "@/i18n";
 import { patchItem, registerDevice } from "@/lib/api";
 import { awakeAtMinutes } from "@fakkarni/shared";
 import { allIds, fill, hintId, planReminderNotifications } from "./plan";
@@ -64,7 +64,7 @@ export async function ensurePermissionAndRegister(): Promise<boolean> {
 }
 
 function formatTime(d: Date) {
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString(dateLocale, { hour: "numeric", minute: "2-digit" });
 }
 
 /** (Re)schedule an item's local notifications; cancels them when it's done or cancelled. */

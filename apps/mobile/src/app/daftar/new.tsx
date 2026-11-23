@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { whatsappShareUrl } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
 import { upsertItem } from "@/db/messages";
 import { t } from "@/i18n";
 import { createDaftar, patchItem } from "@/lib/api";
-import { colors } from "@/lib/theme";
+import { contactsAvailable, pickContactName } from "@/lib/contacts";
+import { Button, Icon, notify, palette, radius, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * New shared entry: who, how much, which way. Saving opens WhatsApp with the confirm link,
@@ -32,46 +33,61 @@ export default function NewDaftarScreen() {
       if (share_text) await Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
       router.back();
     } catch {
-      Alert.alert(t.daftar.failed);
+      notify(t.daftar.failed, "error");
       setBusy(false);
     }
   };
 
-  const choice = (value: "owed_to_me" | "i_owe", label: string) => (
-    <Pressable style={[styles.choice, direction === value && styles.choiceOn]} onPress={() => setDirection(value)} accessibilityRole="button">
-      <Text style={[styles.choiceText, direction === value && styles.choiceTextOn]}>{label}</Text>
-    </Pressable>
-  );
+  const pickContact = async () => {
+    try {
+      const picked = await pickContactName();
+      if (picked && "denied" in picked) notify(t.ui.contactsDenied);
+      else if (picked) setName(picked.name.slice(0, 40));
+    } catch {
+      // The picker closed or failed: the field stays as it was.
+    }
+  };
+
+  const choice = (value: "owed_to_me" | "i_owe", label: string) => {
+    const on = direction === value;
+    const color = value === "owed_to_me" ? palette.ok : palette.primaryInk;
+    const soft = value === "owed_to_me" ? palette.okSoft : palette.primarySoft;
+    return (
+      <Pressable style={[styles.choice, on && { backgroundColor: soft, borderColor: color }]} onPress={() => setDirection(value)} accessibilityRole="radio" accessibilityState={{ selected: on }}>
+        <Icon name={value === "owed_to_me" ? "arrow-down-circle" : "arrow-up-circle"} size={22} color={on ? color : palette.inkFaint} />
+        <Text variant="label" color={on ? color : palette.inkSoft} align="center">
+          {label}
+        </Text>
+      </Pressable>
+    );
+  };
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.daftar.newTitle }} />
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder={t.daftar.name} maxLength={40} autoFocus={!params.name} />
       <View style={styles.row}>
         {choice("owed_to_me", t.daftar.theyOwe)}
         {choice("i_owe", t.daftar.iOwe)}
       </View>
-      <TextInput style={styles.input} value={amountText} onChangeText={setAmountText} placeholder={t.daftar.amount} keyboardType="decimal-pad" maxLength={12} />
-      <TextInput style={styles.input} value={note} onChangeText={setNote} placeholder={t.daftar.note} maxLength={120} />
-      <Pressable style={[styles.primary, (!ready || busy) && styles.dim]} disabled={!ready || busy} onPress={() => void submit()} accessibilityRole="button">
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t.daftar.send}</Text>}
-      </Pressable>
-      <Text style={styles.hint}>{t.daftar.intro}</Text>
-    </ScrollView>
+      <TextField label={t.daftar.name} value={name} onChangeText={setName} maxLength={40} autoFocus={!params.name} />
+      {contactsAvailable ? (
+        <View style={styles.pick}>
+          <Button kind="text" size="sm" icon="person-add-outline" label={t.ui.pickContact} onPress={() => void pickContact()} />
+        </View>
+      ) : null}
+      <TextField label={t.daftar.amount} value={amountText} onChangeText={setAmountText} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
+      <TextField label={t.daftar.note} value={note} onChangeText={setNote} maxLength={120} />
+      <Button label={t.daftar.send} kind="whatsapp" icon="logo-whatsapp" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
+      <Text variant="small" color={palette.inkSoft} align="center">
+        {t.daftar.intro}
+      </Text>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 24, gap: 12 },
-  input: { backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17, color: colors.text, writingDirection: "auto" },
-  row: { flexDirection: "row", gap: 8 },
-  choice: { flex: 1, borderWidth: 1, borderColor: colors.accent, borderRadius: 14, paddingVertical: 10, alignItems: "center" },
-  choiceOn: { backgroundColor: colors.accent },
-  choiceText: { color: colors.accent, fontWeight: "600" },
-  choiceTextOn: { color: "#fff" },
-  primary: { backgroundColor: "#25A35A", borderRadius: 16, paddingVertical: 14, alignItems: "center" },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  dim: { opacity: 0.5 },
-  hint: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: "center" },
+  content: { padding: space.xl, gap: space.lg },
+  row: { flexDirection: "row", gap: space.md },
+  pick: { alignItems: "flex-start", marginTop: -space.md },
+  choice: { flex: 1, alignItems: "center", gap: space.xs, borderWidth: 2, borderColor: palette.glassEdge, backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: space.md },
 });
