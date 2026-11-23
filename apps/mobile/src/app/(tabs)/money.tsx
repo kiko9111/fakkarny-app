@@ -11,6 +11,7 @@ import { listDaftar } from "@/lib/api";
 import { summarizeDebts } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
 import { SpendView } from "@/money/SpendView";
+import { SplitsView } from "@/split/SplitsView";
 import { Button, Card, Chip, EmptyState, Icon, ListRow, Note, palette, PersonAvatar, radius, Screen, SectionHeader, space, Text } from "@/ui";
 
 /**
@@ -18,7 +19,7 @@ import { Button, Card, Chip, EmptyState, Icon, ListRow, Note, palette, PersonAva
  * then the user's private notes of who owes what (FR-12), which can be sent to confirm.
  */
 export default function MoneyScreen() {
-  const [view, setView] = useState<"spend" | "debts">("spend");
+  const [view, setView] = useState<"spend" | "debts" | "split">("spend");
   const [reloadKey, setReloadKey] = useState(0);
   const { items, refreshing, refresh, complete } = useItems(listDebts);
   const { owedToMe, iOwe } = summarizeDebts(items);
@@ -59,8 +60,9 @@ export default function MoneyScreen() {
       <View style={styles.switch}>
         <Chip icon="receipt-outline" label={t.book.tabSpend} selected={view === "spend"} onPress={() => setView("spend")} />
         <Chip icon="swap-horizontal-outline" label={t.book.tabDebts} selected={view === "debts"} onPress={() => setView("debts")} />
+        <Chip icon="pie-chart-outline" label={t.split.tab} selected={view === "split"} onPress={() => setView("split")} />
       </View>
-      {view === "spend" ? <SpendView reloadKey={reloadKey} /> : debts()}
+      {view === "spend" ? <SpendView reloadKey={reloadKey} /> : view === "split" ? <SplitsView reloadKey={reloadKey} /> : debts()}
     </Screen>
   );
 

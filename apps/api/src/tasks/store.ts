@@ -3,7 +3,7 @@ import type { CirclePost, CircleTask, Prisma, PrismaClient, User } from "../gene
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
 import { zakiCommentLine } from "../circles/zaki";
-import { canNudge, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
+import { canNudge, homeworkLine, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 type Person = Pick<User, "id" | "name" | "language">;
@@ -26,6 +26,10 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
     remind_at: t.remindAt?.toISOString() ?? null,
     homework: t.homework,
     note: t.note,
+    submission: t.submission,
+    submitted_at: t.submittedAt?.toISOString() ?? null,
+    review: t.review === "approved" || t.review === "redo" ? t.review : null,
+    review_note: t.reviewNote,
     status: t.status,
     role,
     assigner_name: t.assigner.name,
@@ -204,4 +208,42 @@ export async function assignTask(
   });
   await prisma.event.create({ data: { userId: input.assignerId, name: "task_assigned", propsJson: { has_due: Boolean(task.dueAt), has_remind: Boolean(task.remindAt), homework: task.homework } } });
   return { task, notices: await announce(prisma, task, now) };
+}
+
+/**
+ * The child hands in homework (text answer or link). Still waiting? Handing in is the yes. The
+ * task (and its item) is done, and the parent hears at once in their chat, with a push.
+ */
+export async function submitHomework(prisma: PrismaClient, taskId: string, text: string, now: Date): Promise<Outcome | null> {
+  return prisma.$transaction(async (tx) => {
+    const changed = await tx.circleTask.updateMany({
+      where: { id: taskId, homework: true, status: { in: ["pending", "accepted"] } },
+      data: { status: "done", doneAt: now, respondedAt: now, submission: text, submittedAt: now, review: null, reviewNote: null },
+    });
+    if (changed.count === 0) return null;
+    const t = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, include: withPeople });
+    if (t.itemId) await tx.item.updateMany({ where: { id: t.itemId, status: "open" }, data: { status: "done", doneAt: now } });
+    await post(tx, t, "task_done", now);
+    const reader = t.assigner;
+    const line = homeworkLine(langOf(reader), "submitted", t.assignee.name, t.title, text.slice(0, 300));
+    await postUpdate(tx, reader.id, `task:${t.id}:submitted:${now.getTime()}`, line, now);
+    await tx.event.create({ data: { userId: t.assigneeId, name: "homework_submitted", propsJson: {} } });
+    return { task: t, notices: [{ userId: reader.id, text: line }] };
+  });
+}
+
+/** The parent's review: well done, or redo (back on the child's list, with the parent's note). */
+export async function reviewHomework(prisma: PrismaClient, taskId: string, verdict: "approved" | "redo", note: string | null, now: Date): Promise<Outcome | null> {
+  return prisma.$transaction(async (tx) => {
+    const data = verdict === "approved" ? { review: "approved", reviewNote: note } : { review: "redo", reviewNote: note, status: "accepted" as const, doneAt: null };
+    const changed = await tx.circleTask.updateMany({ where: { id: taskId, homework: true, status: "done", submittedAt: { not: null } }, data });
+    if (changed.count === 0) return null;
+    const t = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, include: withPeople });
+    if (verdict === "redo" && t.itemId) await tx.item.updateMany({ where: { id: t.itemId }, data: { status: "open", doneAt: null, updatedAt: now } });
+    const reader = t.assignee;
+    const line = homeworkLine(langOf(reader), verdict, t.assigner.name, t.title, note);
+    await postUpdate(tx, reader.id, `task:${t.id}:${verdict}:${now.getTime()}`, line, now);
+    await tx.event.create({ data: { userId: t.assignerId, name: `homework_${verdict}`, propsJson: {} } });
+    return { task: t, notices: [{ userId: reader.id, text: line }] };
+  });
 }

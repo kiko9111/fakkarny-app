@@ -1,13 +1,13 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import { z } from "zod";
-import { CreateTaskRequest, IftarRequest, RespondTaskRequest, RsvpRequest, TaskRemindRequest, type CircleFeedResponse, type ListTasksResponse, type TaskResponse } from "@fakkarni/shared";
+import { CreateTaskRequest, IftarRequest, RespondTaskRequest, ReviewHomeworkRequest, SubmitHomeworkRequest, RsvpRequest, TaskRemindRequest, type CircleFeedResponse, type ListTasksResponse, type TaskResponse } from "@fakkarni/shared";
 import type { PrismaClient, User } from "../generated/prisma/client";
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
 import { circleExtras, FREE_NUDGES_PER_TASK } from "@fakkarni/shared";
 import { hasProAccess } from "../billing/family";
 import { canCancel, canFinish, canNudge, canRespond, canSetRemind, postLine } from "../tasks/rules";
-import { assignTask, cancel, finish, langOf, nudge, respond, roleOf, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
+import { assignTask, cancel, finish, langOf, nudge, respond, reviewHomework, roleOf, submitHomework, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
 
 export interface TaskRoutesOptions {
   /** Off (stores not set up yet): every circle keeps its extras. */
@@ -150,6 +150,28 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     const found = await mine(req.params, req.user.id);
     if (!found) return reply.code(404).send({ error: "not_found" });
     const outcome = canFinish(found.t.status, found.role) ? await finish(prisma, found.t.id, now()) : null;
+    if (!outcome) return reply.code(409).send({ error: "not_allowed" });
+    return done(outcome, req.user.id);
+  });
+
+  /** The child hands in homework (answer or link); the parent hears at once. */
+  app.post("/tasks/:id/submit", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const body = SubmitHomeworkRequest.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_body" });
+    const found = await mine(req.params, req.user.id);
+    if (!found) return reply.code(404).send({ error: "not_found" });
+    const outcome = found.role === "assignee" && found.t.homework ? await submitHomework(prisma, found.t.id, body.data.text, now()) : null;
+    if (!outcome) return reply.code(409).send({ error: "not_allowed" });
+    return done(outcome, req.user.id);
+  });
+
+  /** The parent: well done, or redo it (with a note). */
+  app.post("/tasks/:id/review", async (req, reply) => {
+    const body = ReviewHomeworkRequest.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_body" });
+    const found = await mine(req.params, req.user.id);
+    if (!found) return reply.code(404).send({ error: "not_found" });
+    const outcome = found.role === "assigner" ? await reviewHomework(prisma, found.t.id, body.data.verdict, body.data.note || null, now()) : null;
     if (!outcome) return reply.code(409).send({ error: "not_allowed" });
     return done(outcome, req.user.id);
   });

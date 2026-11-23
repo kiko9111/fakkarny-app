@@ -1,0 +1,118 @@
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Linking, Pressable, Share, StyleSheet, View } from "react-native";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import type { SplitResponse } from "@fakkarni/shared";
+import { fill, whatsappShareUrl } from "@/circles/logic";
+import { formatMoney } from "@/daftar/logic";
+import { t } from "@/i18n";
+import { deleteSplit, getSplit, markSplitPaid } from "@/lib/api";
+import { Badge, Button, Card, confirm, EmptyState, Icon, notify, palette, Screen, space, Text } from "@/ui";
+
+/** One split: everyone's share, what friends added from the link, and who has paid back. */
+export default function SplitScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [data, setData] = useState<SplitResponse | null>(null);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(() => {
+    getSplit(id)
+      .then((r) => {
+        setData(r);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
+  }, [id]);
+  useFocusEffect(load);
+
+  if (!data) return <View style={styles.center}>{failed ? <EmptyState title={t.split.offline} /> : <ActivityIndicator color={palette.primary} />}</View>;
+  const { split, share_text } = data;
+  const resend = () => void Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
+  const togglePaid = (index: number, paid: boolean) =>
+    void markSplitPaid(split.id, index, paid)
+      .then(setData)
+      .catch(() => notify(t.split.offline, "error"));
+  const owed = split.people.reduce((sum, p, i) => (i === split.paid_by || p.paid ? sum : sum + p.share), 0);
+
+  return (
+    <Screen refreshing={false} onRefresh={load} contentStyle={styles.content}>
+      <Stack.Screen options={{ title: split.title || t.split.title }} />
+      <Card style={styles.total}>
+        <Text variant="small" color={palette.inkSoft}>
+          {t.split.total}
+        </Text>
+        <Text variant="number">{fill(t.ui.pounds, { n: formatMoney(split.total) })}</Text>
+        {split.paid_by !== null && owed > 0 ? (
+          <Text variant="small" color={palette.ok}>
+            {fill(t.split.stillOwed, { n: formatMoney(owed) })}
+          </Text>
+        ) : null}
+        {split.web_adds > 0 ? <Badge label={fill(t.split.webAdds, { n: split.web_adds })} tone="primary" /> : null}
+      </Card>
+      {split.people.map((p, i) => {
+        const payer = i === split.paid_by;
+        return (
+          <Card key={i}>
+            <View style={styles.row}>
+              <Icon name={payer ? "wallet" : p.paid ? "checkmark-circle" : "ellipse-outline"} size={20} color={payer || p.paid ? palette.ok : palette.inkFaint} />
+              <View style={styles.flex}>
+                <Text variant="bodyStrong">{p.name}</Text>
+                {split.items.length ? (
+                  <Text variant="caption" color={palette.inkSoft}>
+                    {fill(t.split.orderedLine, { n: formatMoney(p.ordered) })}
+                  </Text>
+                ) : null}
+              </View>
+              <Text variant="bodyStrong">{formatMoney(p.share)}</Text>
+            </View>
+            {payer ? (
+              <Text variant="caption" color={palette.ok}>
+                {t.split.paidBill}
+              </Text>
+            ) : split.paid_by !== null ? (
+              <Pressable onPress={() => togglePaid(i, !p.paid)} accessibilityRole="checkbox" accessibilityState={{ checked: p.paid }} style={styles.paid}>
+                <Text variant="small" color={p.paid ? palette.ok : palette.primaryInk}>
+                  {p.paid ? t.split.paidBack : t.split.markPaid}
+                </Text>
+              </Pressable>
+            ) : null}
+          </Card>
+        );
+      })}
+      {split.items.length ? (
+        <Card style={styles.items}>
+          <Text variant="headline">{t.split.items}</Text>
+          {split.items.map((it, i) => (
+            <View key={i} style={styles.row}>
+              <Text variant="small" style={styles.flex}>
+                {it.name} · {it.eaters.length ? it.eaters.map((e) => split.people[e]?.name ?? "").join("، ") : t.split.everyone}
+              </Text>
+              <Text variant="small">{formatMoney(it.price)}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+      <Button label={t.split.resend} kind="whatsapp" icon="logo-whatsapp" block onPress={resend} />
+      <Button label={t.split.openPage} kind="outline" icon="open-outline" block onPress={() => void Linking.openURL(split.url)} />
+      <Button
+        label={t.split.delete}
+        kind="text"
+        onPress={() =>
+          confirm(t.split.deleteConfirm, t.split.delete, () =>
+            void deleteSplit(split.id)
+              .then(() => router.back())
+              .catch(() => notify(t.split.offline, "error")),
+          )
+        }
+      />
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.bg, padding: space.xl },
+  content: { padding: space.xl, gap: space.md },
+  flex: { flex: 1 },
+  total: { alignItems: "center", gap: space.xs },
+  row: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  paid: { marginTop: space.xs, alignSelf: "flex-start" },
+  items: { gap: space.sm },
+});

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { ChatAction } from "@fakkarni/shared";
+import { parseSplitAsk, type ChatAction } from "@fakkarni/shared";
 import { addLocalFriendMessage } from "@/db/messages";
 import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
@@ -46,7 +46,16 @@ export const unlock = {
     const step = afterMessage(state, text, localDayOf(new Date()));
     save(step.state);
     const stamp = Date.now();
+    const splitAsk = parseSplitAsk(text);
     return async () => {
+      // "احسبلي 1850 على 5": Zaki offers the split screen, filled with what he read.
+      if (splitAsk) {
+        const q = new URLSearchParams();
+        if (splitAsk.subtotal) q.set("subtotal", String(splitAsk.subtotal));
+        if (splitAsk.people) q.set("people", String(splitAsk.people));
+        const route = `/split/new${q.toString() ? `?${q}` : ""}`;
+        await write(`local:split:${stamp}`, t.split.chatOffer, [{ id: `split:${stamp}`, kind: "open_place", status: "done", label: t.split.chatButton, route }]);
+      }
       if (step.overview) {
         track("place_overview");
         await write(`local:overview:${stamp}`, t.ui.introAll, ALL_FEATURES.map(card));

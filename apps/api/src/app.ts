@@ -18,6 +18,7 @@ import { messageRoutes } from "./routes/messages";
 import { referralRoutes } from "./routes/referrals";
 import { eventRoutes } from "./routes/events";
 import { referralPageRoutes } from "./routes/referral-page";
+import { splitPageRoutes, splitRoutes } from "./routes/splits";
 import { circleRoutes } from "./routes/circles";
 import { invitePageRoutes } from "./routes/invite-page";
 import { daftarRoutes } from "./routes/daftar";
@@ -113,6 +114,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(eventRoutes, { prisma, authenticate, now: deps.now });
+    app.register(splitRoutes, { prisma, authenticate, publicUrl: deps.invites?.publicUrl });
+    app.register(splitPageRoutes, { prisma, publicUrl: deps.invites?.publicUrl, storeUrl: deps.invites?.storeUrl });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });
   }

@@ -18,6 +18,8 @@ export const APP_EVENTS = [
   "signin_done", // props.method
   "tracker_suggest_tapped",
   "empty_starter_tapped", // props.place
+  "split_created", // props.people, props.items (counts only)
+  "homework_handed_in",
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;
