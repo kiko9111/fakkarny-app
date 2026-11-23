@@ -21,6 +21,9 @@ export const APP_EVENTS = [
   "split_created", // props.people, props.items (counts only)
   "homework_handed_in",
   "streak_milestone", // props.days
+  "split_to_daftar", // props.entries (count)
+  "streak_shared", // props.days
+  "split_card_shared",
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;

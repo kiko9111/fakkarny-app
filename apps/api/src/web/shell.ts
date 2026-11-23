@@ -13,7 +13,7 @@ export const pickLang = (query: string | undefined, acceptLanguage: string | und
 };
 
 /** `body` is trusted HTML built by the caller with `esc` on every user-supplied value. */
-export function renderShell(lang: Lang, meta: { title: string; description: string; footer: string }, body: string): string {
+export function renderShell(lang: Lang, meta: { title: string; description: string; footer: string; image?: string }, body: string): string {
   return `<!doctype html>
 <html lang="${lang}" dir="${lang === "ar" ? "rtl" : "ltr"}">
 <head>
@@ -23,7 +23,7 @@ export function renderShell(lang: Lang, meta: { title: string; description: stri
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="${esc(meta.title)}">
 <meta property="og:description" content="${esc(meta.description)}">
-<title>${esc(meta.title)}</title>
+${meta.image ? `<meta property="og:image" content="${esc(meta.image)}">\n<meta property="og:image:width" content="1080">\n<meta property="og:image:height" content="1920">\n` : ""}<title>${esc(meta.title)}</title>
 <style>
   body { font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; line-height: 1.7; color: #1f2430; background: #fff8ec; margin: 0; }
   main { max-width: 440px; margin: 0 auto; padding: 32px 20px 48px; text-align: center; }

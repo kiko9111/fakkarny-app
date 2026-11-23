@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { FlatList, KeyboardAvoidingView, StyleSheet, View } from "react-native";
+import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
@@ -14,6 +14,8 @@ import { track } from "@/lib/analytics";
 import { getMe } from "@/lib/api";
 import { unlock } from "@/lib/unlock-store";
 import { useStreak } from "@/lib/streak-store";
+import { shareInvite } from "@/referral/share";
+import { shareStreakCard } from "@/share/card";
 import { fill } from "@/circles/logic";
 import { suggestTracker } from "@/trackers/logic";
 import { Button, glass, Icon, IconButton, Note, palette, radius, space, Text, ZakiAvatar } from "@/ui";
@@ -36,12 +38,21 @@ function StreakPill() {
   const days = useStreak();
   if (days < 2) return null;
   return (
-    <View style={styles.streak} accessible accessibilityLabel={fill(t.ui.streakA11y, { n: days })}>
+    <Pressable
+      style={styles.streak}
+      accessibilityRole="button"
+      accessibilityLabel={fill(t.ui.streakA11y, { n: days })}
+      onPress={() => {
+        track("streak_shared", { days });
+        // The picture first (for Status and Stories); the invite text if it can't be made.
+        void shareStreakCard(days).then((ok) => (ok ? undefined : shareInvite("streak", fill(t.referral.streakShareText, { n: days, url: "{url}" }))));
+      }}
+    >
       <Icon name="flame" size={16} color={palette.warn} />
       <Text variant="bodyStrong" color={palette.ink}>
         {days}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 

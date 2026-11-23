@@ -6,7 +6,7 @@ import type { FriendModel } from "../ai/model";
 import { localToUtc } from "../lib/time";
 import { hasTestDb, resetDb, testPrisma } from "../../test/db";
 import type { PushMessage, PushSender } from "./push";
-import { runTick } from "./tick";
+import { runTick, zakiSentToday } from "./tick";
 
 const usage = { input_tokens: 50, output_tokens: 15, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 const at = (local: string) => localToUtc(local, "Africa/Cairo");
@@ -50,6 +50,27 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
 
     // Once per day.
     expect(await runTick({ prisma, model, push }, at("2026-11-19T07:10"))).toBe(0);
+  });
+
+  it("stops Zaki's own messages at 5 a day, counting a multi-bubble send once", async () => {
+    const user = await makeUser();
+    const earlier = (h: number) => at(`2026-11-19T0${h}:00`);
+    await prisma.message.createMany({
+      data: [
+        { userId: user.id, role: "friend", kind: "checkin", text: "a", clientId: "proactive:checkin:x:0", createdAt: earlier(1) },
+        { userId: user.id, role: "friend", kind: "checkin", text: "b", clientId: "proactive:checkin:x:1", createdAt: earlier(1) },
+        { userId: user.id, role: "friend", kind: "followup", text: "c", clientId: "status:item:1:x", createdAt: earlier(2) },
+        { userId: user.id, role: "friend", kind: "followup", text: "d", clientId: "status:item:2:x", createdAt: earlier(3) },
+        { userId: user.id, role: "friend", kind: "reminder", text: "e", clientId: "reminder:1:x", createdAt: earlier(4) },
+        { userId: user.id, role: "friend", kind: "followup", text: "f", clientId: "status:item:3:x", createdAt: earlier(5) },
+      ],
+    });
+    expect(await zakiSentToday(prisma, user, at("2026-11-19T07:02"))).toBe(4);
+    expect(await runTick({ prisma, model, push }, at("2026-11-19T07:02"))).toBe(1);
+    await prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text: "g", clientId: "status:item:4:x", createdAt: at("2026-11-19T07:03") } });
+    expect(await zakiSentToday(prisma, user, at("2026-11-19T07:04"))).toBe(6);
+    // Next day the budget starts over.
+    expect(await zakiSentToday(prisma, user, at("2026-11-20T07:00"))).toBe(0);
   });
 
   it("falls back to a template when the AI fails, and clears dead push tokens", async () => {
@@ -148,6 +169,24 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
     expect(msgs[0]!.text).not.toContain("عدّى");
     await runTick({ prisma, push, model }, at("2026-11-27T12:30"));
     expect(await prisma.message.count({ where: { userId: user.id, clientId: { startsWith: "checkup:" } } })).toBe(1);
+  });
+
+  it("brings back an old memory once a week, never a sensitive one", async () => {
+    const user = await makeUser({ lastActiveAt: at("2026-11-23T10:00"), lastMorningAt: at("2026-11-23T07:00"), lastCheckinAt: at("2026-11-23T15:00"), checkinIntervalH: "off" });
+    await prisma.memory.createMany({
+      data: [
+        { userId: user.id, kind: "fact", subject: "mom", content: "her mother is sick", createdAt: at("2026-10-01T10:00") },
+        { userId: user.id, kind: "preference", subject: "walking", content: "wants to start walking", createdAt: at("2026-10-10T10:00") },
+      ],
+    });
+    await runTick({ prisma, push, model }, at("2026-11-23T16:30"));
+    const sent = await prisma.message.findMany({ where: { userId: user.id, clientId: { startsWith: "memory:" } } });
+    expect(sent.length).toBeGreaterThan(0);
+    expect(prompts.at(-1)).toContain("walking: wants to start walking");
+    expect(prompts.join("\n")).not.toContain("sick");
+    // Not again the same week.
+    await runTick({ prisma, push, model }, at("2026-11-25T17:00"));
+    expect(await prisma.event.count({ where: { userId: user.id, name: "memory_moment" } })).toBe(1);
   });
 
   it("skips users who haven't been active for a month", async () => {

@@ -69,3 +69,27 @@ export function removePerson(d: Draft, index: number): Draft {
     paidBy: d.paidBy === index ? null : d.paidBy === null ? null : shift(d.paidBy),
   };
 }
+
+/**
+ * Daftar entries for what is still owed on a split, from the creator's side (they are the first
+ * person). The creator paid: each person who hasn't paid back owes them their share. Someone else
+ * paid: the creator owes that person their own share. Pure.
+ */
+export function daftarFromSplit(
+  split: { title: string; paid_by: number | null; people: { name: string; share: number; paid: boolean }[] },
+  note: string,
+): { other_name: string; direction: "owed_to_me" | "i_owe"; amount: number; note: string }[] {
+  const payer = split.paid_by;
+  if (payer === null) return [];
+  const label = (split.title ? `${note}: ${split.title}` : note).slice(0, 120);
+  if (payer === 0) {
+    return split.people
+      .map((p, i) => ({ p, i }))
+      .filter(({ p, i }) => i !== 0 && !p.paid && p.share > 0 && p.name.trim())
+      .map(({ p }) => ({ other_name: p.name.trim().slice(0, 40), direction: "owed_to_me" as const, amount: p.share, note: label }));
+  }
+  const me = split.people[0];
+  const them = split.people[payer];
+  if (!me || !them || me.paid || me.share <= 0 || !them.name.trim()) return [];
+  return [{ other_name: them.name.trim().slice(0, 40), direction: "i_owe", amount: me.share, note: label }];
+}
