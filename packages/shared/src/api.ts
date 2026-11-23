@@ -100,6 +100,10 @@ export const RegisterDeviceRequest = z.object({
 });
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequest>;
 
+/** DELETE /devices — stop pushes for this account to this phone (sign-out). */
+export const UnregisterDeviceRequest = z.object({ push_token: z.string().min(1).max(300) });
+export type UnregisterDeviceRequest = z.infer<typeof UnregisterDeviceRequest>;
+
 /** GET/PATCH /me */
 export const MeResponse = z.object({ user: User });
 export type MeResponse = z.infer<typeof MeResponse>;

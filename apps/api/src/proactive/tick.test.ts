@@ -6,7 +6,7 @@ import type { FriendModel } from "../ai/model";
 import { localToUtc } from "../lib/time";
 import { hasTestDb, resetDb, testPrisma } from "../../test/db";
 import type { PushMessage, PushSender } from "./push";
-import { runTick, zakiSentToday } from "./tick";
+import { runTick, TICK_BATCH, TICK_BUDGET_MS, zakiSentToday } from "./tick";
 
 const usage = { input_tokens: 50, output_tokens: 15, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 const at = (local: string) => localToUtc(local, "Africa/Cairo");
@@ -135,8 +135,10 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
     const item = await prisma.item.create({
       data: { userId: user.id, type: "reminder", title: "Dentist", dueAt: at("2026-11-22T18:00"), followUpAt: at("2026-11-22T20:00") },
     });
+    await prisma.device.create({ data: { userId: user.id, platform: "android", pushToken: "ExponentPushToken[ok]" } });
     await runTick({ prisma, model, push }, at("2026-11-22T20:01"));
     expect((await prisma.message.findFirstOrThrow()).kind).toBe("followup");
+    expect(pushed).toHaveLength(0); // the phone shows its own local notification for it
     expect((await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).followedUpAt).not.toBeNull();
   });
 
@@ -207,5 +209,71 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
 
     // Not again for the same item, even hours later.
     expect(await runTick({ prisma, model, push }, at("2026-11-19T17:00"))).toBe(0);
+  });
+
+  describe("scheduling (only due users each minute)", () => {
+    const nextOf = async (id: string) => (await prisma.user.findUniqueOrThrow({ where: { id } })).nextTickAt;
+
+    it("sets the next look after a tick and skips the user until then", async () => {
+      const user = await makeUser({ lastMorningAt: at("2026-11-19T07:00"), lastCheckinAt: at("2026-11-19T12:30"), lastUserMessageAt: at("2026-11-19T12:30") });
+      await runTick({ prisma, model, push }, at("2026-11-19T13:00"));
+      expect(await nextOf(user.id)).toEqual(at("2026-11-19T13:10"));
+      await runTick({ prisma, model, push }, at("2026-11-19T13:05"));
+      expect(await nextOf(user.id)).toEqual(at("2026-11-19T13:10")); // not looked at
+    });
+
+    it("leaves a sleeping user alone until wake time", async () => {
+      const user = await makeUser({ lastNightAt: at("2026-11-19T22:00") });
+      await runTick({ prisma, model, push }, at("2026-11-20T01:00"));
+      expect(await nextOf(user.id)).toEqual(at("2026-11-20T07:00"));
+      await runTick({ prisma, model, push }, at("2026-11-20T03:00"));
+      expect(await prisma.message.count()).toBe(0);
+      expect(await runTick({ prisma, model, push }, at("2026-11-20T07:00"))).toBe(1); // good morning
+    });
+
+    it("pulls a user in when a reminder comes due, even before their next look", async () => {
+      const user = await makeUser({ nextTickAt: at("2026-11-22T10:40"), lastMorningAt: at("2026-11-22T07:00"), lastCheckinAt: at("2026-11-22T09:30") });
+      await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "أكلم محمد", remindAt: at("2026-11-22T10:33") } });
+      await runTick({ prisma, model, push }, at("2026-11-22T10:32"));
+      expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(0);
+      await runTick({ prisma, model, push }, at("2026-11-22T10:33"));
+      expect(await prisma.message.count({ where: { kind: "reminder" } })).toBe(1);
+    });
+
+    it("works through more users than one batch in a single tick", async () => {
+      await prisma.user.createMany({
+        data: Array.from({ length: TICK_BATCH + 15 }, () => ({ authId: `install:${randomUUID()}`, timezone: "Africa/Cairo", lastActiveAt: at("2026-11-18T20:00") })),
+      });
+      await runTick({ prisma, model, push }, at("2026-11-20T03:00")); // all asleep: no messages, just scheduling
+      expect(await prisma.user.count({ where: { nextTickAt: at("2026-11-20T07:00") } })).toBe(TICK_BATCH + 15);
+    });
+
+    it("stops claiming when its time is up and leaves the rest for the next minute", async () => {
+      await prisma.user.createMany({
+        data: Array.from({ length: TICK_BATCH + 5 }, () => ({ authId: `install:${randomUUID()}`, timezone: "Africa/Cairo", lastActiveAt: at("2026-11-18T20:00") })),
+      });
+      let calls = 0;
+      const clock = () => (calls++ < 2 ? 0 : TICK_BUDGET_MS); // the first batch uses up the whole budget
+      await runTick({ prisma, model, push }, at("2026-11-20T03:00"), clock);
+      expect(await prisma.user.count({ where: { nextTickAt: null } })).toBe(5);
+    });
+
+    it("tries a failing user again after the lease, without blocking others", async () => {
+      const bad = await makeUser();
+      const good = await makeUser();
+      // A broken time zone makes this user's work throw.
+      await prisma.user.update({ where: { id: bad.id }, data: { timezone: "Not/AZone" } });
+      await runTick({ prisma, model, push }, at("2026-11-19T07:02"));
+      expect(await nextOf(bad.id)).toEqual(new Date(at("2026-11-19T07:02").getTime() + 3 * 60_000));
+      expect(await prisma.message.count({ where: { userId: good.id } })).toBe(1);
+    });
+
+    it("clears the schedule when waking hours change", async () => {
+      const user = await makeUser({ nextTickAt: at("2026-11-20T07:00") });
+      const app = buildApp({ logger: false }, { prisma, now: () => at("2026-11-20T01:00") });
+      await app.inject({ method: "PATCH", url: "/me", headers: { [INSTALL_ID_HEADER]: user.authId.replace("install:", "") }, payload: { wake_time: "06:00" } });
+      expect(await nextOf(user.id)).toBeNull();
+      await app.close();
+    });
   });
 });

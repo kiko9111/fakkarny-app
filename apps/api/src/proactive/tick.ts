@@ -12,6 +12,7 @@ import { GIFT_FROM_HOUR, GIFT_UNTIL_HOUR, previousMonth } from "../money/rules";
 import { COOLDOWN_DAYS, planStatusCheck, statusClientId, trackerAskDue, type StatusCheck } from "./status";
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
+import { nextTickAt } from "./schedule";
 import { checkupClientId, checkupLines, hasSomething, isCheckupTime } from "./checkup";
 import { isMomentTime, momentClientId, momentLines, momentPrompt, MOMENT_EVERY_DAYS, MOMENT_SYSTEM, pickMemory, QUIET_AFTER_USER_MIN } from "./memory-moment";
 
@@ -206,7 +207,9 @@ export async function runForUser(deps: TickDeps, user: User, now: Date): Promise
     return rows;
   });
 
-  await pushToUser(deps, user, stored.map((m) => m.text).join("\n"), kind);
+  // A follow-up ("how was the dentist?") already shows as a local notification on the phone at
+  // the same moment, like reminders: pushing it too would notify twice.
+  if (kind !== "followup") await pushToUser(deps, user, stored.map((m) => m.text).join("\n"), kind);
   return plan;
 }
 
@@ -382,26 +385,97 @@ async function pushToUser(deps: TickDeps, user: User, body: string, kind: Messag
   }
 }
 
-/** Runs every minute (pg-boss cron): one proactive message at most per user per tick. */
-export async function runTick(deps: TickDeps, now = new Date()): Promise<number> {
-  // Homework photos are kept 90 days (owner decision, 2026-11-23).
-  await deps.prisma.photo.deleteMany({ where: { expiresAt: { lt: now } } }).catch(() => {});
-  const users = await deps.prisma.user.findMany({
-    where: { lastActiveAt: { gte: new Date(now.getTime() - ACTIVE_WITHIN_DAYS * 86400_000) } },
+/**
+ * Everything the tick does for one user at `now`: post due reminders, then at most one of
+ * Zaki's own messages. Returns whether one was sent and whether today's budget is used up.
+ */
+export async function tickUser(deps: TickDeps, user: User, now: Date): Promise<{ sent: boolean; budgetSpent: boolean }> {
+  await postDueReminders(deps.prisma, user, now);
+  if ((await zakiSentToday(deps.prisma, user, now)) >= DAILY_ZAKI_BUDGET) return { sent: false, budgetSpent: true };
+  const sent =
+    (await sendMonthGift(deps, user, now)) ||
+    (await sendFridayCheckup(deps, user, now)) ||
+    (await sendMemoryMoment(deps, user, now)) ||
+    (await askTrackers(deps, user, now)) ||
+    Boolean(await runForUser(deps, user, now));
+  return { sent, budgetSpent: false };
+}
+
+/** Users claimed per query, how many are worked on at once, and when a tick stops claiming. */
+export const TICK_BATCH = 200;
+export const TICK_CONCURRENCY = 5;
+export const TICK_BUDGET_MS = 45_000;
+/** A claimed user is not claimed again for this long; a failed user is retried after it. */
+const LEASE_MS = 3 * 60_000;
+/** Items whose remind_at / follow_up_at passed this recently pull their user in right away. */
+export const DUE_ITEM_WINDOW_MIN = 2;
+
+/**
+ * Claim users who are due, in one statement: their next_tick_at has passed (or was never set),
+ * or one of their open items just reached its reminder or follow-up time. Claiming moves
+ * next_tick_at forward by the lease, and SKIP LOCKED keeps two API instances apart.
+ */
+async function claimDue(prisma: PrismaClient, now: Date, lease: Date, skip: string[]): Promise<string[]> {
+  const activeSince = new Date(now.getTime() - ACTIVE_WITHIN_DAYS * 86400_000);
+  const itemSince = new Date(now.getTime() - DUE_ITEM_WINDOW_MIN * 60_000);
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    UPDATE "users" SET "next_tick_at" = ${lease}
+    WHERE "id" IN (
+      SELECT u."id" FROM "users" u
+      WHERE u."last_active_at" >= ${activeSince}
+        AND NOT (u."id"::text = ANY(${skip}::text[]))
+        AND (
+          u."next_tick_at" IS NULL OR u."next_tick_at" <= ${now}
+          OR u."id" IN (
+            SELECT i."user_id" FROM "items" i
+            WHERE i."status" = 'open'
+              AND ((i."remind_at" > ${itemSince} AND i."remind_at" <= ${now})
+                OR (i."follow_up_at" > ${itemSince} AND i."follow_up_at" <= ${now}))
+          )
+        )
+      ORDER BY u."next_tick_at" ASC NULLS FIRST
+      LIMIT ${TICK_BATCH}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING "id"`;
+  return rows.map((r) => r.id);
+}
+
+async function forEachLimit<T>(list: T[], limit: number, fn: (x: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, list.length) }, async () => {
+    while (next < list.length) await fn(list[next++]!);
   });
+  await Promise.all(lanes);
+}
+
+/**
+ * Runs every minute (pg-boss cron, one at a time): looks only at users who are due
+ * (schedule.ts), a batch at a time with a few in parallel, and stops claiming after
+ * TICK_BUDGET_MS so it never runs into the next minute; whoever is left is first next time.
+ */
+export async function runTick(deps: TickDeps, now = new Date(), clock: () => number = Date.now): Promise<number> {
+  const started = clock();
+  const lease = new Date(now.getTime() + LEASE_MS);
+  const seen: string[] = [];
   let sent = 0;
-  for (const user of users) {
-    try {
-      await postDueReminders(deps.prisma, user, now);
-      if ((await zakiSentToday(deps.prisma, user, now)) >= DAILY_ZAKI_BUDGET) continue;
-      if (await sendMonthGift(deps, user, now)) sent++;
-      else if (await sendFridayCheckup(deps, user, now)) sent++;
-      else if (await sendMemoryMoment(deps, user, now)) sent++;
-      else if (await askTrackers(deps, user, now)) sent++;
-      else if (await runForUser(deps, user, now)) sent++;
-    } catch (err) {
-      deps.log?.error({ err: (err as Error).name, userId: user.id }, "proactive message failed");
-    }
+  while (clock() - started < TICK_BUDGET_MS) {
+    const ids = await claimDue(deps.prisma, now, lease, seen);
+    if (!ids.length) break;
+    seen.push(...ids);
+    const users = await deps.prisma.user.findMany({ where: { id: { in: ids } } });
+    await forEachLimit(users, TICK_CONCURRENCY, async (user) => {
+      try {
+        const result = await tickUser(deps, user, now);
+        if (result.sent) sent++;
+        // Only if nothing (a settings change) moved it meanwhile.
+        await deps.prisma.user.updateMany({ where: { id: user.id, nextTickAt: lease }, data: { nextTickAt: nextTickAt(user, now, result) } });
+      } catch (err) {
+        // The lease runs out and the user is tried again in a few minutes.
+        deps.log?.error({ err: (err as Error).name, userId: user.id }, "proactive message failed");
+      }
+    });
+    if (ids.length < TICK_BATCH) break;
   }
   return sent;
 }

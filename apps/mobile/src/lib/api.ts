@@ -149,6 +149,10 @@ export async function registerDevice(body: RegisterDeviceRequest): Promise<void>
   await request("/devices", { method: "POST", body: JSON.stringify(body) });
 }
 
+export async function unregisterDevice(pushToken: string): Promise<void> {
+  await request("/devices", { method: "DELETE", body: JSON.stringify({ push_token: pushToken }) });
+}
+
 export async function listMessagesPage(after: string | null, limit = 200): Promise<ListMessagesResponse> {
   const q = new URLSearchParams({ limit: String(limit), ...(after ? { after } : {}) });
   return ListMessagesResponse.parse(await request(`/messages?${q}`));

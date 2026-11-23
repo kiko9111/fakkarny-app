@@ -128,6 +128,7 @@ const arEG = {
     followup: "«{title}»… عملت إيه؟ طمّني",
     laterSay: "فكرني بـ«{title}» كمان ساعة",
     channel: "التذكيرات",
+    messagesChannel: "رسايل زكي",
   },
   upcoming: {
     title: "الجاي",
@@ -796,6 +797,7 @@ const en: DeepStringShape<Strings> = {
     followup: "How did “{title}” go?",
     laterSay: "Remind me about “{title}” in an hour",
     channel: "Reminders",
+    messagesChannel: "Messages from Zaki",
   },
   upcoming: {
     title: "Upcoming",

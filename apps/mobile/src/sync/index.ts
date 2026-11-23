@@ -5,7 +5,7 @@ import { listMessagesAfter, postMessage } from "@/lib/api";
 import { createEmitter } from "@/lib/emitter";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
-import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications } from "@/notifications";
+import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
@@ -67,6 +67,7 @@ export function startSync() {
   void setupNotifications().catch(() => {});
   // Keep the push token current once the user has been asked (first ask happens after their first message).
   void kvGet("asked_notifications").then((asked) => (asked ? ensurePermissionAndRegister() : false)).catch(() => {});
+  watchPushToken();
   listenForNotifications(
     () => void pullMessages(),
     // "Done" / "Later" on a reminder notification becomes a chat message, sent like any other.
