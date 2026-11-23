@@ -12,3 +12,4 @@ export * from "./money";
 export * from "./chat-actions";
 export * from "./analytics";
 export * from "./split";
+export * from "./photos";

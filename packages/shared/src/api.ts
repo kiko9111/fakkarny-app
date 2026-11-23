@@ -143,5 +143,7 @@ export const ExportResponse = z.object({
   money: z.array(z.object({ name: z.string(), kind: z.string(), budget: z.number().nullable(), shared: z.boolean(), entries: z.array(z.object({ amount: z.number(), note: z.string().nullable(), at: z.string() })) })).default([]),
   /** Split the bill: bills the user split, with each person's name and share. */
   splits: z.array(z.object({ title: z.string(), total: z.number(), currency: z.string(), people: z.array(z.object({ name: z.string(), share: z.number(), paid: z.boolean() })), created_at: z.string() })).default([]),
+  /** Homework pages the user handed in as photos (base64), kept 90 days. */
+  photos: z.array(z.object({ task: z.string().nullable(), mime: z.string(), data: z.string(), created_at: z.string() })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

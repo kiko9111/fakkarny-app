@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
-import type { CircleTask, TaskStatus } from "@fakkarni/shared";
+import { MAX_HOMEWORK_PHOTOS, type CircleTask, type PhotoUpload, type TaskStatus } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
 import { router } from "expo-router";
@@ -8,6 +8,8 @@ import { HttpError } from "@/sync/queue";
 import { cancelTask, finishTask, nudgeTask, remindTask, respondTask, reviewHomework, submitHomework } from "@/lib/api";
 import { pullItems } from "@/sync/items";
 import { track } from "@/lib/analytics";
+import { photosAvailable, pickPhotos } from "@/lib/photos";
+import { HomeworkPhotos } from "./HomeworkPhotos";
 import { Badge, Button, Card, Chip, confirm, Icon, notify, palette, space, Text, TextField } from "@/ui";
 import { firstLink, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
 
@@ -22,6 +24,21 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
   // Homework: the child's answer or link, or the parent's redo note, while typing.
   const [draft, setDraft] = useState<"hand_in" | "redo" | null>(null);
   const [text, setText] = useState("");
+  // Homework pages picked for hand-in (receipts and homework are the only photos in the app).
+  const [photos, setPhotos] = useState<PhotoUpload[]>([]);
+  const addPhotos = async (source: "camera" | "library") => {
+    const room = MAX_HOMEWORK_PHOTOS - photos.length;
+    if (room <= 0) return;
+    try {
+      const picked = await pickPhotos(source, room);
+      if (!picked) return;
+      if ("denied" in picked) return notify(t.receipt.denied);
+      if ("tooBig" in picked) return notify(t.receipt.tooBig);
+      setPhotos((p) => [...p, ...picked.photos].slice(0, MAX_HOMEWORK_PHOTOS));
+    } catch {
+      notify(t.tasks.failed, "error");
+    }
+  };
 
   const work = async (fn: () => Promise<unknown>, after?: string) => {
     setBusy(true);
@@ -68,9 +85,14 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
   const toReview = task.homework && task.role === "assigner" && task.status === "done" && task.submission !== null && task.review === null;
   const sendDraft = () => {
     const value = text.trim();
-    if (draft === "hand_in" && value) {
+    if (draft === "hand_in" && (value || photos.length)) {
       track("homework_handed_in", { link: firstLink(value) !== null });
-      void work(() => submitHomework(task.id, value), t.tasks.handedIn).then(() => setDraft(null));
+      if (photos.length) track("homework_photos", { count: photos.length });
+      const pages = photos;
+      void work(() => submitHomework(task.id, value, pages), t.tasks.handedIn).then(() => {
+        setDraft(null);
+        setPhotos([]);
+      });
     }
     if (draft === "redo") void work(() => reviewHomework(task.id, "redo", value || undefined), t.tasks.redoSent).then(() => setDraft(null));
     setText("");
@@ -114,15 +136,18 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
           </Text>
         </View>
       ) : null}
-      {task.homework && task.submission ? (
+      {task.homework && (task.submission || task.photo_ids.length) ? (
         <View style={styles.submission}>
           <Text variant="caption" color={palette.inkSoft}>
             {t.tasks.handedInLabel}
           </Text>
-          <Text variant="small" color={palette.ink}>
-            {task.submission}
-          </Text>
-          {firstLink(task.submission) ? <Button label={t.tasks.openLink} size="sm" kind="text" icon="open-outline" onPress={() => void Linking.openURL(firstLink(task.submission)!)} /> : null}
+          {task.submission ? (
+            <Text variant="small" color={palette.ink}>
+              {task.submission}
+            </Text>
+          ) : null}
+          {task.photo_ids.length ? <HomeworkPhotos ids={task.photo_ids} /> : null}
+          {task.submission && firstLink(task.submission) ? <Button label={t.tasks.openLink} size="sm" kind="text" icon="open-outline" onPress={() => void Linking.openURL(firstLink(task.submission!)!)} /> : null}
           {task.review ? (
             <Text variant="small" color={task.review === "approved" ? palette.ok : palette.warn}>
               {task.review === "approved" ? t.tasks.approved : fill(t.tasks.redoLine, { note: task.review_note ?? "" })}
@@ -141,9 +166,33 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
       {draft ? (
         <View style={styles.draft}>
           <TextField value={text} onChangeText={setText} maxLength={draft === "hand_in" ? 1000 : 300} multiline placeholder={draft === "hand_in" ? t.tasks.handInPlaceholder : t.tasks.redoPlaceholder} autoFocus />
+          {draft === "hand_in" && photosAvailable ? (
+            <>
+              <View style={styles.actions}>
+                <Button label={t.tasks.photoCamera} size="sm" kind="tonal" icon="camera-outline" disabled={busy || photos.length >= MAX_HOMEWORK_PHOTOS} onPress={() => void addPhotos("camera")} />
+                <Button label={t.tasks.photoLibrary} size="sm" kind="text" icon="images-outline" disabled={busy || photos.length >= MAX_HOMEWORK_PHOTOS} onPress={() => void addPhotos("library")} />
+              </View>
+              {photos.length ? (
+                <Text variant="small" color={palette.ink}>
+                  {fill(t.tasks.photosPicked, { n: photos.length })}
+                </Text>
+              ) : null}
+              <Text variant="caption" color={palette.inkSoft}>
+                {t.tasks.photosNote}
+              </Text>
+            </>
+          ) : null}
           <View style={styles.actions}>
-            <Button label={draft === "hand_in" ? t.tasks.handIn : t.tasks.redo} size="sm" icon="send" disabled={busy || (draft === "hand_in" && !text.trim())} onPress={sendDraft} />
-            <Button label={t.ui.cancel} size="sm" kind="text" onPress={() => setDraft(null)} />
+            <Button label={draft === "hand_in" ? t.tasks.handIn : t.tasks.redo} size="sm" icon="send" disabled={busy || (draft === "hand_in" && !text.trim() && !photos.length)} onPress={sendDraft} />
+            <Button
+              label={t.ui.cancel}
+              size="sm"
+              kind="text"
+              onPress={() => {
+                setDraft(null);
+                setPhotos([]);
+              }}
+            />
           </View>
         </View>
       ) : null}

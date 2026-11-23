@@ -1,4 +1,4 @@
-import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT, splitBill, type SplitInput } from "@fakkarni/shared";
+import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT, splitBill, type Receipt, type SplitInput } from "@fakkarni/shared";
 import { parseAmount } from "../daftar/logic";
 
 /** One item as typed: name, price text, and who had it (none = everyone). */
@@ -92,4 +92,30 @@ export function daftarFromSplit(
   const them = split.people[payer];
   if (!me || !them || me.paid || me.share <= 0 || !them.name.trim()) return [];
   return [{ other_name: them.name.trim().slice(0, 40), direction: "i_owe", amount: me.share, note: label }];
+}
+
+/** Round to piasters, written plainly ("120", "45.5"). */
+function money(n: number): string {
+  return String(Math.round(n * 100) / 100);
+}
+
+/**
+ * A split form filled from a read receipt: the place as the title, each line as an item (for
+ * everyone until people are ticked), service and VAT switched on only when printed, and the
+ * bill before them as the subtotal. A receipt with no service or VAT lines uses the total. Pure.
+ */
+export function draftFromReceipt(r: Receipt, people: string[]): Draft {
+  const service = r.service > 0;
+  const vat = r.vat > 0;
+  const before = r.subtotal ?? Math.max(0, r.total - r.service - r.vat);
+  return {
+    title: r.merchant.slice(0, 60),
+    subtotal: money(service || vat ? before : r.subtotal ?? r.total),
+    people,
+    items: r.items.slice(0, 60).map((it) => ({ name: (it.qty > 1 ? `${it.name} ×${it.qty}` : it.name).slice(0, 60), price: money(it.price), eaters: [] })),
+    service,
+    vat,
+    tip: "",
+    paidBy: 0,
+  };
 }

@@ -1,5 +1,7 @@
 import Constants from "expo-constants";
 import {
+  ReadReceiptResponse,
+  type PhotoUpload,
   Message as WireMessage,
   AcceptInviteResponse,
   SessionMessage,
@@ -309,9 +311,27 @@ const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Pr
 export const finishTask = taskAction("done");
 export const cancelTask = taskAction("cancel");
 export const nudgeTask = taskAction("nudge");
-/** Homework: the child hands in an answer or link; the parent says well done or redo. */
-export async function submitHomework(id: string, text: string): Promise<CircleTask> {
-  return TaskResponse.parse(await request(`/tasks/${id}/submit`, { method: "POST", body: JSON.stringify({ text }) })).task;
+/** A slow call (photos): its own 60-second limit instead of the usual one. */
+function slow(): AbortSignal {
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), 60_000);
+  return ctrl.signal;
+}
+
+/** Homework: the child hands in an answer, a link or page photos; the parent says well done or redo. */
+export async function submitHomework(id: string, text: string, photos: PhotoUpload[] = []): Promise<CircleTask> {
+  return TaskResponse.parse(await request(`/tasks/${id}/submit`, { method: "POST", body: JSON.stringify({ text, photos }), ...(photos.length ? { signal: slow() } : {}) })).task;
+}
+
+/** The AI reads a receipt photo (counts as one AI message; the photo is not kept). */
+export async function readReceipt(photo: PhotoUpload): Promise<ReadReceiptResponse> {
+  return ReadReceiptResponse.parse(await request("/receipts/read", { method: "POST", body: JSON.stringify({ photo }), signal: slow() }));
+}
+
+/** An image source for a homework page: the server checks it's the child's or the parent's. */
+export async function photoSource(id: string): Promise<{ uri: string; headers: Record<string, string> }> {
+  const token = await accessToken();
+  return { uri: `${API_URL}/photos/${id}`, headers: { [INSTALL_ID_HEADER]: await getInstallId(), ...(token ? { authorization: `Bearer ${token}` } : {}) } };
 }
 export async function reviewHomework(id: string, verdict: "approved" | "redo", note?: string): Promise<CircleTask> {
   return TaskResponse.parse(await request(`/tasks/${id}/review`, { method: "POST", body: JSON.stringify({ verdict, ...(note ? { note } : {}) }) })).task;

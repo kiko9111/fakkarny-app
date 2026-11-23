@@ -63,6 +63,14 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Zaki uses the photo you pick to read a receipt or hand in homework.",
+          "cameraPermission": "Zaki uses the camera only when you snap a receipt or homework page.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
