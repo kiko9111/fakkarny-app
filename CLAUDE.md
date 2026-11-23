@@ -414,6 +414,12 @@ Rules:
   yes/no (`isConfirm` / `isCancel`, conversation step 0a, within 6 h). The answer reply carries the
   same card id so the phone updates the old card (apps/mobile/src/db/messages.ts). Card wording lives
   in `LABEL` (cards.ts), never model text. Phone: SQLite v4 `actions_json`, src/chat/ActionCards.tsx.
+- Structured output limits: the API answers 400 "Schema is too complex" to every request whose
+  output schema has more than 16 union-typed (nullable) or 24 optional parameters, counted across
+  the whole schema. PR #33 crossed it (29 nullable fields) and every chat turn fell back to "my
+  brain froze". `ModelOutput` keeps app actions non-nullable ("", 0, [], false = not given;
+  `toAppActions`), and src/ai/model.test.ts fails the build past the limits. Check it whenever a
+  field is added to the model schema.
 - Understanding: persona 2026-11-23.1 adds "Understanding the user" (typos, short replies, two
   readings) and the app_actions rules with examples. evals/cases/understanding.jsonl (act-*, und-*)
   checks app actions too (`expect.actions`; extra actions count as a problem). Not yet measured
