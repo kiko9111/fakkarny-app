@@ -131,6 +131,25 @@ describe.skipIf(!hasTestDb)("proactive tick", () => {
     await app.close();
   });
 
+  it("sends the Friday check-up once, with only true lines", async () => {
+    const user = await makeUser({ lastActiveAt: at("2026-11-26T20:00"), lastMorningAt: at("2026-11-27T07:00"), checkinIntervalH: "off" });
+    await prisma.item.createMany({
+      data: [
+        { userId: user.id, type: "task", title: "a", status: "done", doneAt: at("2026-11-25T10:00") },
+        { userId: user.id, type: "task", title: "b", status: "done", doneAt: at("2026-11-26T10:00") },
+        { userId: user.id, type: "reminder", title: "c", status: "open", dueAt: at("2026-11-29T10:00") },
+      ],
+    });
+    await runTick({ prisma, push, model }, at("2026-11-27T11:30")); // Friday
+    const msgs = await prisma.message.findMany({ where: { userId: user.id, clientId: { startsWith: "checkup:" } } });
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.text).toContain("خلصت 2 حاجات");
+    expect(msgs[0]!.text).toContain("الأسبوع الجاي عندك 1 حاجة");
+    expect(msgs[0]!.text).not.toContain("عدّى");
+    await runTick({ prisma, push, model }, at("2026-11-27T12:30"));
+    expect(await prisma.message.count({ where: { userId: user.id, clientId: { startsWith: "checkup:" } } })).toBe(1);
+  });
+
   it("skips users who haven't been active for a month", async () => {
     await makeUser({ lastActiveAt: at("2026-09-01T10:00") });
     expect(await runTick({ prisma, model, push }, at("2026-11-19T07:00"))).toBe(0);

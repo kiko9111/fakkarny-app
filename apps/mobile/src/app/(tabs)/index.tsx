@@ -13,9 +13,10 @@ import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
 import { getMe } from "@/lib/api";
 import { unlock } from "@/lib/unlock-store";
+import { useStreak } from "@/lib/streak-store";
 import { fill } from "@/circles/logic";
 import { suggestTracker } from "@/trackers/logic";
-import { Button, glass, IconButton, Note, palette, space, Text, ZakiAvatar } from "@/ui";
+import { Button, glass, Icon, IconButton, Note, palette, radius, space, Text, ZakiAvatar } from "@/ui";
 
 const GREETING: LocalMessage = {
   client_id: "local:greeting",
@@ -30,6 +31,20 @@ const GREETING: LocalMessage = {
 };
 
 /** The header: Zaki's face, his name, and what he is doing right now. */
+/** Days in a row with Zaki, from the second day on. Light: a flame and a number. */
+function StreakPill() {
+  const days = useStreak();
+  if (days < 2) return null;
+  return (
+    <View style={styles.streak} accessible accessibilityLabel={fill(t.ui.streakA11y, { n: days })}>
+      <Icon name="flame" size={16} color={palette.warn} />
+      <Text variant="bodyStrong" color={palette.ink}>
+        {days}
+      </Text>
+    </View>
+  );
+}
+
 function ZakiHeader({ typing }: { typing: boolean }) {
   return (
     <View style={styles.header}>
@@ -68,6 +83,7 @@ export default function ChatScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: () => <ZakiHeader typing={typing && !offline} />,
+      headerRight: () => <StreakPill />,
     });
   }, [navigation, typing, offline]);
 
@@ -148,6 +164,7 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
   header: { flexDirection: "row", alignItems: "center", gap: space.sm + 2 },
+  streak: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: space.sm + 2, paddingVertical: 4, marginEnd: space.md, borderRadius: radius.pill, backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.glassEdge },
   headerName: { lineHeight: 22 },
   list: { paddingHorizontal: space.md, paddingVertical: space.sm },
   suggest: { flexDirection: "row", alignItems: "center", gap: space.sm, marginHorizontal: space.md, marginBottom: space.xs, padding: space.sm, borderRadius: 18, ...glass },

@@ -458,6 +458,16 @@ Rules:
 - Homework hand-in: circle_tasks.submission / submitted_at / review / review_note. The child hands
   in text or a link (POST /tasks/:id/submit; says yes to a pending task and finishes it); the parent
   is told in chat + push and answers Well done or Redo (POST /tasks/:id/review; redo reopens it).
+- Zaki streak (phone only, apps/mobile/src/lib/streak.ts pure + streak-store.ts, prefs "streak"):
+  days in a row with a user message; one missed day per 7 is forgiven; flame pill in the chat header
+  from day 2; a local Zaki line at 3/7/14/30/60/100 days (client_id `local:streak:*`). Nothing is
+  ever sent when a streak ends (no guilt).
+- Friday check-up (apps/api/src/proactive/checkup.ts pure, `sendFridayCheckup` in tick.ts): Friday
+  11:00-14:00 local, once (client_id `checkup:<day>`, kind "checkin", pushed): done this week,
+  tracker days, overdue (offered "finish or move?"), next week, open debts, then one question.
+  Skipped when there is nothing to say. Template words, no AI call.
+- Invite page peek: GET /i/:code also shows members' first names (6, then "+N") and the count of
+  open circle tasks. Nothing else about the circle is public.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

@@ -3,9 +3,9 @@ import { SignJWT } from "jose";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { AcceptInviteResponse, CircleResponse, CreateInviteResponse, INSTALL_ID_HEADER, InvitePreview, ListCirclesResponse } from "@fakkarni/shared";
 import { buildApp } from "../app";
+import { firstName, renderInvitePage } from "./invite-page";
 import { MAX_CIRCLE_MEMBERS } from "../circles/rules";
 import { hasTestDb, resetDb, testPrisma } from "../../test/db";
-import { renderInvitePage } from "./invite-page";
 
 const SECRET = "test-secret-at-least-32-characters-long!!";
 const token = (sub: string) =>
@@ -80,6 +80,15 @@ describe.skipIf(!hasTestDb)("circles and invites", () => {
     expect(page.statusCode).toBe(200);
     expect(page.body).toContain("منى عازمك على «بيتنا»");
     expect(page.body).toContain(`/i/${link.code}/confirm`);
+    // The peek: members' first names only, and open tasks when there are any.
+    expect(page.body).toContain('<span class="chip">منى</span>');
+    expect(page.body).not.toContain("شغالة");
+    const peek = renderInvitePage({ kind: "invite", inviter: "Mona", circle: "Home", family: true, code: "ABCD", members: ["Mona", "<b>"], more: 3, openTasks: 2 }, "en", { appScheme: "fakkarni" });
+    expect(peek).toContain("Inside the circle");
+    expect(peek).toContain("&lt;b&gt;");
+    expect(peek).toContain("+3 more");
+    expect(peek).toContain("2 tasks on the go");
+    expect(firstName("  Mona Ali ")).toBe("Mona");
     expect(page.body).not.toContain("play.google.com");
     const confirmed = await app.inject({ method: "GET", url: `/i/${link.code}/confirm?lang=en` });
     expect(confirmed.body).toContain("One step left to join “بيتنا”");
