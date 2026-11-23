@@ -7,7 +7,8 @@ import { esc, pickLang, renderShell, type Lang } from "../web/shell";
 /**
  * The web page behind an invite link (https://…/i/CODE). The person who gets the link on
  * WhatsApp confirms here first, with nothing to install, and is offered the app only after.
- * Public and unauthenticated: it shows the inviter's name and the circle's name, nothing else.
+ * Public and unauthenticated: it shows the inviter's name, the circle's name, a peek inside (the
+ * members' first names and how many tasks are open), nothing else.
  */
 export interface InvitePageOptions {
   prisma: PrismaClient;
@@ -18,7 +19,11 @@ export interface InvitePageOptions {
   appScheme?: string;
 }
 
-type View = { kind: "invite" | "confirmed"; inviter: string | null; circle: string; family: boolean; code: string } | { kind: "gone" };
+type View = { kind: "invite" | "confirmed"; inviter: string | null; circle: string; family: boolean; code: string; members?: string[]; more?: number; openTasks?: number } | { kind: "gone" };
+
+/** First names shown on the page, at most this many (then "+N"). */
+export const PEEK_NAMES = 6;
+export const firstName = (name: string | null) => name?.trim().split(/\s+/)[0] || null;
 
 const COPY = {
   ar: {
@@ -39,6 +44,9 @@ const COPY = {
     goneTitle: "الدعوة دي مبقتش شغالة",
     goneBody: "اطلب من اللي بعتهالك يبعتلك لينك جديد.",
     ai: "زكي ذكاء اصطناعي، مش إنسان.",
+    peekTitle: "جوه الدايرة",
+    more: (n: number) => `و${n} كمان`,
+    openTasks: (n: number) => (n === 1 ? "مهمة واحدة شغالة دلوقتي" : `${n} مهام شغالة دلوقتي`),
   },
   en: {
     pageTitle: "An invite on Zaki 🌟",
@@ -58,8 +66,18 @@ const COPY = {
     goneTitle: "This invite no longer works",
     goneBody: "Ask the person who sent it for a new link.",
     ai: "Zaki is an AI, not a person.",
+    peekTitle: "Inside the circle",
+    more: (n: number) => `+${n} more`,
+    openTasks: (n: number) => (n === 1 ? "1 task on the go" : `${n} tasks on the go`),
   },
 } as const;
+
+function peek(view: Extract<View, { kind: "invite" | "confirmed" }>, t: (typeof COPY)[Lang]): string {
+  const names = view.members ?? [];
+  if (!names.length && !view.openTasks) return "";
+  const who = names.map((n) => `<span class="chip">${esc(n)}</span>`).join(" ") + (view.more ? ` <span class="small">${t.more(view.more)}</span>` : "");
+  return `<div class="peek"><p class="small">${t.peekTitle}</p>${who ? `<p>${who}</p>` : ""}${view.openTasks ? `<p class="small">${t.openTasks(view.openTasks)}</p>` : ""}</div>`;
+}
 
 export function renderInvitePage(view: View, lang: Lang, opts: { storeUrl?: string; appScheme: string }): string {
   const t = COPY[lang];
@@ -69,6 +87,7 @@ export function renderInvitePage(view: View, lang: Lang, opts: { storeUrl?: stri
   } else if (view.kind === "invite") {
     body = `<h1>${t.hello(view.inviter, view.circle)}</h1>
 <p>${view.family ? t.whatFamily : t.whatFriends}</p>
+${peek(view, t)}
 <ul>${t.points.map((p) => `<li>${p}</li>`).join("")}</ul>
 <a class="btn" href="/i/${esc(view.code)}/confirm?lang=${lang}">${t.confirm}</a>
 <p class="small">${t.noInstall}</p>`;
@@ -97,7 +116,21 @@ export const invitePageRoutes: FastifyPluginAsync<InvitePageOptions> = async (ap
       include: { circle: { include: { _count: { select: { members: true } } } }, inviter: { select: { name: true } } },
     });
     if (!invite || invite.revokedAt || invite.expiresAt <= now() || invite.circle._count.members >= MAX_CIRCLE_MEMBERS) return { kind: "gone" };
-    return { kind: "invite", inviter: invite.inviter.name, circle: invite.circle.name, family: invite.circle.kind === "family", code };
+    const [members, openTasks] = await Promise.all([
+      prisma.circleMember.findMany({ where: { circleId: invite.circleId }, orderBy: { joinedAt: "asc" }, take: 50, select: { user: { select: { name: true } } } }),
+      prisma.circleTask.count({ where: { circleId: invite.circleId, status: { in: ["pending", "accepted"] } } }),
+    ]);
+    const names = members.map((m) => firstName(m.user.name)).filter((n): n is string => !!n);
+    return {
+      kind: "invite",
+      inviter: invite.inviter.name,
+      circle: invite.circle.name,
+      family: invite.circle.kind === "family",
+      code,
+      members: names.slice(0, PEEK_NAMES),
+      more: Math.max(0, names.length - PEEK_NAMES),
+      openTasks,
+    };
   }
 
   const send = (reply: import("fastify").FastifyReply, view: View, lang: Lang) =>

@@ -40,6 +40,9 @@ export function renderShell(lang: Lang, meta: { title: string; description: stri
   .small { color: #6b7280; font-size: 0.9rem; margin: 12px 0 0; }
   .amount { font-size: 2.2rem; font-weight: 800; margin: 8px 0; }
   .code { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.2em; margin: 4px 0 0; }
+  .peek { background: #fff7ee; border-radius: 16px; padding: 4px 14px 12px; margin: 12px 0; }
+  .peek p { margin: 8px 0 0; line-height: 2; }
+  .chip { display: inline-block; background: #fff; border: 1px solid #f3d9bf; border-radius: 999px; padding: 0 12px; font-weight: 600; }
   footer { color: #9aa0aa; font-size: 0.8rem; margin-top: 20px; }
 </style>
 </head>

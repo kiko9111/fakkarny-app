@@ -9,7 +9,7 @@ import "./storage";
  * `pending_referral`: a friend's personal invite code, claimed right after onboarding.
  * `offer_tracker`: set at sign-up so the first-tracker picker shows once.
  */
-export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked";
+export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak";
 
 export const prefs = {
   get(key: PrefKey): string | null {

@@ -12,6 +12,7 @@ import { GIFT_FROM_HOUR, GIFT_UNTIL_HOUR, previousMonth } from "../money/rules";
 import { COOLDOWN_DAYS, planStatusCheck, statusClientId, trackerAskDue, type StatusCheck } from "./status";
 import type { PushSender } from "./push";
 import { writeProactive } from "./write";
+import { checkupClientId, checkupLines, hasSomething, isCheckupTime } from "./checkup";
 
 /** Only users active recently get proactive messages (no pinging people who left). */
 const ACTIVE_WITHIN_DAYS = 30;
@@ -224,6 +225,35 @@ export async function sendMonthGift(deps: TickDeps, user: User, now: Date): Prom
   return true;
 }
 
+/** The Friday life check-up: a short honest look at the week and one question. Template words, no AI call. */
+export async function sendFridayCheckup(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  const local = toLocalIso(now, user.timezone);
+  if (!isCheckupTime(local) || !isAwakeForNotice(user, now)) return false;
+  const clientId = checkupClientId(local.slice(0, 10));
+  if (await deps.prisma.message.findFirst({ where: { userId: user.id, clientId }, select: { id: true } })) return false;
+  const week = new Date(now.getTime() - 7 * 86400_000);
+  const ahead = new Date(now.getTime() + 7 * 86400_000);
+  const timed = { type: { in: ["reminder" as const, "task" as const] } };
+  const [done, overdue, upcoming, owedToMe, iOwe, trackers] = await Promise.all([
+    deps.prisma.item.count({ where: { userId: user.id, ...timed, status: "done", doneAt: { gte: week } } }),
+    deps.prisma.item.count({ where: { userId: user.id, ...timed, status: "open", repeatEveryMinutes: null, dueAt: { lt: now } } }),
+    deps.prisma.item.count({ where: { userId: user.id, ...timed, status: "open", dueAt: { gte: now, lt: ahead } } }),
+    deps.prisma.item.count({ where: { userId: user.id, type: "debt", status: "open", debtDirection: "owed_to_me" } }),
+    deps.prisma.item.count({ where: { userId: user.id, type: "debt", status: "open", debtDirection: "i_owe" } }),
+    deps.prisma.tracker.findMany({ where: { userId: user.id }, select: { kind: true, name: true, entries: { where: { at: { gte: week } }, select: { at: true } } }, take: 20 }),
+  ]);
+  const best = trackers
+    .map((t) => ({ name: t.name ?? null, kind: t.kind, days: new Set(t.entries.map((e) => toLocalIso(e.at, user.timezone).slice(0, 10))).size }))
+    .sort((a, b) => b.days - a.days)[0];
+  const input = { done, overdue, upcoming, owedToMe, iOwe, trackerDays: best?.name ? Math.min(best.days, 7) : 0, trackerName: best?.name ?? null };
+  if (!hasSomething(input)) return false;
+  const lines = checkupLines(await scriptFor(deps.prisma, user), input);
+  await deps.prisma.message.createMany({ data: [{ userId: user.id, role: "friend", kind: "checkin", text: lines.join("\n"), clientId, createdAt: now }], skipDuplicates: true });
+  await deps.prisma.event.create({ data: { userId: user.id, name: "friday_checkup", propsJson: {} } });
+  await pushToUser(deps, user, lines[0]!, "checkin");
+  return true;
+}
+
 /** Tracker questions at the times the user picked in the builder. Template words, no AI call. */
 export async function askTrackers(deps: TickDeps, user: User, now: Date): Promise<boolean> {
   const trackers = await deps.prisma.tracker.findMany({
@@ -299,6 +329,7 @@ export async function runTick(deps: TickDeps, now = new Date()): Promise<number>
     try {
       await postDueReminders(deps.prisma, user, now);
       if (await sendMonthGift(deps, user, now)) sent++;
+      else if (await sendFridayCheckup(deps, user, now)) sent++;
       else if (await askTrackers(deps, user, now)) sent++;
       else if (await runForUser(deps, user, now)) sent++;
     } catch (err) {

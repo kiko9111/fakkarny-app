@@ -20,6 +20,7 @@ export const APP_EVENTS = [
   "empty_starter_tapped", // props.place
   "split_created", // props.people, props.items (counts only)
   "homework_handed_in",
+  "streak_milestone", // props.days
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;

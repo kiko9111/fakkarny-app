@@ -5,6 +5,7 @@ import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
 import { messagesChanged } from "@/sync";
 import { prefs } from "./prefs";
+import { streak } from "./streak-store";
 import { afterMessage, ALL_FEATURES, FEATURE_ROUTE, localDayOf, open, parseUnlock, type Feature, type UnlockState } from "./unlock";
 
 /**
@@ -42,7 +43,16 @@ export const unlock = {
    * has been sent (so Zaki's note lands after his reply).
    */
   onUserMessage(text: string): () => Promise<void> {
-    if (!state) return async () => {};
+    const milestone = streak.record();
+    const celebrate = async (stamp: number) => {
+      if (!milestone) return;
+      track("streak_milestone", { days: milestone });
+      await write(`local:streak:${milestone}:${stamp}`, t.ui.streakLines[milestone as keyof typeof t.ui.streakLines], []);
+    };
+    if (!state) {
+      const stamp = Date.now();
+      return () => celebrate(stamp);
+    }
     const step = afterMessage(state, text, localDayOf(new Date()));
     save(step.state);
     const stamp = Date.now();
@@ -56,6 +66,7 @@ export const unlock = {
         const route = `/split/new${q.toString() ? `?${q}` : ""}`;
         await write(`local:split:${stamp}`, t.split.chatOffer, [{ id: `split:${stamp}`, kind: "open_place", status: "done", label: t.split.chatButton, route }]);
       }
+      await celebrate(stamp);
       if (step.overview) {
         track("place_overview");
         await write(`local:overview:${stamp}`, t.ui.introAll, ALL_FEATURES.map(card));
