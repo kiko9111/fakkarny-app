@@ -9,6 +9,7 @@ import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
 import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
+import { prefetchAll } from "@/lib/prefetch";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
 /** Fired whenever local messages change, so screens can reload from SQLite. */
@@ -88,6 +89,8 @@ export function startSync() {
     void listScheduled().then(scheduleItems).catch(() => {});
     // Items made or closed on the server outside the chat (circle tasks, Session steps).
     void pullItems();
+    // Every tab loads in the background, so each screen opens at once with fresh numbers.
+    if (prefs.get("onboarded") === "1") prefetchAll();
   };
   refresh();
   void syncLanguage();

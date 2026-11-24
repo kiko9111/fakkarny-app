@@ -581,6 +581,11 @@ Rules:
   item set in the last 2 h is shown under the message, else Zaki says it isn't set yet. The
   context always includes the 10 most recently changed open items (MAX_OPEN_ITEMS cut them off).
   Today shows repeating reminders in their own list so they can't hide new plans.
+- Preloading (2026-11-24): `prefetchAll` (apps/mobile/src/lib/prefetch.ts, throttle in
+  prefetch-plan.ts) loads every server-only screen (me, circles + each circle's detail/feed/
+  trackers, tasks, trackers, Daftar, money, splits, memories) through `cachedGet` on app start,
+  on resume and back online (sync/index.ts `refresh`), at most once a minute, so tabs open from a
+  fresh saved copy. Add any new cached screen to it. Tracker logs show at once (`bumpTracker`).
 - Onboarding and every app start send the phone's language to the server (it stayed Arabic for
   English users, so proactive lines, circle posts and pushes came in Arabic).
 
