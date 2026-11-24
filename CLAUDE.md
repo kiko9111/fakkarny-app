@@ -547,6 +547,12 @@ Rules:
 - End-to-end smoke test: apps/mobile/src/e2e/api.e2e.test.ts runs the phone's own API client against
   a live API as two people (every shared feature). Skipped unless E2E_API_URL is set; how to run is in
   the file. Run it after any change to a wire shape.
+- Live server check: the cloud session can't reach the Railway URL. .github/workflows/api-smoke.yml
+  (a pushed commit message containing "[api-smoke]") times the screens' GETs and runs the e2e test
+  against production, with this commit's phone client and with the client of the installed build.
+- Rate limit: 600 requests a minute per caller (120 refused whole screens while chat, which has its
+  own 30/min bucket, kept working). 429s are logged as "rate_limited". The phone shows busy / server /
+  sign-in text from `failText` (src/lib/errors.ts) instead of always "no connection".
 - Auth writes users.last_active_at at most every 5 minutes (it was a row write on every request).
 - Onboarding and every app start send the phone's language to the server (it stayed Arabic for
   English users, so proactive lines, circle posts and pushes came in Arabic).
