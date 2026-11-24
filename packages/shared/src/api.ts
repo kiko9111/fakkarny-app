@@ -79,6 +79,8 @@ export const PatchItemRequest = z
     status: z.enum(["open", "done", "cancelled"]).optional(),
     due_at: z.iso.datetime({ offset: true }).nullable().optional(),
     remind_at: z.iso.datetime({ offset: true }).nullable().optional(),
+    /** Ring as an alarm (the phone's "alarms" channel). Set from the Saved screen. */
+    alarm: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type PatchItemRequest = z.infer<typeof PatchItemRequest>;

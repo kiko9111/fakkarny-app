@@ -10,7 +10,7 @@ import { pullItems } from "@/sync/items";
 import { track } from "@/lib/analytics";
 import { photosAvailable, pickPhotos } from "@/lib/photos";
 import { HomeworkPhotos } from "./HomeworkPhotos";
-import { Badge, Button, Card, Chip, confirm, Icon, notify, palette, space, Text, TextField } from "@/ui";
+import { Badge, Button, Card, Chip, confirm, DateTimePicker, Icon, notify, palette, space, Text, TextField } from "@/ui";
 import { firstLink, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -21,6 +21,7 @@ const ACTION_ICON: Partial<Record<TaskAction, "checkmark" | "close" | "notificat
 export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [calendar, setCalendar] = useState(false);
   // Homework: the child's answer or link, or the parent's redo note, while typing.
   const [draft, setDraft] = useState<"hand_in" | "redo" | null>(null);
   const [text, setText] = useState("");
@@ -161,7 +162,18 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
           {remindChoices(new Date(), task.due_at).map((c) => (
             <Chip key={c} icon="alarm-outline" label={t.tasks.remind[c]} onPress={() => pickRemind(c)} />
           ))}
+          <Chip icon="calendar-outline" label={t.picker.pickRemind} onPress={() => (setPicking(false), setCalendar(true))} />
         </View>
+      ) : null}
+      {calendar ? (
+        <DateTimePicker
+          initial={task.remind_at ? new Date(task.remind_at) : null}
+          onCancel={() => setCalendar(false)}
+          onDone={(d) => {
+            setCalendar(false);
+            void work(() => remindTask(task.id, d.toISOString()), t.tasks.remindChanged);
+          }}
+        />
       ) : null}
       {draft ? (
         <View style={styles.draft}>

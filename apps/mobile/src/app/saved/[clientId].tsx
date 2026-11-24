@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
+import { fill } from "@/circles/logic";
 import { getMessage, setSaved, upsertItem } from "@/db/messages";
 import type { SavedSummary } from "@/db/saved";
 import { t, dateLocale } from "@/i18n";
 import { deleteMemory, patchItem } from "@/lib/api";
+import { failText } from "@/lib/errors";
+import { scheduleItem } from "@/notifications";
 import { messagesChanged } from "@/sync";
 import { Button, Card, IconTile, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
@@ -28,8 +31,8 @@ export default function SavedScreen() {
   const guard = async (fn: () => Promise<void>) => {
     try {
       await fn();
-    } catch {
-      notify(t.saved.offline, "error");
+    } catch (err) {
+      notify(failText(err, t.saved.offline), "error");
     }
   };
 
@@ -45,7 +48,7 @@ export default function SavedScreen() {
       {saved.items.map((item) => (
         <Card key={item.id} style={styles.card}>
           <View style={styles.head}>
-            <IconTile name="alarm-outline" size={40} />
+            <IconTile name={item.alarm ? "alarm" : "alarm-outline"} size={40} />
             <View style={styles.flex}>
               {editing === item.id ? (
                 <TextField value={draft} onChangeText={setDraft} autoFocus />
@@ -55,6 +58,11 @@ export default function SavedScreen() {
                   {item.due_at ? (
                     <Text variant="small" color={palette.inkSoft}>
                       {new Date(item.due_at).toLocaleString(dateLocale)}
+                    </Text>
+                  ) : null}
+                  {item.alarm && (item.remind_at ?? item.due_at) ? (
+                    <Text variant="small" color={palette.primaryInk}>
+                      {fill(t.saved.alarmSet, { time: new Date((item.remind_at ?? item.due_at)!).toLocaleTimeString(dateLocale, { hour: "numeric", minute: "2-digit" }) })}
                     </Text>
                   ) : null}
                 </>
@@ -82,6 +90,24 @@ export default function SavedScreen() {
             ) : (
               <>
                 <Button kind="text" size="sm" icon="create-outline" label={t.saved.rename} onPress={() => (setEditing(item.id), setDraft(item.title))} />
+                {item.type === "reminder" || item.type === "task" ? (
+                  <Button
+                    kind="text"
+                    size="sm"
+                    icon={item.alarm ? "notifications-off-outline" : "alarm-outline"}
+                    label={item.alarm ? t.saved.alarmOff : t.saved.alarmOn}
+                    onPress={() => {
+                      // An alarm needs a clock time; "after Fajr" with no time can't ring.
+                      if (!item.alarm && !(item.remind_at ?? item.due_at)) return notify(t.saved.alarmNoTime, "error");
+                      void guard(async () => {
+                        const updated = await patchItem(item.id, { alarm: !item.alarm });
+                        await upsertItem(updated);
+                        await scheduleItem(updated).catch(() => {});
+                        await persist({ ...saved, items: saved.items.map((i) => (i.id === item.id ? { ...i, alarm: updated.alarm, remind_at: updated.remind_at, due_at: updated.due_at } : i)) });
+                      });
+                    }}
+                  />
+                ) : null}
                 <Button
                   kind="text"
                   size="sm"

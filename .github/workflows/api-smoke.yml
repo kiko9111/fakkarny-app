@@ -1,0 +1,50 @@
+# Live API smoke test: runs the phone's own API client (apps/mobile/src/e2e) against the
+# production test server as two fresh install users, and times the screens' GET requests.
+# Runs when a pushed commit message contains "[api-smoke]", or by hand from the Actions tab.
+# The cloud session can't reach the Railway URL, so this is how it checks the live server.
+# Test users are throwaway install ids; they leave rows named "Mona"/"Omar" behind.
+name: Live API smoke test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[api-smoke]')
+    runs-on: ubuntu-latest
+    env:
+      API: https://fakkarniapi-production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Time the screens' requests
+        run: |
+          U=$(cat /proc/sys/kernel/random/uuid)
+          curl -s -m 30 -w "  /health %{http_code} %{time_total}s\n" "$API/health"
+          for p in /me /circles /tasks /trackers /daftar /money/sections /splits "/items?status=open" /me/referral; do
+            curl -s -m 30 -o /tmp/body -w "$p %{http_code} %{time_total}s " -H "x-install-id: $U" -H "x-message-kinds: 2" "$API$p"; head -c 300 /tmp/body; echo
+          done
+          echo "--- 20 quick /circles calls (rate limit check)"
+          for i in $(seq 1 20); do curl -s -m 30 -o /dev/null -w "%{http_code} " -H "x-install-id: $U" "$API/circles"; done; echo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Phone client (this commit) against the live API
+        working-directory: apps/mobile
+        env:
+          E2E_API_URL: ${{ env.API }}
+        run: npx vitest run src/e2e
+      - name: Phone client of the installed Android build (e47c0d0) against the live API
+        if: always()
+        working-directory: apps/mobile
+        env:
+          E2E_API_URL: ${{ env.API }}
+        run: |
+          cp src/e2e/api.e2e.test.ts /tmp/e2e.test.ts
+          git checkout e47c0d0 -- src ../../packages/shared/src
+          mkdir -p src/e2e && cp /tmp/e2e.test.ts src/e2e/api.e2e.test.ts
+          npx vitest run src/e2e

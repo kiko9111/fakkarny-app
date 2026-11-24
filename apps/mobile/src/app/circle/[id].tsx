@@ -6,6 +6,7 @@ import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
 import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, peekCircle, peekCircleFeed, peekCircleTrackers, removeCircleMember, screenCache, setFamilyRole } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
+import { failText } from "@/lib/errors";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
 import { AskZakiBox, FeedPost } from "@/circles/FeedPost";
@@ -20,7 +21,7 @@ export default function CircleScreen() {
   const { id, invite: inviteNow } = useLocalSearchParams<{ id: string; invite?: string }>();
   // The phone's last copy draws at once; the fresh one replaces it when it arrives.
   const [circle, setCircle] = useState<CircleDetail | null>(() => peekCircle(id));
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [] });
   const [summary, setSummary] = useState<string[] | null>(null);
@@ -37,14 +38,14 @@ export default function CircleScreen() {
     );
     try {
       setCircle(await getCircle(id));
-      setFailed(false);
+      setFailed(null);
     } catch (err) {
       // Left, removed or deleted: drop the saved copy instead of showing it.
       if (err instanceof HttpError && err.status === 404) {
         screenCache.remove(`/circles/${id}`);
         setCircle(null);
       }
-      setFailed(true);
+      setFailed(failText(err, t.circles.offline));
     }
     await Promise.all([feedDone, trackersDone, summaryDone]);
   }, [id]);
@@ -129,7 +130,7 @@ export default function CircleScreen() {
         <Stack.Screen options={{ title: "" }} />
         {failed ? (
           <>
-            <Note icon="cloud-offline-outline">{t.circles.offline}</Note>
+            <Note icon="cloud-offline-outline">{failed}</Note>
             <Button label={t.circles.retry} kind="tonal" onPress={() => void load()} />
           </>
         ) : (

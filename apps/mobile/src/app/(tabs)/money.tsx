@@ -7,6 +7,7 @@ import { DaftarCard } from "@/daftar/DaftarCard";
 import { formatMoney } from "@/daftar/logic";
 import { listDebts } from "@/db/items";
 import { t } from "@/i18n";
+import { failText } from "@/lib/errors";
 import { listDaftar, peekDaftar } from "@/lib/api";
 import { summarizeDebts } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
@@ -24,14 +25,14 @@ export default function MoneyScreen() {
   const { items, refreshing, refresh, complete } = useItems(listDebts);
   const { owedToMe, iOwe } = summarizeDebts(items);
   const [shared, setShared] = useState<DaftarEntry[] | null>(() => peekDaftar());
-  const [offline, setOffline] = useState(false);
+  const [offline, setOffline] = useState<string | null>(null);
 
   const loadShared = useCallback(async () => {
     try {
       setShared(await listDaftar());
-      setOffline(false);
-    } catch {
-      setOffline(true);
+      setOffline(null);
+    } catch (err) {
+      setOffline(failText(err, t.daftar.offline));
     }
   }, []);
   useFocusEffect(
@@ -106,7 +107,7 @@ export default function MoneyScreen() {
       <Button label={t.daftar.add.replace(/^\+\s*/, "")} icon="add" block onPress={() => router.push("/daftar/new")} />
 
       <SectionHeader title={t.ui.shared} />
-      {offline && shared === null ? <Note icon="cloud-offline-outline">{t.daftar.offline}</Note> : null}
+      {offline && shared === null ? <Note icon="cloud-offline-outline">{offline}</Note> : null}
       {shared !== null && shared.length === 0 ? (
         <Card>
           <EmptyState title={t.daftar.empty} body={t.daftar.intro} />

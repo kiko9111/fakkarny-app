@@ -8,6 +8,7 @@ import { authAvailable, currentAccountLabel, signOut } from "@/auth";
 import { resetLocalData } from "@/db/reset";
 import { language, t } from "@/i18n";
 import { API_URL, deleteAccount, exportData, getMe, patchMe } from "@/lib/api";
+import { failText } from "@/lib/errors";
 import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
@@ -76,6 +77,8 @@ export default function SettingsScreen() {
   const [wake, setWake] = useState("");
   const [sleep, setSleep] = useState("");
   const [instapay, setInstapay] = useState("");
+  // Shown at once on tap (it used to wait for the server, so a slow or failed save looked like a dead button).
+  const [gender, setGender] = useState<"female" | "male" | "">("");
 
   useFocusEffect(
     useCallback(() => {
@@ -87,6 +90,7 @@ export default function SettingsScreen() {
           setWake(u.wake_time);
           setSleep(u.sleep_time);
           setInstapay(u.instapay_link ?? "");
+          setGender(u.gender ?? "");
           prefs.set("always_direct", u.always_direct ? "1" : "0");
         })
         .catch(() => {});
@@ -96,8 +100,8 @@ export default function SettingsScreen() {
   const save = async (patch: PatchMeRequest) => {
     try {
       setUser(await patchMe(patch));
-    } catch {
-      notify(t.saved.offline, "error");
+    } catch (err) {
+      notify(failText(err, t.saved.offline), "error");
     }
   };
 
@@ -184,8 +188,17 @@ export default function SettingsScreen() {
         </Field>
         <Field label={t.settings.addressAs}>
           <Segmented
-            value={(user?.gender ?? "") as "female" | "male" | ""}
-            onChange={(v) => void save({ gender: v || null })}
+            value={gender}
+            onChange={(v) => {
+              const before = gender;
+              setGender(v);
+              void patchMe({ gender: v || null })
+                .then(setUser)
+                .catch((err) => {
+                  setGender(before);
+                  notify(failText(err, t.saved.offline), "error");
+                });
+            }}
             options={[{ value: "female", label: t.settings.female }, { value: "male", label: t.settings.male }]}
           />
         </Field>

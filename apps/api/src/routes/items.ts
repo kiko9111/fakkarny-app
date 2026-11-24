@@ -39,6 +39,7 @@ export const itemRoutes: FastifyPluginAsync<{ prisma: PrismaClient; authenticate
       data.doneAt = body.data.status === "done" ? now() : null;
     }
     if (body.data.due_at !== undefined) data.dueAt = body.data.due_at ? new Date(body.data.due_at) : null;
+    if (body.data.alarm !== undefined) data.alarm = body.data.alarm;
     if (body.data.remind_at !== undefined) data.remindAt = body.data.remind_at ? new Date(body.data.remind_at) : null;
     // A task someone asked for: finishing the item tells them, and the circle, that it is done.
     const { item, notices } = await prisma.$transaction(async (tx) => ({
