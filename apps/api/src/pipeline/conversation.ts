@@ -1,12 +1,12 @@
 import type { FastifyBaseLogger } from "fastify";
 import { TRACKER_TEMPLATES, type FriendResponse, type TrackerKind } from "@fakkarni/shared";
 import { Prisma } from "../generated/prisma/client";
-import { costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
+import { addUsage, costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
-import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, wantsAlarm, type ReplyLang } from "./rules";
+import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
@@ -59,9 +59,18 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const crisisKeyword = looksLikeCrisis(message.text);
     const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
 
+    // Every database round trip adds to the wait for the reply, so the lookups that don't
+    // depend on each other run together, and the context for the model loads while the rule
+    // checks below run (most messages reach the model).
+    const ctxEarly = loadContext(prisma, user, now);
+    ctxEarly.catch(() => {});
+    const [today, lastFriend] = await Promise.all([
+      crisisKeyword ? Promise.resolve(0) : prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } }),
+      prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" } }),
+    ]);
+
     // 0. Fair-use cap (never applied to crisis messages).
     if (!crisisKeyword) {
-      const today = await prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } });
       if (today > dailyCap) {
         // Tell them once, honestly; after that just save quietly.
         const replies = today === dailyCap + 1 ? [CAP_REPLY[script]] : [];
@@ -71,7 +80,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 0a. "Yes" / "no" to a card Zaki is waiting on ("Ask Mona to buy bread?"): done by rules.
-    const answered = crisisKeyword ? null : await answerPendingCards(prisma, user, message, script, now, requireSubscription ?? false);
+    const answered = crisisKeyword ? null : await answerPendingCards(prisma, user, message, lastFriend, script, now, requireSubscription ?? false);
     if (answered) {
       await event(prisma, user.id, "reply_fast_path", { card: true });
       return answered;
@@ -95,7 +104,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 0a'. A plain "yes" to Zaki's status check ("did you get to …?") closes it by rules.
-    const status = crisisKeyword ? null : await answerStatusCheck(prisma, user, message, script, now);
+    const status = crisisKeyword ? null : await answerStatusCheck(prisma, user, message, lastFriend, script, now);
     if (status?.result) return status.result;
     // Any other answer to a status check ("not yet, tomorrow") is reminder work: free past the allowance.
     const answersStatus = status?.pending === true;
@@ -152,14 +161,16 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 2. One model call with persona (cached) + context + recent chat.
-    const ctx = await loadContext(prisma, user, now);
+    // A tracker step logged just above changes the numbers: load them again.
+    const ctx = closesReminder ? await loadContext(prisma, user, now) : await ctxEarly;
     const history: ChatTurn[] = ctx.recent.map((m) => ({ role: m.role === "user" ? "user" : "assistant", text: m.text }));
     let replies: string[];
     let actions = EMPTY_ACTIONS;
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
+    const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) };
     try {
-      const result = await model.respond({ system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) });
+      const result = await model.respond(modelInput);
       usage = result.usage;
       if (result.ok) {
         replies = result.output.reply;
@@ -193,9 +204,45 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       else if (actions.update_items.length) actions = { ...actions, update_items: actions.update_items.map((u) => ({ ...u, alarm })) };
     }
 
+    // 3c. Zaki never says a reminder or alarm is set unless this turn set one. A reply that
+    // promises one with nothing behind it gets one retry with the mistake spelled out; then an
+    // item set in the last two hours counts (the user just confirmed it), else an honest reply.
+    let shown: Awaited<ReturnType<typeof recentlySetItem>> = null;
+    if (!crisis && usage && promisesReminder(replies) && !setsReminder(actions)) {
+      await event(prisma, user.id, "reminder_claim_unset", {});
+      const retry = await model.respond({ ...modelInput, context: `${modelInput.context}\n\n${UNSET_CHECK}` }).catch(() => null);
+      if (retry) usage = addUsage(usage, retry.usage);
+      if (retry?.ok && !retry.output.crisis && (setsReminder(retry.output) || !promisesReminder(retry.output.reply))) {
+        replies = retry.output.reply;
+        actions = retry.output;
+      } else {
+        shown = await recentlySetItem(prisma, user.id, now);
+        if (!shown) replies = [UNSET_REMINDER_REPLY[script]];
+      }
+      await event(prisma, user.id, "reminder_claim_checked", { fixed: setsReminder(actions), existing: Boolean(shown) });
+    }
+
     // 4. Apply actions + store replies, then the app actions (money, trackers, circles) as cards.
-    let applied = await applyActions(prisma, { user, message, replies, response: actions, now });
+    // The cost event is written alongside, not after.
     const appActions = crisis ? [] : actions.app_actions ?? [];
+    const aiEvent = usage
+      ? event(prisma, user.id, "ai_call", {
+          // Calls let through past the allowance don't count against it.
+          purpose: freeCall ? "chat_free" : "chat",
+          ...(freeCall ? { free: freeCall } : {}),
+          model: FRIEND_MODEL,
+          persona: PERSONA_VERSION,
+          ...usage,
+          cost_usd: costUsd(usage),
+          items_created: actions.create_items.length,
+          items_updated: actions.update_items.length,
+          memories_saved: actions.save_memories.length,
+          app_actions: appActions.length,
+        })
+      : null;
+    let applied = await applyActions(prisma, { user, message, replies, response: actions, now });
+    // The reminder the user just confirmed shows under their message ("Saved: …"), with its time.
+    if (shown && !applied.items.some((i) => i.id === shown!.id)) applied = { ...applied, items: [...applied.items, shown] };
     if (appActions.length) {
       const ran = await runAppActions(prisma, user, appActions, script, now, { requireSubscription: requireSubscription ?? false });
       applied = await withCards(prisma, applied, ran.cards);
@@ -205,21 +252,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const debts = crisis ? [] : actions.create_items.flatMap((i) => (i.type === "debt" && i.debt && !appActions.some((a) => a.kind === "daftar_add") ? [i.debt] : []));
     if (debts.length) applied = await withCards(prisma, applied, await debtCards(prisma, user, debts, script).catch(() => []));
 
-    if (usage) {
-      await event(prisma, user.id, "ai_call", {
-        // Calls let through past the allowance don't count against it.
-        purpose: freeCall ? "chat_free" : "chat",
-        ...(freeCall ? { free: freeCall } : {}),
-        model: FRIEND_MODEL,
-        persona: PERSONA_VERSION,
-        ...usage,
-        cost_usd: costUsd(usage),
-        items_created: actions.create_items.length,
-        items_updated: actions.update_items.length,
-        memories_saved: actions.save_memories.length,
-        app_actions: appActions.length,
-      });
-    }
+    await aiEvent;
 
     // 5. Rolling summary in the background; never blocks the reply.
     void summarizeIfNeeded(prisma, model, user).catch((err) => log?.warn({ err: errorSummary(err) }, "summary failed"));
@@ -228,13 +261,38 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
   };
 }
 
+const UNSET_CHECK =
+  "CHECK: your reply says a reminder or alarm is set, but this turn creates or changes no reminder. If the user gave or confirmed a time for something, return it now: update_items with the id from OPEN ITEMS and its time (or create_items if it is not there). If it is already set exactly as they want in OPEN ITEMS, keep your reply and change nothing. If you can't set it, reply without saying it is set.";
+
+/** The turn sets a time for something: a timed reminder or task, a moved one, or a tracker with ask times. */
+function setsReminder(a: Pick<FriendResponse, "create_items" | "update_items"> & { app_actions?: FriendResponse["app_actions"] }): boolean {
+  return (
+    a.create_items.some((i) => (i.type === "reminder" || i.type === "task") && Boolean(i.remind_at_local || i.due_at_local || i.repeat_every_minutes)) ||
+    a.update_items.some((u) => Boolean(u.remind_at_local || u.due_at_local || u.repeat_every_minutes || u.alarm === true)) ||
+    (a.app_actions ?? []).some((x) => x.kind === "create_tracker" || x.kind === "update_tracker")
+  );
+}
+
+/** A timed reminder or task of the user's set in the last two hours that is still ahead. */
+async function recentlySetItem(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: string, now: Date) {
+  return prisma.item.findFirst({
+    where: {
+      userId,
+      status: "open",
+      type: { in: ["reminder", "task"] },
+      updatedAt: { gte: new Date(now.getTime() - 2 * 3600_000) },
+      OR: [{ remindAt: { gt: now } }, { dueAt: { gt: now } }, { repeatEveryMinutes: { not: null } }],
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 /**
  * Zaki's status checks (proactive/status.ts) store the subject in the message client_id. When
  * the user's message answers the latest one with a plain yes, mark the item done or log the
  * tracker, with a template reply and no AI call. Otherwise say whether a check is pending.
  */
-async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"], user: Parameters<MessagePipeline>[0]["user"], message: Parameters<MessagePipeline>[0]["message"], lang: ReplyLang, now: Date): Promise<{ pending: boolean; result?: Awaited<ReturnType<MessagePipeline>> } | null> {
-  const lastFriend = await prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" }, select: { clientId: true, createdAt: true } });
+async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"], user: Parameters<MessagePipeline>[0]["user"], message: Parameters<MessagePipeline>[0]["message"], lastFriend: Message | null, lang: ReplyLang, now: Date): Promise<{ pending: boolean; result?: Awaited<ReturnType<MessagePipeline>> } | null> {
   const pending = pendingStatus(lastFriend, now);
   if (!pending) return null;
   if (!isPlainYes(message.text)) return { pending: true };
@@ -282,11 +340,10 @@ const CARD_ANSWER_WINDOW_MS = 6 * 3600_000;
  * The user's message answers Zaki's latest reply, which has cards waiting for an OK: a plain
  * yes sends them all, a plain no cancels them. Anything else goes on as a normal message.
  */
-async function answerPendingCards(prisma: Parameters<MessagePipeline>[0]["prisma"], user: Parameters<MessagePipeline>[0]["user"], message: Parameters<MessagePipeline>[0]["message"], lang: ReplyLang, now: Date, requireSubscription: boolean): Promise<Awaited<ReturnType<MessagePipeline>> | null> {
+async function answerPendingCards(prisma: Parameters<MessagePipeline>[0]["prisma"], user: Parameters<MessagePipeline>[0]["user"], message: Parameters<MessagePipeline>[0]["message"], last: Message | null, lang: ReplyLang, now: Date, requireSubscription: boolean): Promise<Awaited<ReturnType<MessagePipeline>> | null> {
   const yes = isConfirm(message.text);
   const no = !yes && isCancel(message.text);
   if (!yes && !no) return null;
-  const last = await prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" } });
   if (!last || now.getTime() - last.createdAt.getTime() > CARD_ANSWER_WINDOW_MS) return null;
   const cards = storedCards(last.actionsJson);
   if (!cards.some((c) => c.status === "pending")) return null;

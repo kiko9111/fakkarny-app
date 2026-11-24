@@ -63,9 +63,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     }
 
     // Idempotency: a retried client_id returns what was stored the first time.
-    const existing = await prisma.message.findUnique({
-      where: { userId_clientId: { userId: user.id, clientId: body.data.client_id } },
-    });
+    // Both lookups at once: each round trip to the database adds to the wait for the reply.
+    const [existing, last] = await Promise.all([
+      prisma.message.findUnique({ where: { userId_clientId: { userId: user.id, clientId: body.data.client_id } } }),
+      prisma.message.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ]);
     if (existing) {
       const stored = await prisma.message.findMany({
         where: { userId: user.id, clientId: { startsWith: `${existing.clientId}:reply:` } },
@@ -92,11 +94,6 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     // conversation is ordered by arrival: never before the last stored message (e.g. the
     // friend's previous reply) and never in the future.
     const sentAt = new Date(body.data.created_at);
-    const last = await prisma.message.findFirst({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
     let createdAt = sentAt > now() ? now() : sentAt;
     if (last && createdAt <= last.createdAt) createdAt = new Date(last.createdAt.getTime() + 1);
 
@@ -120,17 +117,19 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     inFlight.add(key);
     try {
     // The user answered: reset the check-in slowdown (F7) and note when they last wrote.
-    user = await prisma.user.update({
+    // (Written alongside the reply; nothing below reads these fields.)
+    const touched = prisma.user.update({
       where: { id: user.id },
       data: { lastUserMessageAt: message.createdAt, ignoredCheckins: 0, slowdownNoticed: false },
     });
+    touched.catch(() => {});
 
     // Chat is never locked: free users get a daily AI allowance, then a warm Pro nudge.
     let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
     const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false });
     if (result.notices?.length) void pushNotices(prisma, opts.push, result.notices, app.log);
-    await countIntent(prisma, user.id, message.id, result).catch(() => {});
+    await Promise.all([touched, countIntent(prisma, user.id, message.id, result).catch(() => {})]);
     const res: PostMessageResponse = {
       message: toWireMessage(message, readsNewKinds(req)),
       replies: result.replies.map((m) => toWireMessage(m, readsNewKinds(req))),

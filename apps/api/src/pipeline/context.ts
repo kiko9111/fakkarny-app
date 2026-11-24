@@ -7,6 +7,8 @@ import { loadAppData, loadAppNumbers, type AppData } from "../chat/actions";
 export const RECENT_MESSAGES = 15;
 export const MAX_MEMORIES = 20;
 export const MAX_OPEN_ITEMS = 40;
+/** The open items changed most recently, added even past MAX_OPEN_ITEMS. */
+export const RECENT_OPEN_ITEMS = 10;
 
 export interface ConversationContext {
   user: User;
@@ -32,7 +34,7 @@ export function rankMemories(memories: Memory[], recentText: string, limit = MAX
 }
 
 export async function loadContext(prisma: PrismaClient, user: User, now: Date): Promise<ConversationContext> {
-  const [recentDesc, memories, openItems, summary, app] = await Promise.all([
+  const [recentDesc, memories, byDue, touched, summary, app] = await Promise.all([
     prisma.message.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: RECENT_MESSAGES }),
     prisma.memory.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 500 }),
     prisma.item.findMany({
@@ -40,12 +42,17 @@ export async function loadContext(prisma: PrismaClient, user: User, now: Date): 
       orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
       take: MAX_OPEN_ITEMS,
     }),
+    // What was just made or changed is what the user talks about next ("yes, at 4"): always in
+    // the context, even when older open items fill the list.
+    prisma.item.findMany({ where: { userId: user.id, status: "open" }, orderBy: { updatedAt: "desc" }, take: RECENT_OPEN_ITEMS }),
     prisma.summary.findFirst({ where: { userId: user.id }, orderBy: { periodEnd: "desc" } }),
     loadAppData(prisma, user.id),
   ]);
   // The numbers ("how much did I spend on food?") need the names first; a failure only loses them.
   app.numbers = await loadAppNumbers(prisma, user, app, now).catch(() => undefined);
   const recent = recentDesc.reverse();
+  const seen = new Set(byDue.map((i) => i.id));
+  const openItems = [...byDue, ...touched.filter((i) => !seen.has(i.id))];
   return {
     user,
     now,
