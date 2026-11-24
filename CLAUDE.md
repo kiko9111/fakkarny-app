@@ -549,7 +549,9 @@ Rules:
   the file. Run it after any change to a wire shape.
 - Over-the-air updates from the cloud: .github/workflows/ota-update.yml publishes to the "preview"
   branch (Android test builds) when a pushed commit message contains "[ota-update]". Use it for
-  JavaScript-only fixes; EAS's free plan Android builds run out monthly.
+  JavaScript-only fixes; EAS's free plan Android builds run out monthly. Since 2026-11-24 it also
+  publishes the iPhone copy (branch "expo-go", Expo Go): before that, iPhone fixes needed a manual
+  publish and the owner's iPhone ran an old bundle for a day of fixes.
 - Alarms: `wantsAlarm` (pipeline/rules.ts) hears "منبه / صحيني / alarm / mnabeh" and the pipeline
   sets alarm on what the turn creates or changes (the model sometimes said "set" with alarm false);
   "بلاش منبه" turns it off. Me has an Alarms list (local SQLite `listAlarms`) with Remove; the Saved
