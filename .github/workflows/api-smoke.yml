@@ -28,6 +28,25 @@ jobs:
           done
           echo "--- 20 quick /circles calls (rate limit check)"
           for i in $(seq 1 20); do curl -s -m 30 -o /dev/null -w "%{http_code} " -H "x-install-id: $U" "$API/circles"; done; echo
+      - name: Time a chat turn and one database round trip
+        run: |
+          U=$(cat /proc/sys/kernel/random/uuid)
+          H=(-H "x-install-id: $U" -H "x-message-kinds: 2" -H "content-type: application/json")
+          curl -s -o /dev/null "${H[@]}" "$API/me"
+          echo "--- 5x /health (network only, no database)"
+          for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total} " "$API/health"; done; echo
+          echo "--- 5x /splits (sign-in lookup + one query)"
+          for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total} " "${H[@]}" "$API/splits"; done; echo
+          post() {
+            body=$(printf '{"client_id":"%s","text":"%s","created_at":"%s","timezone":"Africa/Cairo"}' "$(cat /proc/sys/kernel/random/uuid)" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+            curl -s -m 90 -o /tmp/reply -w "$2 %{http_code} %{time_total}s\n" "${H[@]}" -X POST -d "$body" "$API/messages"
+            node -e 'const r=JSON.parse(require("fs").readFileSync("/tmp/reply","utf8"));console.log("   items:",(r.items||[]).map(i=>i.type+" remind="+i.remind_at).join(", ")||"none","| replies:",(r.replies||[]).length)' || true
+          }
+          echo "--- chat turns"
+          post "شكرا" "thanks (rules, no AI)"
+          post "فكرني بكره اعزم خالد على حاجة يشربها" "reminder, no time (AI)"
+          post "ahh hlw el sa3a 4" "yes, at 4 (AI)"
+          post "عامل ايه النهارده" "small talk (AI)"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
