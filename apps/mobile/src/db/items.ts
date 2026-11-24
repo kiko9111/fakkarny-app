@@ -17,6 +17,15 @@ export async function listUpcoming(): Promise<Item[]> {
   return rows.map(toItem);
 }
 
+/** Open reminders that ring as alarms, soonest first (the Alarms list in Me). */
+export async function listAlarms(): Promise<Item[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Row>(
+    "SELECT * FROM items WHERE status = 'open' AND alarm = 1 AND type IN ('reminder','task') ORDER BY COALESCE(remind_at, due_at) IS NULL, COALESCE(remind_at, due_at) ASC",
+  );
+  return rows.map(toItem);
+}
+
 /** Open debts for the Money tab. */
 export async function listDebts(): Promise<Item[]> {
   const db = await getDb();

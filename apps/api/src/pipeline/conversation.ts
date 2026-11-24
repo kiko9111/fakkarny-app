@@ -6,7 +6,7 @@ import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt"
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
-import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, type ReplyLang } from "./rules";
+import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, replyLang, wantsAlarm, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
@@ -182,6 +182,15 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       actions = EMPTY_ACTIONS;
       // Flagged for safety review only, never marketing; no content stored (PRD §7).
       await event(prisma, user.id, "crisis_flag", { keyword: crisisKeyword });
+    }
+
+    // 3b. Asked for an alarm: what Zaki creates or changes this turn rings as one (the model
+    // sometimes answered "set" with alarm false). Off words turn it off.
+    const alarm = crisis ? null : wantsAlarm(message.text);
+    if (alarm !== null) {
+      const timed = (i: { type: string }) => i.type === "reminder" || i.type === "task";
+      if (actions.create_items.some(timed)) actions = { ...actions, create_items: actions.create_items.map((i) => (timed(i) ? { ...i, alarm } : i)) };
+      else if (actions.update_items.length) actions = { ...actions, update_items: actions.update_items.map((u) => ({ ...u, alarm })) };
     }
 
     // 4. Apply actions + store replies, then the app actions (money, trackers, circles) as cards.

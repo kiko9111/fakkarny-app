@@ -188,12 +188,18 @@ export async function listItems(status?: "open" | "done" | "cancelled") {
   return ListItemsResponse.parse(await request(`/items${status ? `?status=${status}` : ""}`)).items;
 }
 
+const parseMe = (raw: unknown) => MeResponse.parse(raw).user;
 export async function getMe(): Promise<User> {
-  return MeResponse.parse(await request("/me")).user;
+  return cachedGet("/me", parseMe);
 }
+/** The last profile seen, so Me shows the real choices at once instead of defaults. */
+export const peekMe = () => peek("/me", parseMe);
 
 export async function patchMe(body: PatchMeRequest): Promise<User> {
-  return MeResponse.parse(await request("/me", { method: "PATCH", body: JSON.stringify(body) })).user;
+  const raw = await request("/me", { method: "PATCH", body: JSON.stringify(body) });
+  const user = parseMe(raw);
+  screenCache.set("/me", raw);
+  return user;
 }
 
 /** After sign-in: attach what this phone captured before signing in to the account. */

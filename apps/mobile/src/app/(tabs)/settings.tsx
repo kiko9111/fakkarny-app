@@ -3,11 +3,14 @@ import { Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } fro
 import { router, useFocusEffect } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { parseInstapayLink, type PatchMeRequest, type User } from "@fakkarni/shared";
+import { parseInstapayLink, type Item, type PatchMeRequest, type User } from "@fakkarni/shared";
 import { authAvailable, currentAccountLabel, signOut } from "@/auth";
+import { listAlarms } from "@/db/items";
+import { upsertItem } from "@/db/messages";
 import { resetLocalData } from "@/db/reset";
-import { language, t } from "@/i18n";
-import { API_URL, deleteAccount, exportData, getMe, patchMe } from "@/lib/api";
+import { scheduleItem } from "@/notifications";
+import { dateLocale, language, t } from "@/i18n";
+import { API_URL, deleteAccount, exportData, getMe, patchItem, patchMe, peekMe } from "@/lib/api";
 import { failText } from "@/lib/errors";
 import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
@@ -71,18 +74,22 @@ function LinkRow({ icon, label, onPress, danger, first }: { icon: IconName; labe
 
 /** F10 / FR-13: you, your day's rhythm, how Zaki talks, your data. */
 export default function SettingsScreen() {
-  const [user, setUser] = useState<User | null>(null);
+  // Starts from the last profile seen on this phone, so the choices are right at once.
+  const [cached] = useState(() => peekMe());
+  const [user, setUser] = useState<User | null>(cached);
   const [account, setAccount] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [wake, setWake] = useState("");
-  const [sleep, setSleep] = useState("");
-  const [instapay, setInstapay] = useState("");
+  const [name, setName] = useState(cached?.name ?? "");
+  const [wake, setWake] = useState(cached?.wake_time ?? "");
+  const [sleep, setSleep] = useState(cached?.sleep_time ?? "");
+  const [instapay, setInstapay] = useState(cached?.instapay_link ?? "");
   // Shown at once on tap (it used to wait for the server, so a slow or failed save looked like a dead button).
-  const [gender, setGender] = useState<"female" | "male" | "">("");
+  const [gender, setGender] = useState<"female" | "male" | "">(cached?.gender ?? "");
+  const [alarms, setAlarms] = useState<Item[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       void currentAccountLabel().then(setAccount);
+      void listAlarms().then(setAlarms).catch(() => {});
       void getMe()
         .then((u) => {
           setUser(u);
@@ -97,10 +104,26 @@ export default function SettingsScreen() {
     }, []),
   );
 
+  // Every change shows at once; the server catches up behind, and a failed save puts it back.
   const save = async (patch: PatchMeRequest) => {
+    const before = user;
+    if (user) setUser({ ...user, ...patch } as User);
     try {
       setUser(await patchMe(patch));
     } catch (err) {
+      setUser(before);
+      notify(failText(err, t.saved.offline), "error");
+    }
+  };
+
+  const alarmOff = async (item: Item) => {
+    setAlarms((list) => list.filter((i) => i.id !== item.id));
+    try {
+      const updated = await patchItem(item.id, { alarm: false });
+      await upsertItem(updated);
+      await scheduleItem(updated).catch(() => {});
+    } catch (err) {
+      setAlarms((list) => [...list, item]);
       notify(failText(err, t.saved.offline), "error");
     }
   };
@@ -249,6 +272,30 @@ export default function SettingsScreen() {
               void save({ always_direct: v });
             }}
           />
+        </View>
+      </Group>
+
+      <Group title={t.alarms.title}>
+        <View style={styles.field}>
+          {alarms.length === 0 ? (
+            <Text variant="body" color={palette.inkSoft}>
+              {t.alarms.empty}
+            </Text>
+          ) : (
+            alarms.map((a) => (
+              <View key={a.id} style={styles.switchRow}>
+                <Icon name="alarm" size={20} color={palette.primaryInk} />
+                <View style={styles.flex}>
+                  <Text variant="bodyStrong">{a.title}</Text>
+                  <Text variant="small" color={palette.inkSoft}>
+                    {(a.remind_at ?? a.due_at) ? new Date((a.remind_at ?? a.due_at)!).toLocaleString(dateLocale, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : t.alarms.noTime}
+                    {a.repeat_every_minutes === 1440 ? ` · ${t.alarms.daily}` : ""}
+                  </Text>
+                </View>
+                <Button label={t.alarms.off} size="sm" kind="text" onPress={() => void alarmOff(a)} />
+              </View>
+            ))
+          )}
         </View>
       </Group>
 

@@ -147,9 +147,22 @@ export function looksDistressed(text: string): boolean {
  * Reminder work stays free past the AI allowance: asking for a reminder, and the Done / Later
  * lines the notification buttons send ("خلصت «…» ✅", "فكرني بـ«…» كمان ساعة").
  */
-const REMINDER_WORK = /(فكرني|فكريني|فكّرني|فكّريني|ذكرني|ذكريني|نبهني|نبهيني|\bremind me\b|\breminder\b|\bfakarny\b|\bfakkarny\b|\bfakarni\b|\bfakkarni\b|خلصت «|^done: )/i;
+const REMINDER_WORK = /(منبه|منبّه|صحيني|صحّيني|\balarm\b|\bmnabeh\b|\bmonabeh\b|\bsa7eny\b|\bsa7eeny\b|فكرني|فكريني|فكّرني|فكّريني|ذكرني|ذكريني|نبهني|نبهيني|\bremind me\b|\breminder\b|\bfakarny\b|\bfakkarny\b|\bfakarni\b|\bfakkarni\b|خلصت «|^done: )/i;
 export function looksLikeReminderWork(text: string): boolean {
   return REMINDER_WORK.test(text.trim());
+}
+
+/**
+ * The user asked for an alarm (not just a reminder). The model sometimes said "done" but left
+ * alarm false, so the reminder never rang as an alarm; the pipeline sets it from this.
+ * "بلاش منبه" / "no alarm" / "شيل المنبه" turn it off instead.
+ */
+const ALARM_ON = /(منبه|منبّه|صحيني|صحّيني|صحيني|\balarm\b|\bmnabeh\b|\bmonabeh\b|\bsa7eny\b|\bsa7eeny\b|\bwake me\b)/i;
+const ALARM_OFF = /(بلاش|من غير|مش عايز|شيل|الغي|ألغي|إلغي|وقف|\bno\b|\bwithout\b|\bstop\b|\bcancel\b|\bremove\b|\bmesh\b|\bbalash\b|\bshil\b)\s*(ال)?(منبه|منبّه|\balarm\b|\bmnabeh\b|\bel mnabeh\b)/i;
+export function wantsAlarm(text: string): boolean | null {
+  const t = text.trim();
+  if (ALARM_OFF.test(t)) return false;
+  return ALARM_ON.test(t) ? true : null;
 }
 
 const HELPLINE_LEAD: Record<ReplyLang, string> = {
