@@ -166,6 +166,6 @@ describe("sync queue", () => {
   it("backs off exponentially up to 5 minutes", () => {
     expect(backoffMs(1)).toBe(2_000);
     expect(backoffMs(2)).toBe(4_000);
-    expect(backoffMs(20)).toBe(300_000);
+    expect(backoffMs(20)).toBe(60_000);
   });
 });

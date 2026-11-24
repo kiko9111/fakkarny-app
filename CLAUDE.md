@@ -555,6 +555,11 @@ Rules:
   "بلاش منبه" turns it off. Me has an Alarms list (local SQLite `listAlarms`) with Remove; the Saved
   screen turns an alarm on or off (PATCH /items {alarm}). Me starts from the cached profile
   (`peekMe`) and every change shows at once (rolled back if the save fails).
+- Lost replies: POST /messages keeps an in-memory set of messages being answered. A retried
+  client_id with no stored reply that isn't in the set (the server restarted mid-reply, e.g. a deploy)
+  is answered again; one still in the set gets 409 so the phone retries. The phone waits 60 s for a
+  reply (REPLY_TIMEOUT_MS), retries at most a minute apart, and labels pending messages "Sending…".
+  Deploys restart the server: a reply in progress at that moment used to be lost for good.
 - Task dates: the new-task screen and "Change reminder time" offer a calendar and clock
   (src/ui/DateTimePicker.tsx, pure JS on purpose so it reaches builds over the air; logic in
   src/lib/calendar.ts) besides the quick picks.

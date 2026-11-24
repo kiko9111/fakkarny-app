@@ -45,7 +45,7 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
   function appWith(model: FriendModel) {
     return buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
   }
-  const send = async (app: ReturnType<typeof appWith>, text: string, clientId = randomUUID()) => {
+  const send = async (app: ReturnType<typeof appWith>, text: string, clientId: string = randomUUID()) => {
     const res = await app.inject({
       method: "POST",
       url: "/messages",
@@ -168,6 +168,18 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     const app = appWith(model);
     const { body } = await send(app, "صحيني بكرة الساعة ٦ الصبح");
     expect(body.items[0]).toMatchObject({ title: "الصحيان", alarm: true });
+    await app.close();
+  });
+
+  it("answers a retried message whose reply was lost (server restarted mid-reply)", async () => {
+    const { model } = fakeModel([ok({ reply: ["أهو ده اللي عندك الأسبوع ده"] })]);
+    const app = appWith(model);
+    const first = await send(app, "hello");
+    // The stored message as a restart would leave it: no reply rows.
+    await prisma.message.deleteMany({ where: { clientId: { startsWith: `${first.body.message.client_id}:reply:` } } });
+    const retry = await send(app, "hello", first.body.message.client_id);
+    expect(retry.status).toBe(201);
+    expect(retry.body.replies.length).toBeGreaterThan(0);
     await app.close();
   });
 
