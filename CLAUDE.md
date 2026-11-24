@@ -547,6 +547,12 @@ Rules:
 - End-to-end smoke test: apps/mobile/src/e2e/api.e2e.test.ts runs the phone's own API client against
   a live API as two people (every shared feature). Skipped unless E2E_API_URL is set; how to run is in
   the file. Run it after any change to a wire shape.
+- Over-the-air updates from the cloud: .github/workflows/ota-update.yml publishes to the "preview"
+  branch (Android test builds) when a pushed commit message contains "[ota-update]". Use it for
+  JavaScript-only fixes; EAS's free plan Android builds run out monthly.
+- Task dates: the new-task screen and "Change reminder time" offer a calendar and clock
+  (src/ui/DateTimePicker.tsx, pure JS on purpose so it reaches builds over the air; logic in
+  src/lib/calendar.ts) besides the quick picks.
 - Live server check: the cloud session can't reach the Railway URL. .github/workflows/api-smoke.yml
   (a pushed commit message containing "[api-smoke]") times the screens' GETs and runs the e2e test
   against production, with this commit's phone client and with the client of the installed build.

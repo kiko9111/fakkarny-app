@@ -1,0 +1,27 @@
+# Over-the-air JavaScript update (EAS Update) to the "preview" channel, which the Android test
+# builds listen on. Runs when a pushed commit message contains "[ota-update]", or by hand from
+# the Actions tab once this file is on the default branch. Needs the repository secret EXPO_TOKEN.
+# Only JavaScript changes travel this way; a new native module still needs a new build.
+name: Over-the-air update
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  update:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ota-update]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Publish the update
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          MESSAGE: ${{ github.event.head_commit.message || 'Manual update' }}
+        run: npx eas-cli@latest update --branch preview --environment preview --platform android --non-interactive --message "$(echo "$MESSAGE" | head -n 1 | cut -c1-120)"

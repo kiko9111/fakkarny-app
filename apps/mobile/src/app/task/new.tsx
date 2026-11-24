@@ -5,7 +5,7 @@ import type { CircleMember, FamilyType } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
 import { dueAt, dueChoices, remindAt, remindChoices, type DueChoice, type RemindChoice } from "@/tasks/logic";
-import { Button, Chip, EmptyState, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
+import { Button, Chip, DateTimePicker, EmptyState, formatPick, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * Ask someone in the circle to do something. They get the request from Zaki and decide;
@@ -17,14 +17,21 @@ export default function NewTaskScreen() {
   const [who, setWho] = useState<string | null>(null);
   const [familyType, setFamilyType] = useState<FamilyType | null>(null);
   const [title, setTitle] = useState("");
-  const [due, setDue] = useState<DueChoice>("none");
-  const [remind, setRemind] = useState<RemindChoice>("due");
+  const [due, setDue] = useState<DueChoice | "custom">("none");
+  const [remind, setRemind] = useState<RemindChoice | "custom">("due");
+  // Any day and time from the calendar, besides the quick picks (owner ask, 2026-11-24).
+  const [customDue, setCustomDue] = useState<Date | null>(null);
+  const [customRemind, setCustomRemind] = useState<Date | null>(null);
+  const [picking, setPicking] = useState<"due" | "remind" | null>(null);
   const [homework, setHomework] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [choices] = useState(() => dueChoices(new Date()));
-  const dueIso = dueAt(due, new Date());
+  const dueFor = (now: Date) => (due === "custom" ? customDue?.toISOString() ?? null : dueAt(due, now));
+  const dueIso = dueFor(new Date());
   const reminds = remindChoices(new Date(), dueIso);
+  const remindFor = (now: Date, d: string | null) =>
+    remind === "custom" ? customRemind?.toISOString() ?? null : remindAt(reminds.includes(remind) ? remind : "due", now, d);
 
   useEffect(() => {
     getCircle(circle)
@@ -43,12 +50,12 @@ export default function NewTaskScreen() {
     setBusy(true);
     try {
       const now = new Date();
-      const dueAtIso = dueAt(due, now);
+      const dueAtIso = dueFor(now);
       await createTask(circle, {
         assignee_id: who,
         title: title.trim(),
         due_at: dueAtIso,
-        remind_at: remindAt(reminds.includes(remind) ? remind : "due", now, dueAtIso),
+        remind_at: remindFor(now, dueAtIso),
         homework,
         note: homework && note.trim() ? note.trim() : null,
       });
@@ -96,15 +103,39 @@ export default function NewTaskScreen() {
           {label(t.tasks.when)}
           <View style={styles.row}>
             {choices.map((c) => (
-              <Chip key={c} label={t.tasks.due[c]} selected={due === c} onPress={() => setDue(c)} />
+              <Chip key={c} label={t.tasks.due[c]} selected={due === c} onPress={() => (setDue(c), setPicking(null))} />
             ))}
+            <Chip icon="calendar-outline" label={due === "custom" && customDue ? formatPick(customDue) : t.picker.pickDate} selected={due === "custom"} onPress={() => setPicking("due")} />
           </View>
+          {picking === "due" ? (
+            <DateTimePicker
+              initial={customDue}
+              onCancel={() => setPicking(null)}
+              onDone={(d) => {
+                setCustomDue(d);
+                setDue("custom");
+                setPicking(null);
+              }}
+            />
+          ) : null}
           {label(t.tasks.remindWhen)}
           <View style={styles.row}>
             {reminds.map((c) => (
-              <Chip key={c} icon={c === "due" ? undefined : "alarm-outline"} label={t.tasks.remind[c]} selected={remind === c} onPress={() => setRemind(c)} />
+              <Chip key={c} icon={c === "due" ? undefined : "alarm-outline"} label={t.tasks.remind[c]} selected={remind === c} onPress={() => (setRemind(c), setPicking(null))} />
             ))}
+            <Chip icon="calendar-outline" label={remind === "custom" && customRemind ? formatPick(customRemind) : t.picker.pickRemind} selected={remind === "custom"} onPress={() => setPicking("remind")} />
           </View>
+          {picking === "remind" ? (
+            <DateTimePicker
+              initial={customRemind ?? (dueIso ? new Date(new Date(dueIso).getTime() - 3_600_000) : null)}
+              onCancel={() => setPicking(null)}
+              onDone={(d) => {
+                setCustomRemind(d);
+                setRemind("custom");
+                setPicking(null);
+              }}
+            />
+          ) : null}
           <Button label={t.tasks.send} icon="send" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
           <Note icon="hand-left-outline">{plain(t.tasks.intro)}</Note>
         </>

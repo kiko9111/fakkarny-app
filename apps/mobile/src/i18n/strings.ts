@@ -117,6 +117,8 @@ const arEG = {
     busy: "السيرفر مشغول شوية دلوقتي. جرّب تاني كمان دقيقة.",
     server: "حصلت مشكلة عندنا مش عندك. جرّب تاني كمان شوية.",
     signIn: "محتاج تسجّل دخول تاني من صفحتك.",
+    slow: "السيرفر اتأخر في الرد. جرّب تاني.",
+    data: "في حاجة ماتقرتش صح. جرّب تاني، ولو فضلت ابعتلنا صورة.",
   },
   saved: {
     title: "اللي افتكرته",
@@ -560,6 +562,17 @@ const arEG = {
     sent: "العزومة اتبعتت للدايرة 🌙",
   },
   health: { checking: "بنتأكد من السيرفر…", ok: "السيرفر شغال", down: "السيرفر مش متاح" },
+  picker: {
+    prevMonth: "الشهر اللي فات",
+    nextMonth: "الشهر الجاي",
+    time: "الساعة",
+    am: "ص",
+    pm: "م",
+    done: "تمام",
+    past: "الوقت ده عدّى، اختار وقت جاي",
+    pickDate: "اختار يوم وساعة",
+    pickRemind: "اختار وقت التذكير",
+  },
   ui: {
     alarm: "منبّه",
     ok: "تمام",
@@ -803,6 +816,8 @@ const en: DeepStringShape<Strings> = {
     busy: "The server is busy right now. Try again in a minute.",
     server: "Something went wrong on our side, not yours. Try again shortly.",
     signIn: "Please sign in again from Me.",
+    slow: "The server took too long. Try again.",
+    data: "Something didn't load right. Try again, and send us a screenshot if it stays.",
   },
   saved: {
     title: "What I remembered",
@@ -1246,6 +1261,17 @@ const en: DeepStringShape<Strings> = {
     sent: "The invitation went to the circle 🌙",
   },
   health: { checking: "Checking the server…", ok: "Server is up", down: "Server unreachable" },
+  picker: {
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    time: "Time",
+    am: "AM",
+    pm: "PM",
+    done: "Done",
+    past: "That time has passed. Pick a later one.",
+    pickDate: "Pick a date and time",
+    pickRemind: "Pick a reminder time",
+  },
   ui: {
     alarm: "Alarm",
     ok: "OK",

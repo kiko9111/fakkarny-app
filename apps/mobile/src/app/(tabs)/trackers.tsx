@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import type { Tracker } from "@fakkarni/shared";
 import { t } from "@/i18n";
+import { failText } from "@/lib/errors";
 import { addRamadanPack, listTrackers, peekTrackers } from "@/lib/api";
 import { canAdd } from "@/trackers/logic";
 import { TrackerCard } from "@/trackers/TrackerCard";
@@ -13,6 +14,7 @@ export default function TrackersScreen() {
   const [trackers, setTrackers] = useState<Tracker[]>(saved?.trackers ?? []);
   const [limit, setLimit] = useState<number | null>(saved ? saved.limit : 1);
   const [ramadan, setRamadan] = useState<"available" | "added" | "off">("off");
+  const [why, setWhy] = useState(t.trackers.offline);
   const [state, setState] = useState<"loading" | "ready" | "offline">(saved ? "ready" : "loading");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -23,7 +25,8 @@ export default function TrackersScreen() {
       setLimit(res.limit);
       setRamadan(res.ramadan_pack);
       setState("ready");
-    } catch {
+    } catch (err) {
+      setWhy(failText(err, t.trackers.offline));
       setState((s) => (s === "ready" ? s : "offline"));
     }
   }, []);
@@ -56,7 +59,7 @@ export default function TrackersScreen() {
           </Text>
         </Card>
       ) : null}
-      {state === "offline" ? <Note icon="cloud-offline-outline">{t.trackers.offline}</Note> : null}
+      {state === "offline" ? <Note icon="cloud-offline-outline">{why}</Note> : null}
       {state === "ready" && trackers.length === 0 ? <EmptyState title={t.trackers.empty} /> : null}
       {trackers.map((tr) => (
         <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={() => void load()} />
