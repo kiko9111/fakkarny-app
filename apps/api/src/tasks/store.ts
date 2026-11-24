@@ -56,7 +56,12 @@ export async function wirePosts(db: Db, posts: CirclePost[], lang: Lang, viewerI
   const [reactions, comments, counts] = postIds.length
     ? await Promise.all([
         db.postReaction.findMany({ where: { postId: { in: postIds } }, select: { postId: true, userId: true, key: true } }),
-        db.postComment.findMany({ where: { postId: { in: postIds } }, orderBy: { createdAt: "desc" }, take: postIds.length * INLINE_COMMENTS }),
+        // The newest INLINE_COMMENTS of each post (a busy post must not crowd out the others' comments).
+        db.$queryRaw<{ id: string; postId: string; userId: string | null; text: string | null; zakiEvent: string | null; createdAt: Date }[]>`
+          SELECT "id", "post_id" AS "postId", "user_id" AS "userId", "text", "zaki_event" AS "zakiEvent", "created_at" AS "createdAt" FROM (
+            SELECT c.*, row_number() OVER (PARTITION BY c."post_id" ORDER BY c."created_at" DESC) AS rn
+            FROM "post_comments" c WHERE c."post_id" = ANY(${postIds}::uuid[])
+          ) x WHERE x.rn <= ${INLINE_COMMENTS} ORDER BY "created_at" DESC`,
         db.postComment.groupBy({ by: ["postId"], where: { postId: { in: postIds } }, _count: { _all: true } }),
       ])
     : [[], [], []];

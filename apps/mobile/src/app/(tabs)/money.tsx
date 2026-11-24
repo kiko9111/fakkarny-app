@@ -7,7 +7,7 @@ import { DaftarCard } from "@/daftar/DaftarCard";
 import { formatMoney } from "@/daftar/logic";
 import { listDebts } from "@/db/items";
 import { t } from "@/i18n";
-import { listDaftar } from "@/lib/api";
+import { listDaftar, peekDaftar } from "@/lib/api";
 import { summarizeDebts } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
 import { SpendView } from "@/money/SpendView";
@@ -23,7 +23,7 @@ export default function MoneyScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const { items, refreshing, refresh, complete } = useItems(listDebts);
   const { owedToMe, iOwe } = summarizeDebts(items);
-  const [shared, setShared] = useState<DaftarEntry[] | null>(null);
+  const [shared, setShared] = useState<DaftarEntry[] | null>(() => peekDaftar());
   const [offline, setOffline] = useState(false);
 
   const loadShared = useCallback(async () => {

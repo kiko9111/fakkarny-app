@@ -509,6 +509,7 @@ model Tracker {
   entries TrackerEntry[]
 
   @@index([userId])
+  @@index([circleId])
   @@map("trackers")
 }
 

@@ -4,12 +4,12 @@ import { router, useFocusEffect } from "expo-router";
 import type { Circle } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
-import { listCircles } from "@/lib/api";
+import { listCircles, peekCircles } from "@/lib/api";
 import { Button, IconTile, ListRow, Note, palette, Screen, SectionHeader, space, Text } from "@/ui";
 
 /** The user's circles (family, friends, work, any group), and the way into creating or joining one. */
 export default function CirclesScreen() {
-  const [circles, setCircles] = useState<Circle[] | null>(null);
+  const [circles, setCircles] = useState<Circle[] | null>(() => peekCircles());
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 

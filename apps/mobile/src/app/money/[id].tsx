@@ -5,7 +5,7 @@ import type { SectionDetail } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { formatMoney, parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
-import { addMoney, deleteMoneyEntry, deleteSection, getSection } from "@/lib/api";
+import { addMoney, deleteMoneyEntry, deleteSection, getSection, peekSection } from "@/lib/api";
 import { budgetState, monthLabel, toggleSplit } from "@/money/logic";
 import { Badge, Button, Card, Chip, confirm, IconButton, Note, notify, palette, ProgressBar, Screen, SectionHeader, space, Text, TextField } from "@/ui";
 
@@ -14,7 +14,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { week
 /** One section: this month's total against its budget, quick adding, entries, and for a shared book, who pays whom. */
 export default function SectionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [data, setData] = useState<SectionDetail | null>(null);
+  const [data, setData] = useState<SectionDetail | null>(() => peekSection(id));
   const [failed, setFailed] = useState(false);
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");

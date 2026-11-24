@@ -5,7 +5,7 @@ import type { SplitResponse } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t } from "@/i18n";
-import { createDaftar, deleteSplit, getSplit, markSplitPaid } from "@/lib/api";
+import { createDaftar, deleteSplit, getSplit, markSplitPaid, peekSplit } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
 import { track } from "@/lib/analytics";
 import { daftarFromSplit } from "@/split/logic";
@@ -15,7 +15,7 @@ import { Badge, Button, Card, confirm, EmptyState, Icon, notify, palette, Screen
 /** One split: everyone's share, what friends added from the link, and who has paid back. */
 export default function SplitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [data, setData] = useState<SplitResponse | null>(null);
+  const [data, setData] = useState<SplitResponse | null>(() => peekSplit(id));
   const [failed, setFailed] = useState(false);
   const [inDaftar, setInDaftar] = useState(() => (prefs.get("split_daftar") ?? "").split(",").includes(id));
   const [adding, setAdding] = useState(false);

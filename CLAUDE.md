@@ -538,6 +538,19 @@ Rules:
   - Item.alarm: only when the user asks or says yes; the phone schedules it on the "alarms" channel
     (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). A full-screen alarm needs a new native build.
 
+- Saved copies and lenient lists (2026-11-23): server-only screens (circles list, a circle with its
+  feed and trackers, Daftar, money, sections, tasks, trackers, splits) read through `cachedGet` in
+  apps/mobile/src/lib/api.ts, which keeps the last good reply (src/lib/screen-cache.ts, localStorage,
+  wiped by db/reset.ts); screens start from `peek*()` and refresh behind. Lists parse entry by entry
+  (`eachValid`): one row that doesn't fit is dropped instead of failing the whole screen. The circle
+  screen loads detail, feed, trackers and summary independently. Add new server-only screens the same way.
+- End-to-end smoke test: apps/mobile/src/e2e/api.e2e.test.ts runs the phone's own API client against
+  a live API as two people (every shared feature). Skipped unless E2E_API_URL is set; how to run is in
+  the file. Run it after any change to a wire shape.
+- Auth writes users.last_active_at at most every 5 minutes (it was a row write on every request).
+- Onboarding and every app start send the phone's language to the server (it stayed Arabic for
+  English users, so proactive lines, circle posts and pushes came in Arabic).
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
