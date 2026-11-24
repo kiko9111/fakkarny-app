@@ -43,6 +43,12 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
   const { user, message, now } = input;
   const tz = user.timezone;
 
+  // Replies only (most chat turns): one statement, no transaction round trips around it.
+  const r = input.response;
+  if (!r.create_items.length && !r.update_items.length && !r.save_memories.length) {
+    return { replies: await writeReplies(prisma, input), items: [], memories: [], notices: [] };
+  }
+
   return prisma.$transaction(async (tx: Tx) => {
     const items: Item[] = [];
     let notices: { userId: string; text: string }[] = [];
@@ -118,25 +124,28 @@ export async function applyActions(prisma: PrismaClient, input: ApplyInput): Pro
       );
     }
 
-    const replies: Message[] = [];
-    for (const [n, text] of input.replies.entries()) {
-      replies.push(
-        await tx.message.create({
-          data: {
-            userId: user.id,
-            role: "friend",
-            kind: input.replyKind ?? "chat",
-            text,
-            clientId: replyClientId(message.clientId, n),
-            // Keep replies strictly after the user message and in order.
-            createdAt: new Date(Math.max(now.getTime(), message.createdAt.getTime()) + n + 1),
-          },
-        }),
-      );
-    }
+    const replies = await writeReplies(tx, input);
 
     return { replies, items, memories, notices };
   });
 }
 
 const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+/** All of a turn's replies in one statement (one round trip, however many bubbles). */
+async function writeReplies(db: Tx | PrismaClient, input: ApplyInput): Promise<Message[]> {
+  const { user, message, now } = input;
+  if (!input.replies.length) return [];
+  const rows = await db.message.createManyAndReturn({
+    data: input.replies.map((text, n) => ({
+      userId: user.id,
+      role: "friend" as const,
+      kind: input.replyKind ?? "chat",
+      text,
+      clientId: replyClientId(message.clientId, n),
+      // Keep replies strictly after the user message and in order.
+      createdAt: new Date(Math.max(now.getTime(), message.createdAt.getTime()) + n + 1),
+    })),
+  });
+  return rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+}

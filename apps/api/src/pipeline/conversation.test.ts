@@ -222,4 +222,48 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     expect(body.items[0]!.due_at).toBeNull();
     await app.close();
   });
+
+  it("never says a reminder is set when nothing was set: retries once, then tells the truth", async () => {
+    const claim = ok({ reply: ["تمام، الساعة ٤ العصر بكرة، هفكرك تعزم خالد."] });
+    // The retry fixes it: the reminder made from the first message moves to 4 PM.
+    const first = fakeModel([
+      ok({ reply: ["تمام، بكرة الساعة ٤ العصر كويس؟"], create_items: [{ type: "reminder", title: "اعزم خالد", due_at_local: "2026-11-20T09:00", remind_at_local: "2026-11-20T09:00" }] }),
+      claim,
+      ok({ reply: ["تمام، الساعة ٤ العصر بكرة، هفكرك."], update_items: [] }),
+    ]);
+    const app = appWith(first.model);
+    const made = (await send(app, "فكرني بكره اعزم خالد على حاجة يشربها")).body.items[0]!;
+    first.model.respond = (async (input) => {
+      first.calls.push(input);
+      return first.calls.length === 2 ? claim : ok({ reply: ["تمام، الساعة ٤ العصر بكرة، هفكرك."], update_items: [{ id: made.id, remind_at_local: "2026-11-20T16:00", due_at_local: "2026-11-20T16:00" }] });
+    }) as FriendModel["respond"];
+    const yes = await send(app, "ahh hlw el sa3a 4");
+    expect(first.calls[2]!.context).toContain("CHECK:");
+    expect(yes.body.items[0]).toMatchObject({ id: made.id, remind_at: "2026-11-20T14:00:00.000Z" });
+    await app.close();
+
+    // The retry still claims it, and nothing was set: an honest reply instead.
+    await resetDb(prisma);
+    const none = fakeModel([claim, claim]);
+    const app2 = appWith(none.model);
+    const res = await send(app2, "ahh hlw el sa3a 4");
+    expect(res.body.replies.map((r) => r.text)).toEqual(["لسه ما ظبطتش التذكير ده. قولي اليوم والساعة بالظبط وأنا أظبطه على طول."]);
+    expect(res.body.items).toEqual([]);
+    await app2.close();
+  });
+
+  it("shows the reminder the user just confirmed when it was already set", async () => {
+    const claim = ok({ reply: ["تمام، هفكرك بكرة الساعة ٤."] });
+    const { model } = fakeModel([
+      ok({ reply: ["بكرة الساعة ٤ العصر كويس؟"], create_items: [{ type: "reminder", title: "اعزم خالد", due_at_local: "2026-11-20T16:00", remind_at_local: "2026-11-20T16:00" }] }),
+      claim,
+      claim,
+    ]);
+    const app = appWith(model);
+    const made = (await send(app, "فكرني بكره اعزم خالد")).body.items[0]!;
+    const yes = await send(app, "تمام الساعة ٤");
+    expect(yes.body.replies[0]!.text).toBe("تمام، هفكرك بكرة الساعة ٤.");
+    expect(yes.body.items.map((i) => i.id)).toEqual([made.id]);
+    await app.close();
+  });
 });

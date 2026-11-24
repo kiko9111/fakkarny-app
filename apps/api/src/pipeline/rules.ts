@@ -165,6 +165,23 @@ export function wantsAlarm(text: string): boolean | null {
   return ALARM_ON.test(t) ? true : null;
 }
 
+/**
+ * Zaki's reply says a reminder or alarm is set ("هفكرك بكرة الساعة ٤", "I'll remind you").
+ * The pipeline checks that the turn really set one; a model reply once said so with no item.
+ */
+const PROMISE = /(ه[اَ]?فكّ?رك|هفكرِك|هصحّ?يك|هنبّ?هك|هرن عليك|(ظبطت|ضبطت|حطيت|سجلت)(ل[كه]ا?)?\s*(ال)?(منبه|منبّه|تذكير|المنبه)|(المنبه|المنبّه|التذكير)\s*(اتظبط|اتضبط|جاهز|متظبط)|\bI'?ll remind\b|\bI will remind\b|\b(reminder|alarm)( is)? (set|ready|on)\b|\bI'?ve set (a|an|the|your) (reminder|alarm)\b|\bI'?ll wake you\b)/i;
+export function promisesReminder(replies: string[]): boolean {
+  // Sentence by sentence; a question ("هفكرك الساعة ٤ ولا ٥؟") is not a promise.
+  const sentences = replies.flatMap((r) => r.match(/[^.!؟?\n]+[.!؟?]?/g) ?? []);
+  return sentences.some((s) => PROMISE.test(s) && !/[؟?]\s*$/.test(s.trim()));
+}
+
+/** When the reply promised a reminder that the turn never set, and a retry didn't fix it. */
+export const UNSET_REMINDER_REPLY: Record<ReplyLang, string> = {
+  arabic: "لسه ما ظبطتش التذكير ده. قولي اليوم والساعة بالظبط وأنا أظبطه على طول.",
+  english: "I haven't set that reminder yet. Tell me the day and time and I'll set it right away.",
+};
+
 const HELPLINE_LEAD: Record<ReplyLang, string> = {
   arabic: "أنا جنبك. لو حاسس إنك ممكن تأذي نفسك، كلّم حد بتثق فيه دلوقتي، أو اتصل بالخط الساخن:",
   english: "I'm here with you. If you might hurt yourself, please reach out to someone you trust right now, or call:",

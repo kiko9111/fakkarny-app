@@ -268,7 +268,7 @@ const toUsage = (u: Anthropic.Usage): Usage => ({
   cache_read_input_tokens: u.cache_read_input_tokens ?? 0,
   cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0,
 });
-const addUsage = (a: Usage, b: Usage): Usage => ({
+export const addUsage = (a: Usage, b: Usage): Usage => ({
   input_tokens: a.input_tokens + b.input_tokens,
   output_tokens: a.output_tokens + b.output_tokens,
   cache_read_input_tokens: a.cache_read_input_tokens + b.cache_read_input_tokens,

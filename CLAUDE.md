@@ -570,6 +570,17 @@ Rules:
   own 30/min bucket, kept working). 429s are logged as "rate_limited". The phone shows busy / server /
   sign-in text from `failText` (src/lib/errors.ts) instead of always "no connection".
 - Auth writes users.last_active_at at most every 5 minutes (it was a row write on every request).
+- Speed (2026-11-24, measured from the smoke test): one database round trip from the API is ~0.1 s
+  (the Railway server and Supabase eu-west-1 are far apart), so time goes to sequential queries,
+  not the AI call (~1.5-2.5 s). A chat turn used ~25 sequential queries. The pipeline now loads
+  the context while the rule checks run, runs independent lookups together, writes replies in one
+  statement (no transaction when the turn only replies) and the cost event alongside. Keep new
+  queries in the chat path parallel; `api-smoke.yml` times a chat turn and one round trip.
+- Reminder truth (2026-11-24): a reply that says a reminder/alarm is set (`promisesReminder`)
+  while the turn sets no time (`setsReminder`) gets one model retry with a CHECK note; then an
+  item set in the last 2 h is shown under the message, else Zaki says it isn't set yet. The
+  context always includes the 10 most recently changed open items (MAX_OPEN_ITEMS cut them off).
+  Today shows repeating reminders in their own list so they can't hide new plans.
 - Onboarding and every app start send the phone's language to the server (it stayed Arabic for
   English users, so proactive lines, circle posts and pushes came in Arabic).
 

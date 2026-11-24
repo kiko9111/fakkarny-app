@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toFriendResponse, type ModelOutput } from "../ai/model";
-import { detectScript, detectScriptInContext, fastReply, looksLikeCrisis, replyLang, wantsAlarm } from "./rules";
+import { detectScript, detectScriptInContext, fastReply, looksLikeCrisis, promisesReminder, replyLang, wantsAlarm } from "./rules";
 import { addressAs, describeNumbers, mustReplyInArabic, rankMemories, replyScript } from "./context";
 
 describe("detectScript", () => {
@@ -179,5 +179,21 @@ describe("wantsAlarm", () => {
   });
   it("leaves plain reminders alone", () => {
     expect(wantsAlarm("فكرني بالدوا الساعة ٩")).toBeNull();
+  });
+});
+
+describe("promisesReminder", () => {
+  it("hears a reply that says a reminder or alarm is set", () => {
+    expect(promisesReminder(["تمام، الساعة ٤ العصر بكرة، هفكرك تعزم خالد على حاجة يشربها."])).toBe(true);
+    expect(promisesReminder(["تمام يا كريم، هفكّرك بكرة."])).toBe(true);
+    expect(promisesReminder(["ظبطت المنبه على ٦ الصبح"])).toBe(true);
+    expect(promisesReminder(["Done, I'll remind you at 4 tomorrow."])).toBe(true);
+    expect(promisesReminder(["Your alarm is set for 6."])).toBe(true);
+  });
+  it("does not count questions or plain chat", () => {
+    expect(promisesReminder(["بكرة الساعة ٤ العصر كويس؟"])).toBe(false);
+    expect(promisesReminder(["هفكرك الساعة ٤ ولا ٥؟"])).toBe(false);
+    expect(promisesReminder(["Want me to remind you?"])).toBe(false);
+    expect(promisesReminder(["يا سلام، بط ورقاق ومحشي!"])).toBe(false);
   });
 });

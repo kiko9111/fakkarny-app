@@ -10,6 +10,7 @@ import { getMe, listTasks, listTrackers, peekTasks, peekTrackers } from "@/lib/a
 import { useItems } from "@/lib/useItems";
 import { TaskCard } from "@/tasks/TaskCard";
 import { canAdd } from "@/trackers/logic";
+import { comingUp } from "@/lib/coming-up";
 import { TrackerCard } from "@/trackers/TrackerCard";
 import { Button, Card, EmptyState, Icon, palette, radius, Screen, SectionHeader, space, Text, ZakiAvatar } from "@/ui";
 
@@ -49,7 +50,7 @@ export default function TodayScreen() {
     void refresh();
   };
 
-  const soon = items.slice(0, 5);
+  const { soon, repeating, more } = comingUp(items);
   const own = (trackers ?? []).filter((x) => !x.pack).length;
   const replace = (next: Tracker) => setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
   const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
@@ -78,14 +79,22 @@ export default function TodayScreen() {
         </>
       ) : null}
 
-      <SectionHeader title={t.ui.comingUp} action={items.length > soon.length ? fill("{n} +", { n: items.length - soon.length }) : undefined} onAction={() => router.push("/upcoming")} />
-      {soon.length === 0 ? (
+      <SectionHeader title={t.ui.comingUp} action={more > 0 ? fill("{n} +", { n: more }) : undefined} onAction={() => router.push("/upcoming")} />
+      {soon.length === 0 && repeating.length === 0 ? (
         <Card>
           <EmptyState title={t.ui.noPlansTitle} body={t.ui.noPlansBody} action={<Button label={t.ui.tabZaki} kind="tonal" size="sm" icon="chatbubble-ellipses-outline" onPress={() => router.navigate("/")} />} />
         </Card>
       ) : (
         soon.map((i: Item) => <PlanRow key={i.id} item={i} onDone={() => void complete(i.id).catch(() => {})} />)
       )}
+      {repeating.length ? (
+        <>
+          <SectionHeader title={t.ui.repeating} />
+          {repeating.map((i: Item) => (
+            <PlanRow key={i.id} item={i} onDone={() => void complete(i.id).catch(() => {})} />
+          ))}
+        </>
+      ) : null}
 
       <SectionHeader title={t.ui.tracking} action={canAdd(own, limit) ? t.trackers.add.replace(/^\+\s*/, "") : t.trackers.addPro} onAction={() => router.push(canAdd(own, limit) ? "/tracker/new" : "/paywall")} />
       {trackers?.map((tr) => <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={loadOnline} />)}
