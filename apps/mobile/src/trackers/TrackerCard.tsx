@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
-import type { Tracker, TrackerKind } from "@fakkarni/shared";
+import { TRACKER_TEMPLATES, type Tracker, type TrackerKind } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
 import { deleteTracker, logTracker, undoTracker, updateTracker } from "@/lib/api";
 import { ask, Badge, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
-import { askTimeLabel, formatNumber, monthBars, progress, weekBars } from "./logic";
+import { askTimeLabel, bumpTracker, formatNumber, monthBars, progress, weekBars } from "./logic";
 
 export const TRACKER_ICON: Record<TrackerKind, IconName> = {
   water: "water",
@@ -32,13 +32,19 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
   const money = tr.unit === "money";
   const amount = parseAmount(amountText);
 
-  const run = async (fn: () => Promise<Tracker>) => {
+  const run = async (fn: () => Promise<Tracker>, guess?: Tracker) => {
     if (busy) return;
     setBusy(true);
+    // A log shows at once; the server's answer replaces the guess, a failure puts it back.
+    if (guess) {
+      onChanged(guess);
+      setAmountText("");
+    }
     try {
       onChanged(await fn());
       setAmountText("");
     } catch {
+      if (guess) onChanged(tr);
       notify(t.trackers.failed, "error");
     } finally {
       setBusy(false);
@@ -161,10 +167,10 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
               maxLength={12}
               textAlign={textStart}
             />
-            <Button label={t.trackers.log} size="sm" disabled={busy || amount === null} onPress={() => amount !== null && void run(() => logTracker(tr.id, amount))} />
+            <Button label={t.trackers.log} size="sm" disabled={busy || amount === null} onPress={() => amount !== null && void run(() => logTracker(tr.id, amount), bumpTracker(tr, amount))} />
           </>
         ) : (
-          <Button label={t.trackers.plusOne} icon="add" size="sm" disabled={busy} onPress={() => void run(() => logTracker(tr.id))} />
+          <Button label={t.trackers.plusOne} icon="add" size="sm" disabled={busy} onPress={() => void run(() => logTracker(tr.id), bumpTracker(tr, TRACKER_TEMPLATES[tr.kind]?.step || 1))} />
         )}
         {tr.month.some((v) => v > 0) ? <Button label={showMonth ? t.trackers.hideMonth : t.trackers.showMonth} kind="text" size="sm" icon="stats-chart-outline" onPress={() => setShowMonth((v) => !v)} /> : null}
         {tr.total > 0 ? <Button label={t.trackers.undo} kind="text" size="sm" icon="arrow-undo-outline" disabled={busy} onPress={() => void run(() => undoTracker(tr.id))} /> : null}

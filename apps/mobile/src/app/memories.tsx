@@ -3,21 +3,23 @@ import { StyleSheet } from "react-native";
 import { useFocusEffect } from "expo-router";
 import type { Memory } from "@fakkarni/shared";
 import { t } from "@/i18n";
-import { deleteMemory, listMemories } from "@/lib/api";
+import { deleteMemory, listMemories, peekMemories } from "@/lib/api";
 import { Card, confirm, EmptyState, IconButton, IconTile, ListRow, notify, palette, plain, Screen, space } from "@/ui";
 
 /** FR-4: the user can view and delete any memory. */
 export default function MemoriesScreen() {
-  const [memories, setMemories] = useState<Memory[]>([]);
+  // Starts from the saved copy, so the list shows at once and refreshes behind.
+  const [memories, setMemories] = useState<Memory[]>(() => peekMemories() ?? []);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => peekMemories() !== null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const cached = peekMemories() !== null;
+    if (!cached) setLoading(true);
     try {
       setMemories(await listMemories());
     } catch {
-      notify(t.saved.offline, "error");
+      if (!cached) notify(t.saved.offline, "error");
     } finally {
       setLoading(false);
       setLoaded(true);
