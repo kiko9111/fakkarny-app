@@ -113,6 +113,11 @@ const arEG = {
     used: "الكود ده مش هينفع: يمكن استخدمت كود قبل كده، أو ده كودك انت، أو عدّى أسبوعك الأول.",
     unknown: "مش لاقي الكود ده. اتأكد منه أو اطلب لينك جديد.",
   },
+  errors: {
+    busy: "السيرفر مشغول شوية دلوقتي. جرّب تاني كمان دقيقة.",
+    server: "حصلت مشكلة عندنا مش عندك. جرّب تاني كمان شوية.",
+    signIn: "محتاج تسجّل دخول تاني من صفحتك.",
+  },
   saved: {
     title: "اللي افتكرته",
     hint: "لو حاجة مش مظبوطة، صلّحها أو امسحها.",
@@ -121,6 +126,10 @@ const arEG = {
     remove: "امسح",
     memory: "معلومة",
     offline: "محتاج نت عشان أعدّل ده.",
+    alarmOn: "خليه منبّه",
+    alarmOff: "شيل المنبّه",
+    alarmSet: "منبّه هيرن الساعة {time}",
+    alarmNoTime: "محتاج ميعاد بالساعة عشان يرن. قول لزكي الساعة كام.",
   },
   notifications: {
     done: "خلصت ✅",
@@ -552,6 +561,7 @@ const arEG = {
   },
   health: { checking: "بنتأكد من السيرفر…", ok: "السيرفر شغال", down: "السيرفر مش متاح" },
   ui: {
+    alarm: "منبّه",
     ok: "تمام",
     cancel: "إلغاء",
     demo: "نسخة تجربة: البيانات للعرض، وردود زكي هنا بسيطة",
@@ -789,6 +799,11 @@ const en: DeepStringShape<Strings> = {
     used: "This code can't be used: maybe you used one before, it's your own, or your first week has passed.",
     unknown: "I can't find this code. Check it or ask for a new link.",
   },
+  errors: {
+    busy: "The server is busy right now. Try again in a minute.",
+    server: "Something went wrong on our side, not yours. Try again shortly.",
+    signIn: "Please sign in again from Me.",
+  },
   saved: {
     title: "What I remembered",
     hint: "If something's off, fix it or remove it.",
@@ -797,6 +812,10 @@ const en: DeepStringShape<Strings> = {
     remove: "Remove",
     memory: "Memory",
     offline: "I need internet to change this.",
+    alarmOn: "Make it an alarm",
+    alarmOff: "Remove the alarm",
+    alarmSet: "Alarm rings at {time}",
+    alarmNoTime: "It needs a clock time to ring. Tell Zaki what time.",
   },
   notifications: {
     done: "Done ✅",
@@ -1228,6 +1247,7 @@ const en: DeepStringShape<Strings> = {
   },
   health: { checking: "Checking the server…", ok: "Server is up", down: "Server unreachable" },
   ui: {
+    alarm: "Alarm",
     ok: "OK",
     cancel: "Cancel",
     demo: "Preview: sample data, and Zaki's replies are simple here",

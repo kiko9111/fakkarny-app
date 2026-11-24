@@ -5,20 +5,21 @@ import type { Circle } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
 import { listCircles, peekCircles } from "@/lib/api";
+import { failText } from "@/lib/errors";
 import { Button, IconTile, ListRow, Note, palette, Screen, SectionHeader, space, Text } from "@/ui";
 
 /** The user's circles (family, friends, work, any group), and the way into creating or joining one. */
 export default function CirclesScreen() {
   const [circles, setCircles] = useState<Circle[] | null>(() => peekCircles());
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setCircles(await listCircles());
-      setFailed(false);
-    } catch {
-      setFailed(true);
+      setFailed(null);
+    } catch (err) {
+      setFailed(failText(err, t.circles.offline));
     }
   }, []);
 
@@ -53,7 +54,7 @@ export default function CirclesScreen() {
       </Text>
       {failed && circles === null ? (
         <View style={styles.offline}>
-          <Note icon="cloud-offline-outline">{t.circles.offline}</Note>
+          <Note icon="cloud-offline-outline">{failed}</Note>
           <Button label={t.circles.retry} kind="text" size="sm" onPress={() => void load()} />
         </View>
       ) : null}

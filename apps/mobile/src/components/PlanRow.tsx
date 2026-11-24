@@ -18,9 +18,10 @@ export function PlanRow({ item, onDone }: { item: Item; onDone: () => void }) {
         </Text>
         {item.due_at ? (
           <View style={styles.meta}>
-            <Icon name={item.remind_at ? "alarm-outline" : "calendar-outline"} size={14} color={palette.inkSoft} />
-            <Text variant="small" color={palette.inkSoft}>
-              {when(item.due_at)}
+            <Icon name={item.alarm ? "alarm" : item.remind_at ? "alarm-outline" : "calendar-outline"} size={14} color={item.alarm ? palette.primaryInk : palette.inkSoft} />
+            <Text variant="small" color={item.alarm ? palette.primaryInk : palette.inkSoft}>
+              {when(item.alarm && item.remind_at ? item.remind_at : item.due_at)}
+              {item.alarm ? ` · ${t.ui.alarm}` : ""}
             </Text>
           </View>
         ) : null}

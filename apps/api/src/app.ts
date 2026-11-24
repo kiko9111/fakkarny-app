@@ -54,7 +54,7 @@ export interface AppDeps {
   push?: PushSender;
   /** FR-15 dashboard password (HTTP Basic, user "admin"). The dashboard is off without it. */
   adminPassword?: string;
-  /** Requests per minute per caller (default 120); false disables rate limiting. */
+  /** Requests per minute per caller (default 600); false disables rate limiting. */
   rateLimitPerMinute?: number | false;
   /** Send unhandled errors to Sentry (initSentry must have run). */
   sentry?: boolean;
@@ -85,9 +85,13 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
 
   if (deps.rateLimitPerMinute !== false) {
     app.register(rateLimit, {
-      max: deps.rateLimitPerMinute ?? 120,
+      // 120 a minute is easy for one phone to use up (parallel screen loads, background pulls),
+      // and then every screen fails while chat (its own limit) still works.
+      max: deps.rateLimitPerMinute ?? 600,
       timeWindow: "1 minute",
       keyGenerator: callerKey,
+      // Who hits the limit, and where (route and a short key hash; never content).
+      onExceeded: (req, key) => req.log.warn({ route: req.routeOptions?.url ?? req.url.split("?")[0], key: key.slice(0, 8) }, "rate_limited"),
       allowList: (req) => req.url === "/health",
     });
   }

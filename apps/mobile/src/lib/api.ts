@@ -114,7 +114,12 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const token = await accessToken();
+    // The token lookup can stall (Supabase refreshing it): it counts against the same timeout,
+    // so a screen shows an error instead of spinning for ever.
+    const token = await Promise.race([
+      accessToken(),
+      new Promise<never>((_, reject) => ctrl.signal.addEventListener("abort", () => reject(new HttpError(0)))),
+    ]);
     const res = await fetch(`${API_URL}${path}`, {
       ...init,
       signal: init.signal ?? ctrl.signal,
