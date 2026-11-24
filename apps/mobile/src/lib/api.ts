@@ -86,6 +86,7 @@ export const API_URL = resolveApiUrl({
 });
 
 const TIMEOUT_MS = 20_000;
+const REPLY_TIMEOUT_MS = 60_000;
 
 /** Last good copies of server-only screens (see screen-cache.ts). */
 export const screenCache = createScreenCache({
@@ -103,7 +104,7 @@ async function cachedGet<T>(path: string, parse: (raw: unknown) => T): Promise<T
 }
 const peek = <T>(path: string, parse: (raw: unknown) => T): T | null => screenCache.get(path, parse);
 
-async function request(path: string, init: RequestInit = {}): Promise<unknown> {
+async function request(path: string, init: RequestInit = {}, timeoutMs = TIMEOUT_MS): Promise<unknown> {
   if (isDemo) {
     try {
       return await demoRequest(path, init);
@@ -112,7 +113,7 @@ async function request(path: string, init: RequestInit = {}): Promise<unknown> {
     }
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     // The token lookup can stall (Supabase refreshing it): it counts against the same timeout,
     // so a screen shows an error instead of spinning for ever.
@@ -147,7 +148,9 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
 }
 
 export async function postMessage(body: PostMessageRequest): Promise<PostMessageResponse> {
-  return PostMessageResponse.parse(await request("/messages", { method: "POST", body: JSON.stringify(body) }));
+  // Zaki's reply is an AI call: give it longer than a screen load, or a slow reply is cut off,
+  // retried, and the message sits there looking unsent.
+  return PostMessageResponse.parse(await request("/messages", { method: "POST", body: JSON.stringify(body) }, REPLY_TIMEOUT_MS));
 }
 
 /** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */

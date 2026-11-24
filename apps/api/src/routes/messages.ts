@@ -18,6 +18,14 @@ import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
 import type { preHandlerAsyncHookHandler } from "fastify";
 import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../serialize";
+import type { Message } from "../generated/prisma/client";
+
+/**
+ * Messages this server is answering right now. A restart empties it, which is the point: a
+ * retried message with no reply that isn't in here lost its reply mid-way and gets answered again.
+ */
+const inFlight = new Set<string>();
+const flightKey = (userId: string, clientId: string) => `${userId}:${clientId}`;
 
 export interface MessageRoutesOptions {
   prisma: PrismaClient;
@@ -59,12 +67,20 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       where: { userId_clientId: { userId: user.id, clientId: body.data.client_id } },
     });
     if (existing) {
+      const stored = await prisma.message.findMany({
+        where: { userId: user.id, clientId: { startsWith: `${existing.clientId}:reply:` } },
+        orderBy: { clientId: "asc" },
+      });
+      if (stored.length === 0) {
+        // No reply yet. Still being worked on here (the phone gave up waiting): ask it to try
+        // again shortly. Not being worked on means the work died (a server restart mid-reply),
+        // and the message would never get an answer, so answer it now.
+        if (inFlight.has(flightKey(user.id, existing.clientId))) return reply.code(409).send({ error: "duplicate_in_flight" });
+        return reply.code(201).send(await answer(existing));
+      }
       const res: PostMessageResponse = {
         message: toWireMessage(existing, readsNewKinds(req)),
-        replies: (await prisma.message.findMany({
-          where: { userId: user.id, clientId: { startsWith: `${existing.clientId}:reply:` } },
-          orderBy: { clientId: "asc" },
-        })).map((m) => toWireMessage(m, readsNewKinds(req))),
+        replies: stored.map((m) => toWireMessage(m, readsNewKinds(req))),
         items: (await prisma.item.findMany({ where: { sourceMessageId: existing.id } })).map(toWireItem),
         memories: [],
         duplicate: true,
@@ -97,6 +113,12 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       throw err;
     }
 
+    return reply.code(201).send(await answer(message));
+
+    async function answer(message: Message): Promise<PostMessageResponse> {
+    const key = flightKey(user.id, message.clientId);
+    inFlight.add(key);
+    try {
     // The user answered: reset the check-in slowdown (F7) and note when they last wrote.
     user = await prisma.user.update({
       where: { id: user.id },
@@ -117,7 +139,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       duplicate: false,
       ...(result.aiAllowance ? { ai_allowance: result.aiAllowance } : {}),
     };
-    return reply.code(201).send(res);
+    return res;
+    } finally {
+      inFlight.delete(key);
+    }
+    }
   });
 
   app.get("/messages", async (req, reply) => {

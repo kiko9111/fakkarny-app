@@ -45,7 +45,9 @@ export function isRetryable(err: unknown): boolean {
 }
 
 const BASE_DELAY_MS = 2_000;
-const MAX_DELAY_MS = 5 * 60_000;
+// A minute at most: a failed send (a server restart, a slow reply) is tried again soon, and a
+// network change or coming back to the app retries at once anyway.
+const MAX_DELAY_MS = 60_000;
 export const backoffMs = (attempts: number) => Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1));
 
 export function createSyncQueue(deps: {
