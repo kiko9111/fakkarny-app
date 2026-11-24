@@ -161,6 +161,16 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     expect(await prisma.trackerEntry.count()).toBe(0); // the latest friend message is now the model's reply
   });
 
+  it("makes the reminder an alarm when the user asked for one, even if the model forgot", async () => {
+    const { model } = fakeModel([
+      ok({ reply: ["تمام، هصحيك ٦ الصبح ⏰"], create_items: [{ type: "reminder", title: "الصحيان", due_at_local: "2026-11-20T06:00", important: false, alarm: false }] }),
+    ]);
+    const app = appWith(model);
+    const { body } = await send(app, "صحيني بكرة الساعة ٦ الصبح");
+    expect(body.items[0]).toMatchObject({ title: "الصحيان", alarm: true });
+    await app.close();
+  });
+
   it("answers thanks without calling the model", async () => {
     const { model, calls } = fakeModel([]);
     const app = appWith(model);

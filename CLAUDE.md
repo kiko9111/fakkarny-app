@@ -550,6 +550,11 @@ Rules:
 - Over-the-air updates from the cloud: .github/workflows/ota-update.yml publishes to the "preview"
   branch (Android test builds) when a pushed commit message contains "[ota-update]". Use it for
   JavaScript-only fixes; EAS's free plan Android builds run out monthly.
+- Alarms: `wantsAlarm` (pipeline/rules.ts) hears "منبه / صحيني / alarm / mnabeh" and the pipeline
+  sets alarm on what the turn creates or changes (the model sometimes said "set" with alarm false);
+  "بلاش منبه" turns it off. Me has an Alarms list (local SQLite `listAlarms`) with Remove; the Saved
+  screen turns an alarm on or off (PATCH /items {alarm}). Me starts from the cached profile
+  (`peekMe`) and every change shows at once (rolled back if the save fails).
 - Task dates: the new-task screen and "Change reminder time" offer a calendar and clock
   (src/ui/DateTimePicker.tsx, pure JS on purpose so it reaches builds over the air; logic in
   src/lib/calendar.ts) besides the quick picks.

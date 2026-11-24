@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toFriendResponse, type ModelOutput } from "../ai/model";
-import { detectScript, detectScriptInContext, fastReply, looksLikeCrisis, replyLang } from "./rules";
+import { detectScript, detectScriptInContext, fastReply, looksLikeCrisis, replyLang, wantsAlarm } from "./rules";
 import { addressAs, describeNumbers, mustReplyInArabic, rankMemories, replyScript } from "./context";
 
 describe("detectScript", () => {
@@ -162,5 +162,22 @@ describe("replyScript", () => {
     expect(text).toContain("asked of the user: id=t2 «تجيب عيش» from منى, not answered yet, due 2026-11-20T12:00");
     expect(text).toContain("waiting for the user's review: id=t1 «الحساب» by عمر");
     expect(text).toContain("not paid yet: سارة");
+  });
+});
+
+describe("wantsAlarm", () => {
+  it("hears an alarm request in Arabic, Franco and English", () => {
+    expect(wantsAlarm("اعملي منبه كل يوم الساعة ٥ الفجر")).toBe(true);
+    expect(wantsAlarm("صحيني بكرة ٦")).toBe(true);
+    expect(wantsAlarm("3ayez monabeh kol yom")).toBe(true);
+    expect(wantsAlarm("set an alarm for 7")).toBe(true);
+  });
+  it("hears turning it off", () => {
+    expect(wantsAlarm("بلاش منبه")).toBe(false);
+    expect(wantsAlarm("شيل المنبه")).toBe(false);
+    expect(wantsAlarm("no alarm please")).toBe(false);
+  });
+  it("leaves plain reminders alone", () => {
+    expect(wantsAlarm("فكرني بالدوا الساعة ٩")).toBeNull();
   });
 });

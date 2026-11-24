@@ -562,6 +562,13 @@ const arEG = {
     sent: "العزومة اتبعتت للدايرة 🌙",
   },
   health: { checking: "بنتأكد من السيرفر…", ok: "السيرفر شغال", down: "السيرفر مش متاح" },
+  alarms: {
+    title: "المنبّهات",
+    empty: "مفيش منبّهات. قول لزكي مثلاً: «صحيني بكرة الساعة ٦».",
+    off: "شيل المنبّه",
+    noTime: "من غير ميعاد",
+    daily: "كل يوم",
+  },
   picker: {
     prevMonth: "الشهر اللي فات",
     nextMonth: "الشهر الجاي",
@@ -1261,6 +1268,13 @@ const en: DeepStringShape<Strings> = {
     sent: "The invitation went to the circle 🌙",
   },
   health: { checking: "Checking the server…", ok: "Server is up", down: "Server unreachable" },
+  alarms: {
+    title: "Alarms",
+    empty: "No alarms yet. Tell Zaki, for example: \"Wake me up tomorrow at 6\".",
+    off: "Remove alarm",
+    noTime: "No time",
+    daily: "Every day",
+  },
   picker: {
     prevMonth: "Previous month",
     nextMonth: "Next month",
