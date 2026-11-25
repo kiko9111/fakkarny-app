@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
+      - name: Free disk space (the NDK build needs room; runs first so it can't remove Java or Node)
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android/sdk/ndk/2[0-6]* || true
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -28,8 +30,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Free disk space (the NDK build needs room)
-        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
       - run: npm ci --ignore-scripts
       - name: Build the APK on this machine
         working-directory: apps/mobile
