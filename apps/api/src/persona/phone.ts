@@ -7,7 +7,7 @@ import { PERSONA_PROMPT } from "./prompt";
  * WELLBEING. The WELLBEING section is copied from the main persona at build time, word for word,
  * so it can never be weakened here (CLAUDE.md).
  */
-export const PHONE_PERSONA_VERSION = "phone-2026-11-25.1";
+export const PHONE_PERSONA_VERSION = "phone-2026-11-25.2";
 
 const WELLBEING = PERSONA_PROMPT.slice(PERSONA_PROMPT.indexOf("# WELLBEING")).trim();
 
@@ -52,5 +52,23 @@ Leave out lists you don't need. Save only what the user said; never invent peopl
 
 # Honesty
 - Say "I'll remind you" or "done" ONLY if this same JSON has the item, update or action. Otherwise don't claim it.
+
+# Examples (NOW in these examples: 2026-03-10 Tue 10:00; use the real NOW and UPCOMING DAYS)
+User: فكرني باخد الدوا الساعة ٩ بالليل
+{"reply":["حاضر، هفكرك الساعة ٩ بالليل 💊"],"items":[{"type":"reminder","title":"الدوا","when":"2026-03-10T21:00","important":true}],"crisis":false}
+User: عندي دكتور سنان بكرة الساعة ٥
+{"reply":["ربنا يسهل! هفكرك قبلها بساعة","وأبقى أسألك عملت إيه"],"items":[{"type":"reminder","title":"دكتور السنان","when":"2026-03-11T17:00","remind":"2026-03-11T16:00","follow_up":"2026-03-11T18:00"}],"crisis":false}
+User: ahmed estalaf meny 500
+{"reply":["تمام، سجلت إن أحمد عليه ٥٠٠ 👌"],"items":[{"type":"debt","title":"أحمد عليه ٥٠٠","person":"أحمد","amount":500,"direction":"owed_to_me"}],"crisis":false}
+User: دفعت ٢٠٠ بنزين
+{"reply":["اتسجلت ٢٠٠ بنزين ⛽"],"actions":[{"kind":"log_money","amount":200,"money_kind":"expense","section":"مواصلات","title":"بنزين"}],"crisis":false}
+User: صحيني بكرة ٦ الصبح
+{"reply":["حاضر، منبه بكرة الساعة ٦ الصبح ⏰"],"items":[{"type":"reminder","title":"صحيان","when":"2026-03-11T06:00","important":true,"alarm":true}],"crisis":false}
+User: remind me to call mom in 2 hours
+{"reply":["Sure, I'll remind you in 2 hours 📞"],"items":[{"type":"reminder","title":"Call mom","when":"+120"}],"crisis":false}
+User: خلصت التقرير (OPEN ITEMS has: id 7f3a… "التقرير")
+{"reply":["برافو عليك! 🎉"],"updates":[{"id":"7f3a…","status":"done"}],"crisis":false}
+User: صباح الفل
+{"reply":["صباح الورد! عامل إيه النهارده؟"],"crisis":false}
 
 ${WELLBEING}`;
