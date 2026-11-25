@@ -82,7 +82,18 @@ export async function runMore(ctx: Ctx, a: AppAction): Promise<One> {
     case "daftar_answer":
     case "daftar_remind": {
       const e = await findEntry(ctx, a);
-      if (!e) return fail(LABEL.noDaftar(lang), "/money");
+      if (!e) {
+        // "Cancel/settle Karim's debt" often means a debt Zaki saved as an item, not a Daftar entry.
+        if ((a.kind === "daftar_cancel" || a.kind === "daftar_settle") && a.person) {
+          const debt = await findDebtItem(ctx, a);
+          if (debt) {
+            const cancelled = a.kind === "daftar_cancel";
+            await ctx.prisma.item.update({ where: { id: debt.id }, data: { status: cancelled ? "cancelled" : "done" } });
+            return { card: card(lang, a.kind, "done", LABEL.debtClosed(lang, debt.debtPerson ?? a.person, cancelled), "/money", undefined, { kind: "item_status", itemId: debt.id, status: "open" }) };
+          }
+        }
+        return fail(LABEL.noDaftar(lang, a.person), "/money");
+      }
       const role = e.creatorId === ctx.user.id ? "creator" : "other";
       const name = role === "creator" ? e.other?.name ?? e.otherName : e.creator.name ?? "?";
       const amount = Number(e.amount);
@@ -314,6 +325,14 @@ async function findEntry(ctx: Ctx, a: AppAction): Promise<EntryWithPeople | null
   const open = await ctx.prisma.daftarEntry.findMany({ where: { ...mine, status: { in: ["pending", "confirmed", "disputed"] } }, include: daftarPeople, orderBy: { createdAt: "desc" }, take: 30 });
   const named = a.person ? open.filter((e) => matchByName([e], a.person, (x) => [x.creatorId === ctx.user.id ? x.other?.name ?? x.otherName : x.creator.name, x.otherName])) : open;
   const byAmount = a.amount ? named.filter((e) => Number(e.amount) === a.amount) : named;
+  return byAmount.length === 1 ? byAmount[0]! : null;
+}
+
+/** The one open debt item that fits the person (and amount, when given). */
+async function findDebtItem(ctx: Ctx, a: AppAction) {
+  const open = await ctx.prisma.item.findMany({ where: { userId: ctx.user.id, status: "open", type: "debt" }, orderBy: { updatedAt: "desc" }, take: 30 });
+  const named = open.filter((i) => matchByName([i], a.person!, (x) => [x.debtPerson ?? "", x.title]));
+  const byAmount = a.amount ? named.filter((i) => Number(i.debtAmount) === a.amount) : named;
   return byAmount.length === 1 ? byAmount[0]! : null;
 }
 

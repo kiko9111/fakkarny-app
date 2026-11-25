@@ -278,11 +278,23 @@ export const addUsage = (a: Usage, b: Usage): Usage => ({
 });
 
 /** Build the messages array: context first (so it starts with a user turn), then the chat. */
-export function buildMessages(input: FriendModelInput): Anthropic.MessageParam[] {
+export function buildMessages(input: Pick<FriendModelInput, "context" | "history">): Anthropic.MessageParam[] {
+  // The API refuses (400) blank text blocks, broken emoji halves (lone surrogates, e.g. from a
+  // title cut mid-emoji) and a conversation that ends with an assistant turn (prefill). Any one of
+  // those in the stored chat would fail every turn until it scrolled out of the recent messages.
+  const turns = input.history
+    .map((t) => ({ role: t.role, text: wellFormed(t.text).trim() }))
+    .filter((t) => t.text.length > 0);
+  while (turns.length && turns.at(-1)!.role === "assistant") turns.pop();
   return [
-    { role: "user", content: `<context>\n${input.context}\n</context>\nThe conversation follows. Answer the last user message.` },
-    ...input.history.map((t): Anthropic.MessageParam => ({ role: t.role, content: t.text })),
+    { role: "user", content: `<context>\n${wellFormed(input.context)}\n</context>\nThe conversation follows. Answer the last user message.` },
+    ...turns.map((t): Anthropic.MessageParam => ({ role: t.role, content: t.text })),
   ];
+}
+
+/** Text with any lone UTF-16 surrogate replaced, so the request is valid JSON for the API. */
+export function wellFormed(text: string): string {
+  return (text as string & { toWellFormed?: () => string }).toWellFormed?.() ?? text.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
 }
 
 /**
@@ -298,8 +310,9 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
     apiKey: opts.apiKey ?? anthropicApiKey(),
     // Explicit, so a tooling-level ANTHROPIC_BASE_URL in the shell never redirects app traffic.
     baseURL: opts.baseURL ?? process.env["FAKKARNI_ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com",
-    maxRetries: 2,
-    timeout: 30_000,
+    // The phone waits 60 s for a reply: a slow try is retried once, never three times over 90 s.
+    maxRetries: 1,
+    timeout: 25_000,
   });
 
   return {
@@ -317,7 +330,7 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
               tools: friendTools(),
               // "any": a turn always answers through the tools (respond plus any app tools), never loose text.
               tool_choice: { type: "any" },
-              system: [{ type: "text", text: input.system + TOOL_TURN_NOTE, cache_control: { type: "ephemeral" } }],
+              system: [{ type: "text", text: wellFormed(input.system) + TOOL_TURN_NOTE, cache_control: { type: "ephemeral" } }],
               messages: buildMessages(input),
               output_config: { effort: FRIEND_EFFORT },
             });

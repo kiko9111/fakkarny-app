@@ -266,6 +266,49 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     expect(yes.body.items.map((i) => i.id)).toEqual([made.id]);
     await app.close();
   });
+  it("retries with only the message when the full chat is refused, and counts why", async () => {
+    const bad = Object.assign(new Error("messages: text content blocks must be non-empty"), { status: 400 });
+    const { model, calls } = fakeModel([ok({ reply: ["أهلاً يا كريم"] }), bad, ok({ reply: ["تمام"] })]);
+    const app = appWith(model);
+    await send(app, "اهلا");
+    const { body } = await send(app, "alo");
+    expect(body.replies[0]!.text).toBe("تمام");
+    expect(calls[1]!.history.length).toBeGreaterThan(1);
+    expect(calls[2]!.history).toEqual([{ role: "user", text: "alo" }]);
+    const errors = await prisma.event.findMany({ where: { name: "ai_error" } });
+    expect(errors.map((e) => (e.propsJson as { kind: string }).kind)).toEqual(["empty_text"]);
+  });
+
+  it("ends the model's chat with the message being answered", async () => {
+    const { model, calls } = fakeModel([ok({ reply: ["أهلاً"] })]);
+    const app = appWith(model);
+    const user = await prisma.user.create({ data: { authId: `install:${installId}`, timezone: "Africa/Cairo" } });
+    // A status line stored with a later time than the message (e.g. written while it was queued).
+    await prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text: "العصر دخل، صلّيت؟", clientId: "status:x", createdAt: new Date(now.getTime() + 60_000) } });
+    const msg = await prisma.message.create({ data: { userId: user.id, role: "user", kind: "chat", text: "fee eh kol dah", clientId: "old-1", createdAt: new Date(now.getTime() - 60_000) } });
+    // The phone retries it: the server answers the stored message.
+    await send(app, "fee eh kol dah", msg.clientId);
+    expect(calls[0]!.history.at(-1)).toEqual({ role: "user", text: "fee eh kol dah" });
+  });
+
+  it("cancelling a debt with no Daftar entry closes the saved debt, with undo", async () => {
+    const { model } = fakeModel([ok({ reply: ["تمام، شلت الدين"], app_actions: [{ kind: "daftar_cancel", person: "عبد الكريم" }] } as never)]);
+    const app = appWith(model);
+    const user = await prisma.user.create({ data: { authId: `install:${installId}`, timezone: "Africa/Cairo" } });
+    const item = await prisma.item.create({ data: { userId: user.id, type: "debt", title: "دين عبد الكريم", debtPerson: "عبد الكريم", debtAmount: 200, debtDirection: "i_owe" } });
+    const { body } = await send(app, "الغي دين عبد الكريم");
+    expect(body.replies.at(-1)!.actions?.[0]).toMatchObject({ status: "done", undoable: true });
+    expect((await prisma.item.findUniqueOrThrow({ where: { id: item.id } })).status).toBe("cancelled");
+  });
+
+  it("says plainly what couldn't be done instead of the model's promise", async () => {
+    const { model } = fakeModel([ok({ reply: ["تمام يا كريم، هلغي دين عبد الكريم.", "هتأكد منه الأول"], app_actions: [{ kind: "daftar_cancel", person: "عبد الكريم" }] } as never)]);
+    const app = appWith(model);
+    const { body } = await send(app, "الغي دين عبد الكريم");
+    expect(body.replies).toHaveLength(1);
+    expect(body.replies[0]!.text).toContain("مفيش حاجة مفتوحة مع عبد الكريم");
+    expect(body.replies[0]!.text).not.toContain("هلغي");
+  });
 });
 
 describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
