@@ -1,5 +1,5 @@
 import * as Device from "expo-device";
-import { phoneMessages, PHONE_OUTPUT_JSON_SCHEMA, extractPhoneJson, type PhoneBrainRequest } from "@fakkarni/shared";
+import { cleanPhoneReply, phoneMessages, PhoneOutput, PHONE_OUTPUT_JSON_SCHEMA, extractPhoneJson, type PhoneBrainRequest } from "@fakkarni/shared";
 import { prefs } from "@/lib/prefs";
 import { brainAvailable } from "./native";
 import { chatModel, threadsFor, type PhoneModel } from "./catalog";
@@ -79,16 +79,46 @@ async function once(ctx: Ctx, req: PhoneBrainRequest, temperature: number): Prom
   return extractPhoneJson(res.text);
 }
 
+/**
+ * The longest the phone's model may think about one message. Past it, cloud Zaki answers (unless
+ * the fallback is off): kareem's Pixel 8 left messages on "Sending…" for minutes.
+ */
+export const THINK_LIMIT_MS = 20_000;
+
+/** A reply the server would keep: it parses, and a bubble passes the same check (script, Modern Standard, junk). */
+function goodReply(out: unknown, req: PhoneBrainRequest): boolean {
+  if (!usableOutput(out)) return false;
+  if (!req.lang) return true;
+  const parsed = PhoneOutput.safeParse(out);
+  return parsed.success && cleanPhoneReply(parsed.data.reply, req.lang).length > 0;
+}
+
+async function think(ctx: Ctx, req: PhoneBrainRequest, deadline: number): Promise<unknown> {
+  let out = await once(ctx, req, 0.3);
+  // One more try, steadier, if the answer doesn't fit and there is time for it.
+  if (!goodReply(out, req) && Date.now() < deadline - 6_000) out = await once(ctx, req, 0);
+  if (!goodReply(out, req)) throw new Error("phone model gave no usable answer");
+  return out;
+}
+
 /** Think about one message: the model's JSON answer (checked), its id and how long it took. */
 export const thinkOnPhone: Think = async (req) => {
   const m = selectedModel();
   const t0 = Date.now();
   const ctx = await context(m);
-  let out = await once(ctx, req, 0.3);
-  // One more try, steadier, if the answer doesn't fit (rare with the grammar on).
-  if (!usableOutput(out)) out = await once(ctx, req, 0);
-  if (!usableOutput(out)) throw new Error("phone model gave no usable answer");
-  const ms = Date.now() - t0;
-  prefs.set("brain_last_ms", String(ms));
-  return { output: out, model: m.id, ms };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      void ctx.stopCompletion?.().catch(() => {});
+      reject(new Error("phone model took too long"));
+    }, THINK_LIMIT_MS);
+  });
+  try {
+    const out = await Promise.race([think(ctx, req, t0 + THINK_LIMIT_MS), limit]);
+    const ms = Date.now() - t0;
+    prefs.set("brain_last_ms", String(ms));
+    return { output: out, model: m.id, ms };
+  } finally {
+    clearTimeout(timer);
+  }
 };

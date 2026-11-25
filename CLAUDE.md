@@ -621,6 +621,15 @@ Rules:
   holdout set was committed before the engine ran on it (unseen scores 88.8%, 89.3%, 80.3% messy; all
   ~100% after fixes). Write a NEW set before claiming accuracy on unseen wording. The rewrite is scored
   by .github/workflows/clarify-eval.yml ("[clarify-eval]").
+- Phone mode answers in code first (2026-11-25, kareem's Pixel 8: messages sat on "Sending…" and
+  got "I'm here 💛 Tell me more?"): a turn the rule engine fully decides (something saved, changed or
+  asked) gets `templateReply` at once (201, no 202 and no on-phone model; that took 20-40 s), and
+  questions about the user's own data ("what do I have this week?", "sagelt kam?", "who owes me?",
+  "shrbt kam?") are answered from the context by apps/api/src/pipeline/questions.ts (pure). Only
+  small talk reaches the phone's model, which now runs the same `cleanPhoneReply` check (moved to
+  packages/shared/src/phone-brain.ts; the 202 carries `lang`) and stops after 20 s (`THINK_LIMIT_MS`):
+  either way cloud Zaki answers unless the fallback is off. Franco with no digits ("sagelt kam",
+  "shrbt maya ahh") counts as Franco, "shrbt maya" logs water, and "ahh"/"aywa" answer a check-in.
 - Phone model evals: `npm run eval -- --brain phone --base-url <llama-server> --label <name>` scores a
   GGUF model served by llama.cpp with the phone prompt and grammar. The cloud session can't download
   models, so .github/workflows/phone-model-eval.yml runs the candidates on GitHub ("[phone-eval]").

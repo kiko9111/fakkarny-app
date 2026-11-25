@@ -27,9 +27,14 @@ const FRANCO_WORDS = new Set([
   "5aly", "5ali", "sagel", "sagely", "dafa3t", "msh", "mashy", "mashi", "akeed", "7ader", "lessa", "ba2a", "3ayez", "3ayza", "me7tag",
   "sgl", "akl", "ektebly", "ektebli", "kalemny", "kalemni", "klmny", "wselt", "weselt", "eny", "enny", "mrati", "merati", "meraty",
   "esmaha", "esmo", "shelet", "shela", "eb2a", "e3mly", "enak", "enek", "hena", "henak", "felbeit", "elbeit", "beit", "beet",
+  // Seen in kareem's chat (2026-11-25), Franco with no digits that was answered in English.
+  "shrbt", "sharbt", "shribt", "sherbt", "shrebt", "sagelt", "sgelt", "sagalt", "sagelto", "kam", "kaam",
+  "3andy", "3andi", "3ndy", "3ndi", "warak", "waraya", "esbo3", "elesbo3", "naharda", "ennaharda", "enaharda", "salet",
+  "sallet", "5adt", "khadt", "zakert", "ro7t", "srft", "dafa3", "egmaly", "elegmaly", "mortab", "moratab", "morattab", "flosy",
+  "e7ky", "e7kili", "2olli", "2olly", "eih", "eeh", "lessa",
 ]);
 // Too common in English to count for much on their own.
-const WEAK_FRANCO_WORDS = new Set(["el", "w", "fe", "fi", "da", "di", "ma3", "men", "law", "wala", "aw", "abl", "ba3d", "kan", "la"]);
+const WEAK_FRANCO_WORDS = new Set(["ahh", "aah", "el", "w", "fe", "fi", "da", "di", "ma3", "men", "law", "wala", "aw", "abl", "ba3d", "kan", "la"]);
 
 /**
  * Arabic letters → "arabic". Latin letters → "franco" when the words are Arabic, else

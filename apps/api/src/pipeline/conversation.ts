@@ -6,6 +6,7 @@ import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt"
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneReplyContext, userTexts } from "./context";
+import { answerQuestion, readQuestion } from "./questions";
 import { cleanPhoneReply, describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../persona/phone-reply";
 import { understandInput } from "./understand-input";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
@@ -181,6 +182,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let usage: Usage | null = null;
     let modelOk = false;
     let cloudInput: Parameters<FriendModel["respond"]>[0] | null = null;
+    /** Phone mode: what wrote the reply when the phone's model wasn't asked (counts only). */
+    let codeReply: string | null = null;
     const nowLocal = toLocalIso(now, user.timezone).slice(0, 16);
     if (brain) {
       // Phone brain (owner decision, 2026-11-25: "the AI is for chatting only, the tasks are math"):
@@ -188,7 +191,24 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       // The phone's model only writes the reply, told what was done or what to ask.
       const understood = understand(understandInput(ctx, message.text));
       const titles = Object.fromEntries(ctx.openItems.map((i) => [i.id, i.title]));
-      if (brain.output === undefined) {
+      // Questions about the user's own data ("what do I have this week?", "sagelt kam?") are
+      // answered by code with the real numbers: the small model can't read them reliably.
+      const question = !crisisKeyword && understood.chat && !understood.ask ? readQuestion(message.text) : null;
+      // When the code decided everything (something to save, change or ask), its own words are
+      // the reply at once: no second round trip and no on-phone model run (that took 20-40 s
+      // on kareem's Pixel 8 and left messages on "Sending…"). The model only writes small talk.
+      const codeDecides = !understood.chat || Boolean(understood.ask);
+      if (question || codeDecides) {
+        const decided = FriendResponse.safeParse({ reply: ["…"], create_items: understood.create_items, update_items: understood.update_items, save_memories: understood.save_memories, app_actions: understood.app_actions, crisis: understood.crisis });
+        if (!decided.success) log?.warn({ issues: decided.error.issues.length }, "rule engine output failed validation");
+        actions = question ? EMPTY_ACTIONS : decided.success ? decided.data : EMPTY_ACTIONS;
+        crisis ||= understood.crisis;
+        replies = question
+          ? answerQuestion(question, { items: ctx.openItems, ...(ctx.app ? { app: ctx.app } : {}), userId: user.id, tz: user.timezone, now }, script)
+          : templateReply(understood, nowLocal, script, titles);
+        modelOk = true;
+        codeReply = question ? `question:${question.kind}` : understood.ask ? "ask" : "done";
+      } else if (brain.output === undefined) {
         // First pass: nothing is stored; the phone sends the same message again with its reply.
         return {
           replies: [],
@@ -199,34 +219,36 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
             context: `${renderPhoneReplyContext(ctx)}\n${describeUnderstood(understood, nowLocal, titles)}`,
             history: history.slice(-PHONE_RECENT_MESSAGES),
             persona: PHONE_REPLY_VERSION,
+            lang: script,
             schema: phoneReplySchema(script) as unknown as Record<string, unknown>,
           },
         };
+      } else {
+        const said = PhoneOutput.safeParse(brain.output);
+        // Only bubbles in the right script, without Modern Standard words or leaked JSON (cleanPhoneReply).
+        const wrote = said.success ? cleanPhoneReply(said.data.reply, script) : [];
+        modelOk = wrote.length > 0;
+        const decided = FriendResponse.safeParse({
+          reply: wrote.length ? wrote : ["…"],
+          create_items: understood.create_items,
+          update_items: understood.update_items,
+          save_memories: understood.save_memories,
+          app_actions: understood.app_actions,
+          crisis: understood.crisis,
+        });
+        if (!decided.success) log?.warn({ issues: decided.error.issues.length }, "rule engine output failed validation");
+        actions = decided.success ? decided.data : EMPTY_ACTIONS;
+        // Small phone models raise the crisis flag on plain chat ("enta gamed ya zaki" did, in the
+        // phone eval), which would bury a friendly reply under helpline numbers. Their flag counts
+        // when the message shows distress (looksDistressed, a wider net than the crisis keywords);
+        // the keyword safety net above always counts.
+        crisis ||= understood.crisis || (said.success && said.data.crisis && looksDistressed(message.text));
+        // The model's words, unless it failed or promises a reminder the code didn't set: then the code's own words.
+        // When the code needs an answer (a missing time / amount / person, or "really cancel?") the reply
+        // must ask: a small model that only says "تمام" leaves the user thinking it was saved.
+        const skippedAsk = Boolean(understood.ask) && !wrote.some((w) => /[؟?]/.test(w));
+        replies = modelOk && !skippedAsk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
       }
-      const said = PhoneOutput.safeParse(brain.output);
-      // Only bubbles in the right script, without Modern Standard words or leaked JSON (cleanPhoneReply).
-      const wrote = said.success ? cleanPhoneReply(said.data.reply, script) : [];
-      modelOk = wrote.length > 0;
-      const decided = FriendResponse.safeParse({
-        reply: wrote.length ? wrote : ["…"],
-        create_items: understood.create_items,
-        update_items: understood.update_items,
-        save_memories: understood.save_memories,
-        app_actions: understood.app_actions,
-        crisis: understood.crisis,
-      });
-      if (!decided.success) log?.warn({ issues: decided.error.issues.length }, "rule engine output failed validation");
-      actions = decided.success ? decided.data : EMPTY_ACTIONS;
-      // Small phone models raise the crisis flag on plain chat ("enta gamed ya zaki" did, in the
-      // phone eval), which would bury a friendly reply under helpline numbers. Their flag counts
-      // when the message shows distress (looksDistressed, a wider net than the crisis keywords);
-      // the keyword safety net above always counts.
-      crisis ||= understood.crisis || (said.success && said.data.crisis && looksDistressed(message.text));
-      // The model's words, unless it failed or promises a reminder the code didn't set: then the code's own words.
-      // When the code needs an answer (a missing time / amount / person, or "really cancel?") the reply
-      // must ask: a small model that only says "تمام" leaves the user thinking it was saved.
-      const skippedAsk = Boolean(understood.ask) && !wrote.some((w) => /[؟?]/.test(w));
-      replies = modelOk && !skippedAsk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
     } else {
       const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
       // A failure that may come from the stored chat itself (a request the API refuses, or output that
@@ -309,6 +331,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
           model: (brain.model ?? "phone").slice(0, 64),
           persona: PHONE_REPLY_VERSION,
           valid: modelOk,
+          ...(codeReply ? { code_reply: codeReply } : {}),
           items_created: actions.create_items.length,
           items_updated: actions.update_items.length,
           memories_saved: actions.save_memories.length,

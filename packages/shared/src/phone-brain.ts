@@ -203,6 +203,8 @@ export const PhoneBrainRequest = z.object({
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string() })),
   /** Version of the phone persona, sent back with the answer for the cost/quality event. */
   persona: z.string(),
+  /** The reply's language, so the phone can check its model's reply (cleanPhoneReply) before sending it. */
+  lang: z.enum(["arabic", "english"]).optional(),
   /**
    * The JSON schema the phone's grammar should use. Set in reply mode (the code already did the
    * work, the model writes only {reply, crisis}); absent = PHONE_OUTPUT_JSON_SCHEMA (older servers).
@@ -246,4 +248,42 @@ export function phoneMessages(req: PhoneBrainRequest): { role: "system" | "user"
   const intro = { role: "user" as const, content: `<context>\n${req.context}\n</context>\nThe conversation follows. Answer only the last user message, as JSON.` };
   const ack = { role: "assistant" as const, content: "{\"reply\":[\"OK\"],\"crisis\":false}" };
   return [{ role: "system", content: req.system }, intro, ack, ...turns.map((t) => (t.role === "assistant" ? { ...t, content: JSON.stringify({ reply: [t.content], crisis: false }) } : t)), ...(last ? [last] : [])];
+}
+
+// Modern Standard words a small model slips into "Egyptian" replies (the persona forbids them).
+const MSA = /(^|[\s،.!؟])(هل|تريد|تريدين|سوف|لقد|ماذا|لماذا|الآن|لا يهم|شيء|يمكنني|أستطيع|معك|إليك|أنت بخير)(?=$|[\s،.!؟])/;
+
+/**
+ * The phone model's reply bubbles that are fit to send: JSON or notes that leaked into the text are
+ * cut off, and a bubble in the wrong script, with Modern Standard words, Franco or junk is dropped.
+ * Empty result = the code writes the reply (templateReply). Pure; the evals use the same check.
+ */
+export function cleanPhoneReply(reply: string[], lang: "arabic" | "english"): string[] {
+  const out: string[] = [];
+  for (const raw of reply) {
+    const text = raw
+      .replace(/\s*\|?\s*["“”]?\s*crisis["“”]?\s*:[\s\S]*$/i, "")
+      .replace(/\s*\((note|wait|the user|i need|translation)[\s\S]*$/i, "")
+      .replace(/[\s{}"“”|\[\]]+$/, "")
+      .trim();
+    if (text.length < 2 || text.length > 220) continue;
+    const arabic = /[\u0600-\u06FF]/.test(text);
+    if (lang === "english" ? arabic : !arabic || /[A-Za-z]{2,}/.test(text) || MSA.test(text)) continue;
+    if (/[{}|]/.test(text) || out.includes(text) || loops(text)) continue;
+    out.push(text);
+  }
+  return out.slice(0, 2);
+}
+
+/** A small model stuck in a loop ("بكرة؟ بكرة؟ بكرة؟ …"): any word of 3+ letters three or more times. */
+function loops(text: string): boolean {
+  const seen = new Map<string, number>();
+  for (const w of text.split(/\s+/)) {
+    const k = w.replace(/[؟?!.,،😊]/g, "");
+    if (k.length < 3) continue;
+    const n = (seen.get(k) ?? 0) + 1;
+    if (n >= 3) return true;
+    seen.set(k, n);
+  }
+  return false;
 }
