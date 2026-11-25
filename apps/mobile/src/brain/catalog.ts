@@ -53,11 +53,14 @@ export const VOICE_MODELS: VoiceModel[] = [
 
 export const ramGb = (bytes: number | null | undefined) => (bytes ? Math.round((bytes / 1024 ** 3) * 10) / 10 : null);
 
-/** The model to offer first: the smartest one this phone has room for (RAM unknown = the small one). */
-export function defaultChatModel(totalRamBytes: number | null | undefined): PhoneModel {
-  const gb = ramGb(totalRamBytes);
-  if (gb === null) return CHAT_MODELS.find((m) => m.tier === "small")!;
-  return CHAT_MODELS.find((m) => gb >= m.minRamGb) ?? CHAT_MODELS[CHAT_MODELS.length - 1]!;
+/**
+ * The model to offer first: the small one on every phone. Since the code decides the actions and the
+ * model only writes the reply (phone eval 2026-11-25, reply grammar + cleanPhoneReply), 0.8B scored
+ * 91.8% / 98.6% style against 2B's 92.4% / 100% at a little over half the time per reply
+ * (3.3 s vs 5.9 s on the runner) and less than half the download. 2B stays a choice in Settings.
+ */
+export function defaultChatModel(_totalRamBytes?: number | null): PhoneModel {
+  return CHAT_MODELS.find((m) => m.tier === "small")!;
 }
 
 export function chatModel(id: string | null | undefined, totalRamBytes?: number | null): PhoneModel {

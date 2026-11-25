@@ -175,6 +175,24 @@ export const PHONE_REPLY_JSON_SCHEMA = {
   required: ["reply", "crisis"],
 } as const;
 
+/**
+ * The reply schema for one turn, with the reply language enforced by the grammar itself. Small models
+ * answered Franco in English or Franco, leaked JSON ("| crisis":false}") and notes ("(Wait, ...") into
+ * the reply: an Arabic reply can't contain a Latin letter, an English one can't contain an Arabic
+ * letter, and neither can hold braces, quotes or pipes. Short bubbles also keep the phone fast.
+ */
+export function phoneReplySchema(lang: "arabic" | "english") {
+  const forbid = lang === "english" ? "\\u0600-\\u06FF" : "A-Za-z";
+  return {
+    type: "object",
+    properties: {
+      reply: { type: "array", items: { type: "string", pattern: `^[^${forbid}{}\\[\\]|"\\\\<>()]{2,160}$` }, minItems: 1, maxItems: 2 },
+      crisis: { type: "boolean" },
+    },
+    required: ["reply", "crisis"],
+  } as const;
+}
+
 /** What the server hands the phone when it wants the phone's model to answer (POST /messages → 202). */
 export const PhoneBrainRequest = z.object({
   /** Short persona for small models (apps/api/src/persona/phone.ts). */

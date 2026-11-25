@@ -4,15 +4,15 @@ import { chatModel, defaultChatModel, defaultVoiceModel, sizeLabel, threadsFor }
 const GB = 1024 ** 3;
 
 describe("phone model catalog", () => {
-  it("offers the smartest model the phone has room for", () => {
-    expect(defaultChatModel(8 * GB).id).toBe("qwen3.5-2b-q4");
+  it("offers the small model first on every phone (fast, nearly as good since the code decides)", () => {
+    expect(defaultChatModel(8 * GB).id).toBe("qwen3.5-0.8b-q4");
     expect(defaultChatModel(4 * GB).id).toBe("qwen3.5-0.8b-q4");
     expect(defaultChatModel(2 * GB).id).toBe("qwen3.5-0.8b-q4");
     expect(defaultChatModel(null).id).toBe("qwen3.5-0.8b-q4");
   });
   it("keeps a saved choice, else the default", () => {
     expect(chatModel("qwen3.5-2b-q4", 2 * GB).id).toBe("qwen3.5-2b-q4");
-    expect(chatModel("gone", 8 * GB).id).toBe("qwen3.5-2b-q4");
+    expect(chatModel("gone", 8 * GB).id).toBe("qwen3.5-0.8b-q4");
   });
   it("picks the voice model and labels sizes", () => {
     expect(defaultVoiceModel(6 * GB).id).toBe("whisper-small-q5");

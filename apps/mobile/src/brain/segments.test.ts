@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fractionOf, nextRange, pieceResult, SEGMENT_BYTES } from "./segments";
+import { fractionOf, MAX_TRIES, nextRange, pieceResult, retryWait, SEGMENT_BYTES } from "./segments";
 
 describe("model download pieces", () => {
   it("asks for the next piece from what is on disk", () => {
@@ -29,5 +29,15 @@ describe("model download pieces", () => {
     expect(fractionOf(SEGMENT_BYTES, 2 * SEGMENT_BYTES)).toBe(0.5);
     expect(fractionOf(3 * SEGMENT_BYTES, 2 * SEGMENT_BYTES)).toBe(0.99);
     expect(fractionOf(5, 0)).toBe(0);
+  });
+});
+
+describe("retryWait", () => {
+  it("backs off, then tries once a minute for about half an hour, then pauses", () => {
+    expect(retryWait(0)).toBe(2_000);
+    expect(retryWait(5)).toBe(45_000);
+    expect(retryWait(6)).toBe(60_000);
+    expect(retryWait(MAX_TRIES - 1)).toBe(60_000);
+    expect(retryWait(MAX_TRIES)).toBeNull();
   });
 });

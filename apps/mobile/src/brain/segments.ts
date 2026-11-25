@@ -5,8 +5,21 @@
  * tried again with growing waits. Whatever arrived is kept, so the next try carries on from there.
  */
 export const SEGMENT_BYTES = 32 * 1024 * 1024;
-/** Waits before trying a failed piece again (then the download pauses until the user or the network resumes it). */
+/** Waits before trying a failed piece again; after these, one try a minute (see retryWait). */
 export const RETRY_WAITS_MS = [2_000, 5_000, 10_000, 20_000, 30_000, 45_000];
+/**
+ * How many failed tries in a row before the download pauses. A phone moving between cell towers
+ * keeps "connected" the whole time, so no network event wakes a paused download: the old limit
+ * (6 tries, about 8 minutes with the 60 s read timeout) left it stuck at 29% on LTE. Now it keeps
+ * trying once a minute for about half an hour.
+ */
+export const MAX_TRIES = 36;
+
+/** The wait before try number `tries` (0-based count of failures so far), or null to pause. */
+export function retryWait(tries: number): number | null {
+  if (tries >= MAX_TRIES) return null;
+  return RETRY_WAITS_MS[tries] ?? 60_000;
+}
 
 /** The Range header for the next piece, given what is already on disk (and the file size when known). */
 export function nextRange(have: number, segment = SEGMENT_BYTES, total: number | null = null): string {

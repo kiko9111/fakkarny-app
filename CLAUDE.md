@@ -595,8 +595,10 @@ Rules:
 
 - Phone brain (Android test mode, owner ask 2026-11-25: "fully local to test, keep cloud Zaki"):
   Zaki's model can run on the phone (llama.rn, llama.cpp). Settings › "Zaki's brain (test)" picks
-  Cloud or On my phone and downloads the model once (src/brain/catalog.ts: Qwen3.5 2B Q4 for phones
-  with ≥5.5 GB RAM, Qwen3.5 0.8B otherwise; files in the app's documents folder). Protocol: POST
+  Cloud or On my phone and downloads the model once (src/brain/catalog.ts: Qwen3.5 0.8B Q4 first on
+  every phone, 2B a choice; files in the app's documents folder). Phone eval 2026-11-25 (reply
+  grammar forbids the wrong script, `cleanPhoneReply` drops Modern Standard / leaked JSON / looping
+  bubbles): 0.8B style 91.8% cases, 98.6% holdout3, 3.3 s; 2B 92.4% / 100%, 5.9 s (runner CPU). Protocol: POST
   /messages with `brain: "phone"` → rules may answer at once (201); otherwise 202 `needs_brain`
   {system, context, history} (persona/phone.ts, `renderPhoneContext`, last 6 messages) → the phone
   writes the compact PhoneOutput JSON under a JSON-schema grammar (packages/shared/src/phone-brain.ts)
@@ -642,7 +644,9 @@ Rules:
   10 min), downloads in the background and reloads when the user leaves the app.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
   "<id>.part", each retried with growing waits; a stopped download keeps its bytes ("paused"),
-  resumes by itself when the network returns, and the button says Resume.
+  resumes by itself when the network returns or the app comes back to the front, and the button says
+  Resume. A failed piece is retried once a minute for ~30 min before pausing (cell-tower switches fire
+  no network event).
 - Chat reliability (2026-11-25, kareem's real-phone test: most plain messages got "دماغي هنجت"):
   the model's history now always ends with the message being answered (`historyUpTo`; a history
   ending in Zaki's turn is a prefill, which the API refuses), `buildMessages` drops blank turns and

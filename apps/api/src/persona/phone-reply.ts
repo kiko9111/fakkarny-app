@@ -10,7 +10,7 @@ import type { ReplyLang } from "../pipeline/rules";
  *
  * WELLBEING is copied from the main persona word for word (CLAUDE.md: never removed or weakened).
  */
-export const PHONE_REPLY_VERSION = "phone-reply-2026-11-25.1";
+export const PHONE_REPLY_VERSION = "phone-reply-2026-11-25.2";
 
 const WELLBEING = PERSONA_PROMPT.slice(PERSONA_PROMPT.indexOf("# WELLBEING")).trim();
 
@@ -27,6 +27,13 @@ The app has already done the work. DONE lists exactly what it saved or changed t
 - If ASK is given, ask exactly that one short question and nothing else is saved yet.
 - Items marked "waiting for your OK" were not sent yet: say the user can confirm with the button.
 - Never promise anything that isn't in DONE.
+
+# Examples (Arabic replies)
+User: fakarny bokra 3 ad5ol el bank / DONE: Reminder «أدخل البنك» tomorrow at 3pm → {"reply":["تمام، هفكرك بكرة الساعة ٣ العصر بالبنك 👍"],"crisis":false}
+User: ana ta3ban awy el naharda / DONE: nothing → {"reply":["سلامتك يا صاحبي 💛 إيه اللي تاعبك؟"],"crisis":false}
+User: e7trm nfsak / DONE: nothing → {"reply":["عندك حق، حقك عليا 🙏 قولّي إيه اللي ضايقك وأنا أصلّحه"],"crisis":false}
+User: enta meen? / DONE: nothing → {"reply":["أنا زكي، صاحبك الذكاء الاصطناعي 😊 بفتكرلك حاجاتك وبفكرك بيها"],"crisis":false}
+Talk about what the user said, not about food or anything else they didn't mention.
 
 # Output
 Answer ONLY with one JSON object: {"reply":["..."],"crisis":false}
@@ -139,6 +146,44 @@ export function describeUnderstood(u: Understood, nowLocal: string, titles: Reco
   for (const m of u.save_memories) lines.push(`Remembered: ${m.content}`);
   for (const a of u.app_actions) lines.push(actionLine(a));
   return lines.length ? `DONE:\n${lines.map((l) => `- ${l}`).join("\n")}` : "DONE: nothing (just chat; don't say you saved anything)";
+}
+
+// Modern Standard words a small model slips into "Egyptian" replies (the persona forbids them).
+const MSA = /(^|[\s،.!؟])(هل|تريد|تريدين|سوف|لقد|ماذا|لماذا|الآن|لا يهم|شيء|يمكنني|أستطيع|معك|إليك|أنت بخير)(?=$|[\s،.!؟])/;
+
+/**
+ * The phone model's reply bubbles that are fit to send: JSON or notes that leaked into the text are
+ * cut off, and a bubble in the wrong script, with Modern Standard words, Franco or junk is dropped.
+ * Empty result = the code writes the reply (templateReply). Pure; the evals use the same check.
+ */
+export function cleanPhoneReply(reply: string[], lang: ReplyLang): string[] {
+  const out: string[] = [];
+  for (const raw of reply) {
+    const text = raw
+      .replace(/\s*\|?\s*["“”]?\s*crisis["“”]?\s*:[\s\S]*$/i, "")
+      .replace(/\s*\((note|wait|the user|i need|translation)[\s\S]*$/i, "")
+      .replace(/[\s{}"“”|\[\]]+$/, "")
+      .trim();
+    if (text.length < 2 || text.length > 220) continue;
+    const arabic = /[\u0600-\u06FF]/.test(text);
+    if (lang === "english" ? arabic : !arabic || /[A-Za-z]{2,}/.test(text) || MSA.test(text)) continue;
+    if (/[{}|]/.test(text) || out.includes(text) || loops(text)) continue;
+    out.push(text);
+  }
+  return out.slice(0, 2);
+}
+
+/** A small model stuck in a loop ("بكرة؟ بكرة؟ بكرة؟ …"): any word of 3+ letters three or more times. */
+function loops(text: string): boolean {
+  const seen = new Map<string, number>();
+  for (const w of text.split(/\s+/)) {
+    const k = w.replace(/[؟?!.,،😊]/g, "");
+    if (k.length < 3) continue;
+    const n = (seen.get(k) ?? 0) + 1;
+    if (n >= 3) return true;
+    seen.set(k, n);
+  }
+  return false;
 }
 
 /**

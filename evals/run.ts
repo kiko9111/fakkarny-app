@@ -18,11 +18,11 @@ import { fileURLToPath } from "node:url";
 import { anthropicApiKey, createAnthropicModel, costUsd, type Usage } from "../apps/api/src/ai/model";
 import type { Item, Message, User } from "../apps/api/src/generated/prisma/client";
 import { mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneReplyContext, type ConversationContext } from "../apps/api/src/pipeline/context";
-import { describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../apps/api/src/persona/phone-reply";
-import { extractPhoneJson, PHONE_REPLY_JSON_SCHEMA, phoneMessages } from "@fakkarni/shared";
-import { promisesReminder } from "../apps/api/src/pipeline/rules";
+import { cleanPhoneReply, describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../apps/api/src/persona/phone-reply";
+import { extractPhoneJson, phoneMessages, phoneReplySchema } from "@fakkarni/shared";
+import { helplineMessage, looksDistressed, looksLikeCrisis, promisesReminder } from "../apps/api/src/pipeline/rules";
 import { localToUtc } from "../apps/api/src/lib/time";
-import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
+import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
 import { understand, type Understood } from "../packages/shared/src/understand";
 import { CLARIFY_VERSION, clarifyMessages, cleanRewrite, pickUnderstood } from "../packages/shared/src/understand/clarify";
@@ -185,6 +185,8 @@ async function runPhone(cases: EvalCase[]) {
     const messages = phoneMessages({ system: PHONE_REPLY_PROMPT, context: `${renderPhoneReplyContext(ctx)}\n${describeUnderstood(u, c.now, titles)}`, history, persona: PHONE_REPLY_VERSION });
     const t0 = Date.now();
     let reply: string[] = [];
+    let modelCrisis = false;
+    const lang = c.expect.script === "english" ? "english" : "arabic";
     try {
       const res = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -193,7 +195,7 @@ async function runPhone(cases: EvalCase[]) {
           messages,
           temperature: 0.3,
           max_tokens: 260,
-          response_format: { type: "json_schema", json_schema: { name: "zaki", schema: PHONE_REPLY_JSON_SCHEMA } },
+          response_format: { type: "json_schema", json_schema: { name: "zaki", schema: phoneReplySchema(lang) } },
           chat_template_kwargs: { enable_thinking: false },
         }),
       });
@@ -201,16 +203,19 @@ async function runPhone(cases: EvalCase[]) {
       promptTokens += json.usage?.prompt_tokens ?? 0;
       outTokens += json.usage?.completion_tokens ?? 0;
       const raw = extractPhoneJson(json.choices?.[0]?.message?.content ?? "") as { reply?: unknown } | null;
-      reply = Array.isArray(raw?.reply) ? raw!.reply.filter((r): r is string => typeof r === "string" && r.trim().length > 0) : [];
+      reply = Array.isArray(raw?.reply) ? cleanPhoneReply(raw!.reply.filter((r): r is string => typeof r === "string"), lang) : [];
+      modelCrisis = (raw as { crisis?: unknown } | null)?.crisis === true;
     } catch {
       reply = [];
     }
     ms += Date.now() - t0;
-    const lang = c.expect.script === "english" ? "english" : "arabic";
     const usable = reply.length > 0 && !(promisesSomething(reply) && !didSomethingTimed(u));
     if (!usable) fellBack++;
-    const finalReply = usable ? reply : templateReply(u, c.now, lang, titles);
-    const output = { ...asOutput(c, u), reply: finalReply };
+    let finalReply = usable ? reply : templateReply(u, c.now, lang, titles);
+    // The server's crisis safety net, as in pipeline/conversation.ts: the helpline is always added.
+    const crisis = u.crisis || looksLikeCrisis(c.message) || (modelCrisis && looksDistressed(c.message));
+    if (crisis) finalReply = [...finalReply, helplineMessage(lang, helplineFor(c.tz))];
+    const output = { ...asOutput(c, u), reply: finalReply, crisis };
     results.push({ c, area: areaOf(c), score: scoreCase(c, output as never), reply: finalReply, modelReply: reply, output });
   }
   const n = results.length;

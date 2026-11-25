@@ -73,3 +73,17 @@ describe("phone brain", () => {
     expect(PHONE_OUTPUT_JSON_SCHEMA.required).toEqual(["reply", "crisis"]);
   });
 });
+
+describe("cleanPhoneReply", () => {
+  it("keeps good Egyptian bubbles, cuts leaked JSON and notes, drops wrong script and Modern Standard", async () => {
+    const { cleanPhoneReply } = await import("../persona/phone-reply");
+    expect(cleanPhoneReply(["أنا هنا يا بطل! | crisis\":false}”"], "arabic")).toEqual(["أنا هنا يا بطل!"]);
+    expect(cleanPhoneReply(["تمام 😊", "نتكلم بكرة؟ بكرة؟ بكرة؟ بكرة؟"], "arabic")).toEqual(["تمام 😊"]);
+    expect(cleanPhoneReply(["يا حبيبي يا غالي يا بطل"], "arabic")).toEqual(["يا حبيبي يا غالي يا بطل"]);
+    expect(cleanPhoneReply(["ممتاز يا كريم (Note: The user wrote"], "arabic")).toEqual(["ممتاز يا كريم"]);
+    expect(cleanPhoneReply(["Ok, I'll send it then!"], "arabic")).toEqual([]);
+    expect(cleanPhoneReply(["Ahly kesbo enharda! 😊 بكرة"], "arabic")).toEqual([]);
+    expect(cleanPhoneReply(["هل تريد أن نطبخ كيك معاً؟", "تمام 💛"], "arabic")).toEqual(["تمام 💛"]);
+    expect(cleanPhoneReply(["Sure, 4pm it is!", "تمام"], "english")).toEqual(["Sure, 4pm it is!"]);
+  });
+});

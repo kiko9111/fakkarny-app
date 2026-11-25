@@ -1,12 +1,12 @@
 import type { FastifyBaseLogger } from "fastify";
-import { FriendResponse, PHONE_REPLY_JSON_SCHEMA, PhoneOutput, TRACKER_TEMPLATES, understand, type TrackerKind } from "@fakkarni/shared";
+import { FriendResponse, phoneReplySchema, PhoneOutput, TRACKER_TEMPLATES, understand, type TrackerKind } from "@fakkarni/shared";
 import { Prisma } from "../generated/prisma/client";
 import { addUsage, costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
 import { loadContext, mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneReplyContext, userTexts } from "./context";
-import { describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../persona/phone-reply";
+import { cleanPhoneReply, describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../persona/phone-reply";
 import { understandInput } from "./understand-input";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
@@ -192,12 +192,13 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
             context: `${renderPhoneReplyContext(ctx)}\n${describeUnderstood(understood, nowLocal, titles)}`,
             history: history.slice(-PHONE_RECENT_MESSAGES),
             persona: PHONE_REPLY_VERSION,
-            schema: PHONE_REPLY_JSON_SCHEMA as unknown as Record<string, unknown>,
+            schema: phoneReplySchema(script) as unknown as Record<string, unknown>,
           },
         };
       }
       const said = PhoneOutput.safeParse(brain.output);
-      const wrote = said.success ? said.data.reply.map((r) => r.trim()).filter(Boolean).slice(0, 3) : [];
+      // Only bubbles in the right script, without Modern Standard words or leaked JSON (cleanPhoneReply).
+      const wrote = said.success ? cleanPhoneReply(said.data.reply, script) : [];
       modelOk = wrote.length > 0;
       const decided = FriendResponse.safeParse({
         reply: wrote.length ? wrote : ["…"],
