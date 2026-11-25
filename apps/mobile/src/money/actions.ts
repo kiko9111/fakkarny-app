@@ -17,6 +17,9 @@ export type Made = { section: MoneySection; existed: boolean };
 
 /** Sections made on this phone whose create is still on its way: an add waits for it. */
 const creating = new Map<string, Promise<unknown>>();
+/** A server from before 2026-11-25 ignores the phone's id and picks its own: phone id → server id. */
+const aliases = new Map<string, string>();
+export const realSectionId = (id: string) => aliases.get(id) ?? id;
 
 /** A new section, or the one the user already has with that name and kind ("Salary" = "salary"). */
 export function makeSection(input: { name: string; kind: MoneyKind; budget: number | null; circle_id: string | null }, cb: { onFailed: () => void; onQueued?: () => void }): Made {
@@ -28,6 +31,7 @@ export function makeSection(input: { name: string; kind: MoneyKind; budget: numb
   void write.finally(() => creating.delete(id)).catch(() => {});
   void write
     .then((saved) => {
+      if (saved.id !== id) aliases.set(id, saved.id);
       const o = peekMoneySaved();
       if (o) saveMoney(withSection(o, saved));
       saveSection({ ...(peekSectionSaved(saved.id) ?? detailFromSection(saved)), section: saved });
@@ -50,17 +54,17 @@ export function logAmount(sectionId: string, input: { amount: number; note: stri
   // Straight after making the section (a receipt into a new section): the add goes after the create.
   const send = pending
     ? pending.then(
-        () => addMoney(sectionId, body),
+        () => addMoney(realSectionId(sectionId), body),
         (err: unknown) => {
           if (!(err instanceof QueuedOffline)) throw err;
           queueAddMoney(sectionId, body);
           throw err;
         },
       )
-    : addMoney(sectionId, body);
+    : addMoney(realSectionId(sectionId), body);
   void send
     .then((res) => {
-      const d = peekSectionSaved(sectionId);
+      const d = peekSectionSaved(res.section.id);
       if (d && res.entry) saveSection({ ...withEntry(d, res.entry), section: res.section });
       const o = peekMoneySaved();
       if (o) saveMoney(withSection(o, res.section));

@@ -7,7 +7,7 @@ import { fill } from "@/circles/logic";
 import { formatMoney, parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
 import { deleteSection, forgetSection, getSection, peekMoney, peekMoneySaved, peekSection, peekSectionSaved, saveMoney, saveSection, updateSection } from "@/lib/api";
-import { logAmount, removeAmount } from "@/money/actions";
+import { logAmount, realSectionId, removeAmount } from "@/money/actions";
 import { budgetState, detailFromSection, monthLabel, toggleSplit, withoutSection, withSection } from "@/money/logic";
 import { HttpError } from "@/sync/queue";
 import { Badge, Button, Card, Chip, confirm, IconButton, Note, notify, palette, ProgressBar, Screen, SectionHeader, space, Text, TextField } from "@/ui";
@@ -22,7 +22,9 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { week
 
 /** One section: this month's total against its budget, quick adding, entries, and for a shared book, who pays whom. */
 export default function SectionScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
+  // The server's id once it has answered (an older server picks its own for a section made here).
+  const [id, setId] = useState(() => realSectionId(params.id));
   // Draws at once: the saved copy of this screen, else the row the Daftar list already has.
   const first = () => peekSection(id) ?? fromList(id);
   const [data, setData] = useState<SectionDetail | null>(first);
@@ -43,14 +45,25 @@ export default function SectionScreen() {
       setState("ok");
     } catch (err) {
       // A section made on this phone that the server hasn't got yet is not "gone".
-      if (err instanceof HttpError && err.status === 404 && !peekMoney()?.sections.some((x) => x.id === id)) setState("gone");
+      if (err instanceof HttpError && err.status === 404 && realSectionId(params.id) === id && !peekMoney()?.sections.some((x) => x.id === id)) setState("gone");
       else setState("failed");
       setData((d) => d ?? first());
     }
-  }, [id]);
+  }, [id, params.id]);
   useLive(load);
   // A change made here or by Zaki in the chat: redraw from the phone's copy at once, then refresh.
-  useEffect(() => dataChanged.subscribe(() => setData((d) => peekSection(id) ?? d)), [id]);
+  useEffect(
+    () =>
+      dataChanged.subscribe(() => {
+        const real = realSectionId(params.id);
+        if (real !== id) {
+          setId(real);
+          setState("ok");
+        }
+        setData((d) => peekSection(real) ?? d);
+      }),
+    [id, params.id],
+  );
 
   const amount = parseAmount(amountText);
   const add = () => {
