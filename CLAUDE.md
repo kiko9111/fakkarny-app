@@ -642,7 +642,9 @@ Rules:
   10 min), downloads in the background and reloads when the user leaves the app.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
   "<id>.part", each retried with growing waits; a stopped download keeps its bytes ("paused"),
-  resumes by itself when the network returns, and the button says Resume.
+  resumes by itself when the network returns or the app comes back to the front, and the button says
+  Resume. A failed piece is retried once a minute for ~30 min before pausing (cell-tower switches fire
+  no network event).
 - Chat reliability (2026-11-25, kareem's real-phone test: most plain messages got "دماغي هنجت"):
   the model's history now always ends with the message being answered (`historyUpTo`; a history
   ending in Zaki's turn is a prefill, which the API refuses), `buildMessages` drops blank turns and

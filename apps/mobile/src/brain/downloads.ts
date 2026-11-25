@@ -1,3 +1,4 @@
+import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
 import { createEmitter } from "@/lib/emitter";
 import { downloadModel, hasModel, partialBytes, type Download } from "./files";
@@ -71,11 +72,19 @@ export function cancelDownload(id: string) {
 }
 
 let watching = false;
+const resumeInterrupted = () => {
+  for (const [id, d] of interrupted) void startDownload(id, d.url, d.bytes).catch(() => {});
+};
+/** Carry on when the network comes back, and when the app comes back to the front (Android drops
+ * the connection of an app in the background, and a switch between cell towers fires no network event). */
 function watchNetwork() {
   if (watching) return;
   watching = true;
   addNetworkStateListener(({ isConnected, isInternetReachable }) => {
     if (!isConnected || isInternetReachable === false) return;
-    for (const [id, d] of interrupted) void startDownload(id, d.url, d.bytes).catch(() => {});
+    resumeInterrupted();
+  });
+  AppState.addEventListener("change", (state) => {
+    if (state === "active") resumeInterrupted();
   });
 }

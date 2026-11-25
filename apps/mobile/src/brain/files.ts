@@ -1,5 +1,5 @@
 import { Directory, File, FileMode, Paths } from "expo-file-system";
-import { fractionOf, nextRange, pieceResult, RETRY_WAITS_MS, SEGMENT_BYTES } from "./segments";
+import { fractionOf, nextRange, pieceResult, retryWait, SEGMENT_BYTES } from "./segments";
 
 /**
  * Downloaded models live in the app's own documents folder (deleted with the app, never backed up
@@ -130,8 +130,9 @@ export function downloadModel(id: string, url: string, expected: number, onProgr
         if (result === "done") break;
       } catch (err) {
         if (stopped) throw err;
-        if (tries >= RETRY_WAITS_MS.length) throw err;
-        await wait(RETRY_WAITS_MS[tries++]!, () => stopped);
+        const ms = retryWait(tries++);
+        if (ms === null) throw err;
+        await wait(ms, () => stopped);
       }
     }
     if (piece.exists) piece.delete();
