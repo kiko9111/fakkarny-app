@@ -643,6 +643,16 @@ Rules:
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
   "<id>.part", each retried with growing waits; a stopped download keeps its bytes ("paused"),
   resumes by itself when the network returns, and the button says Resume.
+- Chat reliability (2026-11-25, kareem's real-phone test: most plain messages got "دماغي هنجت"):
+  the model's history now always ends with the message being answered (`historyUpTo`; a history
+  ending in Zaki's turn is a prefill, which the API refuses), `buildMessages` drops blank turns and
+  broken emoji halves, and a refused or unparsable call is retried once with only the current
+  message. Every failure writes an `ai_error` event {status, kind, attempt} (never text); recoveries
+  write `ai_recovered`. The Anthropic client waits 25 s with one retry so a reply lands inside the
+  phone's 60 s wait. When every app action of a turn fails, the reply is the cards' own words
+  (`honestReply`), never the model's "I'll do it". daftar_cancel / daftar_settle with no Daftar entry
+  close a matching open debt item (undo `item_status`). Tracker asks wait 10 min after the user's
+  last message.
 - Android builds without the EAS quota: .github/workflows/android-local-build.yml runs `eas build
   --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
   and attaches the APK to a GitHub pre-release.

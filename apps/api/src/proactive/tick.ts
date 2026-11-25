@@ -320,8 +320,13 @@ export async function sendMemoryMoment(deps: TickDeps, user: User, now: Date): P
   return true;
 }
 
+const MID_CHAT_MIN = 10;
+
 /** Tracker questions at the times the user picked in the builder. Template words, no AI call. */
 export async function askTrackers(deps: TickDeps, user: User, now: Date): Promise<boolean> {
+  // Not in the middle of a conversation: a question dropped between the user's messages reads as
+  // Zaki ignoring them. It waits for a quiet moment (the ask window is long enough).
+  if (user.lastUserMessageAt && now.getTime() - user.lastUserMessageAt.getTime() < MID_CHAT_MIN * 60_000) return false;
   const trackers = await deps.prisma.tracker.findMany({
     where: { userId: user.id, NOT: { askTimes: { isEmpty: true } } },
     include: { entries: { where: { at: { gte: new Date(now.getTime() - 26 * 3600_000) } }, select: { at: true, amount: true } } },
