@@ -164,5 +164,15 @@ export async function moneyFastPath(prisma: PrismaClient, user: User, text: stri
   }
   const added = await addEntry(prisma, section, user, { amount: hit.amount, note: hit.note, source: "chat" }, now);
   await prisma.event.create({ data: { userId: user.id, name: "money_logged", propsJson: { via: "chat", shared: Boolean(section.circleId) } } });
-  return { text: loggedMoneyLine(lang, section.name, hit.amount, added.monthTotal, hit.kind), notices: added.notices };
+  // A done card with Undo, so "تراجع" (or the button) takes it back like any other chat change.
+  const card: StoredCard = {
+    id: randomUUID(),
+    kind: "log_money",
+    status: "done",
+    label: LABEL.moneyLogged(lang, hit.kind, hit.amount, section.name, added.monthTotal),
+    route: `/money/${section.id}`,
+    lang,
+    undo: { kind: "money_entry", entryId: added.entry.id },
+  };
+  return { text: loggedMoneyLine(lang, section.name, hit.amount, added.monthTotal, hit.kind), notices: added.notices, cards: [card] };
 }

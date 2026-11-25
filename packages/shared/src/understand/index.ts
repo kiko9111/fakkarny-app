@@ -72,7 +72,8 @@ interface Toks {
 }
 
 function tokenize(msg: string): Toks {
-  const padded = msg.replace(/([,،!?؟;()"“”«»])/g, " $1 ").replace(/(\D)\.(\s|$)/g, "$1 $2").replace(/[ـ]/g, "");
+  // "1,250" / "١،٥٠٠" are one number: join thousands before commas become their own tokens.
+  const padded = msg.replace(/([0-9٠-٩])[٬,،]([0-9٠-٩]{3})(?![0-9٠-٩])/g, "$1$2").replace(/([,،!?؟;()"“”«»])/g, " $1 ").replace(/(\D)\.(\s|$)/g, "$1 $2").replace(/[ـ]/g, "");
   const orig = padded.split(/\s+/).filter(Boolean);
   const f = orig.map(fold);
   const starts: number[] = [];
@@ -186,8 +187,39 @@ function sameName(w: string, name: string): boolean {
   if (a === b) return true;
   const ca = SYN_INDEX.get(a) ?? SYN_INDEX.get(stem(FRANCO_WORDS[a] ?? ""));
   const cb = SYN_INDEX.get(b) ?? SYN_INDEX.get(stem(FRANCO_WORDS[b] ?? ""));
-  return Boolean(ca && ca === cb);
+  if (ca && ca === cb) return true;
+  return sameSound(w, name);
 }
+
+// Names across scripts by their consonants ("Sami" ~ "سامي", "Nada" ~ "ندى", "abdelkareem" ~ "عبد الكريم").
+const AR_SOUND: Record<string, string> = {
+  ب: "b", ت: "t", ث: "t", ج: "g", ح: "h", خ: "k", د: "d", ذ: "z", ر: "r", ز: "z", س: "s", ش: "s", ص: "s", ض: "d", ط: "t", ظ: "z",
+  غ: "g", ف: "f", ق: "k", ك: "k", ل: "l", م: "m", ن: "n", ه: "", ة: "", ع: "", ء: "", ا: "", أ: "", إ: "", آ: "", و: "", ي: "", ى: "", ئ: "", ؤ: "",
+};
+function soundKey(s: string): string {
+  const x = fold(s).replace(/\s+/g, "");
+  let k = "";
+  if (/[؀-ۿ]/.test(x)) for (const ch of x) k += AR_SOUND[ch] ?? "";
+  else
+    k = x
+      .replace(/kh|5/g, "k").replace(/sh|ch/g, "s").replace(/th/g, "t").replace(/gh/g, "g").replace(/q/g, "k").replace(/j/g, "g").replace(/c/g, "k")
+      .replace(/7/g, "h").replace(/[^a-z]/g, "").replace(/h(?=$|[^aeiou])/g, (m, i) => (i === 0 ? m : "")).replace(/[aeiouyw]/g, "");
+  return k.replace(/(.)\1+/g, "$1");
+}
+function sameSound(w: string, name: string): boolean {
+  const latin = /[a-z]/i.test(w) && !/[؀-ۿ]/.test(w);
+  const nameLatin = /[a-z]/i.test(name) && !/[؀-ۿ]/.test(name);
+  if (latin === nameLatin) return false; // same script: plain comparison above already decided
+  const word = latin ? w : name;
+  if (word.replace(/[^a-z0-9]/gi, "").length < 4 || FRANCO_WORDS[fold(word)] || STOP.has(fold(word)) || TITLE_DROP_FR.test(fold(word)) || TITLE_DROP_EN.test(fold(word))) return false;
+  const a = soundKey(w);
+  const b = soundKey(name);
+  if (a.length < 2 || a !== b) return false;
+  // Two consonants match too much English ("money" ~ "منى"): then only a capitalised name, or Franco.
+  return a.length >= 3 || /^[A-Z]/.test(word) || messageScript === "franco";
+}
+/** The script of the message being read (set by `understand`; the engine is synchronous). */
+let messageScript: Script = "arabic";
 
 function findMember(t: Toks, input: UnderstandInput, from = 0): { m: Member; i: number } | null {
   const ms = members(input);
@@ -203,7 +235,8 @@ function findCircle(t: Toks, input: UnderstandInput): { name: string; kind?: str
   let best: { name: string; kind?: string; i: number; score: number } | null = null;
   for (const c of circles) {
     const words = c.name.split(/\s+/).map(stem).filter((w) => w.length >= 2);
-    const en = words.map((w) => ({ جيم: "gym", بيت: "beit" })[w as "جيم"] ?? w);
+    const EN: Record<string, string[]> = { جيم: ["gym"], بيت: ["beit", "bet", "home", "house", "family"], شغل: ["work", "job", "shoghl", "sho8l", "office"], عيله: ["family", "3eila", "3ela", "3eela", "3ayla", "3eyla"], صحاب: ["sa7ab", "s7ab", "friends", "as7ab"], كليه: ["kolleya", "kolya", "kollya", "college", "uni"], شله: ["gang", "shella"], جامعه: ["uni", "university", "college", "gam3a"], نادي: ["club", "nady", "nadi"] };
+    const en = words.flatMap((w) => EN[w] ?? [w]);
     for (let i = 0; i < t.orig.length; i++) {
       const raw = t.orig[i]!.replace(/^(lel|lil|le|l)(?=\p{L}{2,})/u, "");
       const w0 = stem(raw);
@@ -262,9 +295,9 @@ function cleanWord(orig: string, script: Script): string {
   return orig;
 }
 
-const TITLE_DROP_AR = /^(فكرني|فكريني|ذكرني|نبهني|عندي|عندنا|لازم|محتاج|محتاجه|عايز|عايزه|ناوي|ناويه|هروح|هعدي|انا|ان|اني|إن|إني|يوم|الساعه|الساعة|ساعه|بتاع|بتاعت|بتاعي|بتاعتي|ميعاد|موعد|ده|دي|دا|كمان|بعد|قبل|و|في|من|على|علي|عن|مع|ل|ب|بس|يا|خلاص|اعملي|اعمل|حط|سجل|منبه|منبّه|صحيني|اشوف|عشان|علشان|يعني|اوي|شويه|جدا|يتدفع|تتدفع)$/;
-const TITLE_DROP_FR = /^(fakarny|fakkarny|fkrny|fakarni|fakkarni|3andy|3andi|3ndy|lazem|lazm|me7tag|3ayez|3ayza|ha|h|hroo7|hro7|ana|yom|el|al|sa3a|elsa3a|bta3|bta3t|bta3ty|bta3y|ma3ad|m3ad|da|dy|de|kaman|ba3d|abl|w|fe|fel|men|3ala|3al|b|bel|l|lel|le|ya|5alas|keda|ba2a|3ashan|ghareeb|gedan|awi|shwaya|yetedfe3|tetedfe3|sa7eeny|monabeh|mnabeh)$/i;
-const TITLE_DROP_EN = /^(i|i'm|im|i've|me|my|you|your|the|a|an|to|of|for|on|at|in|by|is|are|am|be|was|it|its|and|or|with|about|please|pls|just|really|need|needs|have|has|had|remind|reminder|don't|dont|let|forget|should|must|got|gotta|going|will|would|can|could|that|this|up|hopefully|finally|again|ugh|so|some|sometime|soon|next|every|then|also|there|late|fee|if|miss|weird|making|noise|is|due|coming|book)$/i;
+const TITLE_DROP_AR = /^(زكي|يازكي|فكرني|فكريني|ذكرني|نبهني|عندي|عندنا|لازم|محتاج|محتاجه|عايز|عايزه|ناوي|ناويه|هروح|هعدي|انا|ان|اني|إن|إني|يوم|الساعه|الساعة|ساعه|بتاع|بتاعت|بتاعي|بتاعتي|ميعاد|موعد|ده|دي|دا|كمان|بعد|قبل|و|في|من|على|علي|عن|مع|ل|ب|بس|يا|خلاص|اعملي|اعمل|حط|سجل|منبه|منبّه|صحيني|اشوف|عشان|علشان|يعني|اوي|شويه|جدا|يتدفع|تتدفع)$/;
+const TITLE_DROP_FR = /^(zaki|zakii|fakarny|fakkarny|fkrny|fakarni|fakkarni|3andy|3andi|3ndy|lazem|lazm|me7tag|3ayez|3ayza|ha|h|hroo7|hro7|ana|yom|el|al|sa3a|elsa3a|bta3|bta3t|bta3ty|bta3y|ma3ad|m3ad|da|dy|de|kaman|ba3d|abl|w|fe|fel|men|3ala|3al|b|bel|l|lel|le|ya|5alas|keda|ba2a|3ashan|ghareeb|gedan|awi|shwaya|yetedfe3|tetedfe3|sa7eeny|monabeh|mnabeh)$/i;
+const TITLE_DROP_EN = /^(zaki|i|i'm|im|i've|me|my|you|your|the|a|an|to|of|for|on|at|in|by|is|are|am|be|was|it|its|and|or|with|about|please|pls|just|really|need|needs|have|has|had|remind|reminder|don't|dont|let|forget|should|must|got|gotta|going|will|would|can|could|that|this|up|hopefully|finally|again|ugh|so|some|sometime|soon|next|every|then|also|there|late|fee|if|miss|weird|making|noise|is|due|coming|book)$/i;
 
 function titleOf(t: Toks, script: Script, from = 0, to = t.orig.length): string {
   const words: string[] = [];
@@ -286,15 +319,15 @@ function titleOf(t: Toks, script: Script, from = 0, to = t.orig.length): string 
 // Vocabulary (folded; Arabic, Franco, English)
 // ======================================================================================
 
-const REMIND = "tfakarny|tfkrny|tfakkarny|tefakarny|tfakarni|تفكرني|تفكريني|فكرني|فكريني|ذكرني|ذكريني|نبهني|نبهيني|متنسانيش|متخلينيش انسي|fakarny|fakkarny|fkrny|fakarni|fakkarni|fakrny|remind me|remind|don't let me forget|dont let me forget|don't forget|reminder";
+const REMIND = "remember to|need to remember|افتكر|aftekr|aftker|tfakarny|tfkrny|tfakkarny|tefakarny|tfakarni|تفكرني|تفكريني|فكرني|فكريني|ذكرني|ذكريني|نبهني|نبهيني|متنسانيش|متخلينيش انسي|fakarny|fakkarny|fkrny|fakarni|fakkarni|fakrny|remind me|remind|don't let me forget|dont let me forget|don't forget|reminder";
 const OBLIGE = "is due|are due|due on|due by|لازم|محتاج اني|محتاج|محتاجه|ناوي|ناويه|مفروض|المفروض|lazem|lazm|me7tag|na2wy|el mafroud|need to|have to|has to|must|should|gotta|got to|i need|need";
-const APPT = "دكتور|الدكتور|دكتوره|ميعاد|موعد|كشف|اجتماع|ميتنج|امتحان|انترفيو|مقابله|فرح|درس|تمرين|طياره|رحله|سفر|doctor|doktor|dentist|dermatologist|appointment|meeting|exam|interview|flight|class|lesson|training|mo2abla|tayara|emte7an|kashf|dars|tamreen";
+const APPT = "عيد ميلاد|عيد جواز|birthday|anniversary|3eed melad|3id milad|دكتور|الدكتور|دكتوره|ميعاد|موعد|كشف|اجتماع|ميتنج|امتحان|انترفيو|مقابله|فرح|درس|تمرين|طياره|رحله|سفر|doctor|doktor|dentist|dermatologist|appointment|meeting|exam|interview|flight|class|lesson|training|mo2abla|tayara|emte7an|kashf|dars|tamreen";
 const FOLLOW = "دكتور|الدكتور|دكتوره|كشف|امتحان|انترفيو|مقابله|doctor|doktor|dentist|dermatologist|exam|interview|mo2abla|emte7an|kashf|asnan|سنان|اسنان";
-const IMPORTANT = "دوا|الدوا|دواء|علاج|dawa|pill|pills|medicine|meds|antibiotic|insulin|انسولين|طياره|طيارتي|رحله|flight|tayara|امتحان|امتحاني|exam|emte7an|انترفيو|interview|مقابله|mo2abla|غرامه|gharama|late fee|هيفصل|هيقطع|deadline|urgent|ضروري|مهم";
+const IMPORTANT = "دوا|الدوا|دواء|علاج|dawa|pill|pills|medicine|meds|antibiotic|insulin|انسولين|طياره|طيارتي|رحله|flight|tayara|امتحان|امتحاني|exam|emte7an|انترفيو|interview|مقابله|mo2abla|غرامه|gharama|late fee|هيفصل|هيقطع|deadline|urgent|ضروري|مهم|بوتاجاز|البوتاجاز|الفرن|الغاز|botagaz|el forn|stove|oven|the gas";
 const ALARM = "منبه|منبّه|صحيني|صحّيني|alarm|wake me|mnabeh|monabeh|menabeh|sa7eny|sa7eeny|sa7any";
 const DONE_VERB =
   "خلصت|خلصنا|خلصتها|خلصته|خلاص|عملت|عملتها|كلمت|جبت|جبته|جبتها|بعت|بعته|بعتها|دفعت|دفعتها|اشتريت|روحت|رحت|اخدت|اخدته|خدت|5alast|5alas|5las|5lst|klmt|kalemt|kallemt|gebt|ba3att|ba3at|b3t|dafa3t|eshtarait|ro7t|done|finished|did|called|paid|sent|bought|got|picked up|picked|took|already|completed";
-const MOVE_VERB = "اتاجل|اتأجل|اتأخر|اجل|اجلت|أجل|خليه|خليها|خلي|غير|غيرت|بدل|انقل|حول|et2agel|et2a5ar|2agel|2agelt|5aleeh|5aleeha|5ali|ghayar|moved|move|postpone|postponed|reschedule|rescheduled|push|pushed|change|changed|instead";
+const MOVE_VERB = "اخرها|اخره|اخرهم|اجلها|اجله|غيرها|غيره|a5arha|a5aro|a5ro|a5arhom|2agelha|2agelo|ghayarha|ghayaro|اتاجل|اتأجل|اتأخر|اجل|اجلت|أجل|خليه|خليها|خلي|غير|غيرت|بدل|انقل|حول|et2agel|et2a5ar|2agel|2agelt|5aleeh|5aleeha|5ali|ghayar|moved|move|postpone|postponed|reschedule|rescheduled|push|pushed|change|changed|instead";
 const STOP_REMIND = "مش عايز تفكرني|مش عايزك تفكرني|متفكرنيش تاني|msh 3ayez tfakarny|msh 3ayzak tfakarny|i don't want reminders|بطل تفكرني|متفكرنيش|بلاش تفكرني|وقف التذكير|كفايه تفكرني|batal tfakarny|batal tfakkarny|matfakarneesh|stop reminding|don't remind|dont remind|no more reminders";
 const CANCEL = "الغي|الغيه|الغيها|ألغي|امسح|امسحه|امسحها|شيل|شيله|شيلها|cancel|delete|remove|forget|olghy|olgheeh|olgheha|elghy|ems7|ems7o|sheel";
 const YES = "اه|ايوه|ايوا|اكيد|تمام|ماشي|اوك|اوكي|حاضر|موافق|ابعت|ابعتها|صح|yes|yeah|yep|sure|ok|okay|aywa|aiwa|ah|tamam|mashy|maashi|akeed|7ader|olgheeh|olgheha|sa7";
@@ -336,6 +369,7 @@ export function understand(input: UnderstandInput): Understood {
   const text = input.text.trim();
   if (!text) return { ...out, chat: true };
   const script = out.script;
+  messageScript = script;
   const now = { local: input.nowLocal };
   const history = input.history ?? [];
   const lastAssistant = [...history].reverse().find((h) => h.role === "assistant")?.text ?? "";
@@ -368,7 +402,8 @@ export function understand(input: UnderstandInput): Understood {
   if (answered) return out;
 
   // 2. Several requests in one message: "سجل ٢٠٠ أكل وفكرني بالدكتور بكرة ٦".
-  splitRequests(text).forEach((part, i) => handleClause(part, input, out, i > 0));
+  const parts = splitRequests(text);
+  parts.forEach((part, i) => handleClause(part, input, out, i > 0, parts.length > 1));
   if (!out.create_items.length && !out.update_items.length && !out.app_actions.length && !out.save_memories.length && !out.ask) out.chat = true;
   return out;
 }
@@ -377,6 +412,10 @@ const CRISIS = [
   /\b(kill myself|killing myself|suicid\w*|end my life|want to die|wanna die|hurt myself|self[- ]harm|no reason to live)\b/i,
   /(انتحر|انتحار|اقتل نفسي|عايز اموت|عايزه اموت|عاوز اموت|نفسي اموت|انهي حياتي|اذي نفسي|مش عايز اعيش|مش عايزه اعيش|مبقتش عايز اعيش|مبقتش عايزه اعيش)/,
   /\b(ant[ae]?7ar|a2tel nafsy|a2tel nafsi|3ayez amoot|3ayza amoot|nefsy amoot|nefsi amoot|mesh 3ayez a3eesh|msh 3ayez a3ish|msh 3ayez a3eesh)\b/i,
+  // Same additions as the server's net (apps/api/src/pipeline/rules.ts, QA run 2026-11-25).
+  /\b(?:(?:do ?n[o']?t|dont|don't) want to (?:be alive|exist)|(?:do ?n[o']?t|dont|don't) want to (?:live|wake up)(?: anymore| any more| ever again)?(?=\s*(?:[.!,?…]|$))|(?:do ?n[o']?t|dont|don't) want to (?:live|wake up) (?:anymore|any more|ever again)|wish i (?:was|were) dead|better off dead|end it all|hurting myself|harm myself|cut myself|take my (?:own )?life|not worth living)\b/i,
+  /(مش عاوز(?:ه|ة)? اعيش|نفسي اخلص من حياتي|اخلص من حياتي|اخلص من نفسي|اموت نفسي|ياريتني اموت|يا ريتني اموت|ياريتني ميت|اقطع نفسي|مش عايز(?:ه|ة)? اصحى تاني)/,
+  /\b(a5las men 7ayati|a5les men 7ayati|a5las men nafsy|amawet nafsy|amowet nafsy|yaretny amoot|ya retny amoot|msh 3ayz a3eesh|mesh 3ayza a3eesh|msh 3ayza a3eesh)\b/i,
 ];
 export function isCrisis(text: string): boolean {
   const f = fold(text);
@@ -385,7 +424,7 @@ export function isCrisis(text: string): boolean {
 
 function splitRequests(text: string): string[] {
   const parts = text.split(
-    /\s+(?=(?:و|w |and |, ?and )?(?:فكرني|سجل|اعملي|fakarny|sagel|sgl|remind me|log )(?![\p{L}]))|\s*(?:وبعدين|و بعدين|w ba3den|w b3den|and then|, then)\s*|,?\s+(?=and (?:i have|i need|i've got|i gotta|remind)(?![\p{L}]))|\s+(?=و(?:عندي|لازم)(?![\p{L}])(?!.*(?:ارجعهم|ارجعها|ارجعه|أرجعهم|أرجعها|أرجعه|ادفعهم|أدفعهم|اسددهم)))|\s+(?=w (?:3andy|3andi|lazem|lazm)(?![\p{L}]))/iu,
+    /\s+(?=(?:و|w |and |, ?and )?(?:فكرني|سجل|اعملي|fakarny|sagel|sgl|remind me|log )(?![\p{L}]))|\s*(?:وبعدين|و بعدين|w ba3den|w b3den|and then|, then)\s*|,?\s+(?=and (?:i have|i need|i've got|i gotta|remind)(?![\p{L}]))|\s+(?=و(?:عندي|لازم)(?![\p{L}])(?!.*(?:ارجعهم|ارجعها|ارجعه|أرجعهم|أرجعها|أرجعه|ادفعهم|أدفعهم|اسددهم)))|\s+(?=w (?:3andy|3andi|lazem|lazm)(?![\p{L}]))|\s+(?=(?:و|w )(?:الساعه|الساعة|el sa3a)\s*[\d٠-٩])/iu,
   );
   const cleaned = parts.map((p) => p.replace(/^(?:و(?=فكرني|سجل|اعملي|عندي|لازم)|w |and )/i, "").trim()).filter(Boolean);
   // A part that is only a time ("every day at 8am" / "in 3 hours") belongs to the request after it.
@@ -394,15 +433,19 @@ function splitRequests(text: string): string[] {
     const w = parseWhen(fold(p), { local: "2000-01-01T00:00" });
     let rest = fold(p);
     for (const [a, b] of [...w.spans].sort((x, y) => y[0] - x[0])) rest = rest.slice(0, a) + rest.slice(b);
-    if (!/\p{L}{2,}/u.test(rest.replace(/\b(at|on|in|the|في|الساعه|el|sa3a)\b/giu, ""))) {
+    rest = rest.replace(R(`${B}(?:${REMIND})${E}`, "giu"), " ");
+    if (!/\p{L}{2,}/u.test(rest.replace(/(?<![\p{L}])(at|on|in|the|في|الساعه|el|sa3a|me|و|w)(?![\p{L}])/giu, ""))) {
       cleaned.splice(i, 2, `${p} ${cleaned[i + 1]}`);
       i--;
     }
   }
   if (cleaned.length <= 1) return [text];
   // A later part with a time but no day takes the first part's day ("بكرة البنك ٩ وبعدين غدا ٢").
-  const day = /(بكره|بكرة|bokra|tomorrow|النهارده|today|بعد بكره|ba3d bokra)/i.exec(cleaned[0]!);
-  return cleaned.map((p, i) => (i > 0 && day && !/(بكره|بكرة|bokra|tomorrow|النهارده|today|يوم|yom|on )/i.test(p) ? `${p} ${day[1]}` : p));
+  const day = /(بعد بكره|ba3d bokra|بكره|بكرة|bokra|tomorrow|النهارده|today|(?:يوم |yom |on )?(?:ال|el ?)?(?:جمعه|جمعة|سبت|حد|احد|اتنين|تلات|اربع|اربعاء|خميس|gom3a|sabt|7ad|etnein|talat|arba3|5amis)|friday|saturday|sunday|monday|tuesday|wednesday|thursday)(?![\p{L}])/iu.exec(cleaned[0]!);
+  const withDay = cleaned.map((p, i) => (i > 0 && day && !/(بكره|بكرة|bokra|tomorrow|النهارده|today|يوم|yom|on |جمع|سبت|خميس|friday|saturday|sunday|monday|tuesday|wednesday|thursday|gom3a|sabt)/i.test(p) ? `${p} ${day[1]}` : p));
+  // A lead-in before the real ask ("tomorrow I have a really busy day but please / remind me at 1…").
+  const kept = withDay.filter((p, i) => !(i < withDay.length - 1 && /(?:\b(?:but|so)\s*(?:please|pls)?|(?<![\p{L}])(?:بس|bas))\s*$/iu.test(p) && !R(`${B}(?:${REMIND})${E}`).test(fold(p))));
+  return kept.length ? kept : withDay;
 }
 
 // ======================================================================================
@@ -418,8 +461,9 @@ function answerToLastTurn(input: UnderstandInput, text: string, lastAssistant: s
   const open = input.openItems ?? [];
 
   // A task someone asked of the user: "منى طلبت منك: «تجيب العيش»" → yes / no.
-  const asked = /^(.+?)\s+(?:طلب|طلبت|asked you|asked)(?![\p{L}])/u.exec(lastAssistant);
-  if (asked && /«/.test(lastAssistant) && (isYes || isNo || has(t, "هجيبه|هجيبها|هعمله|هعملها|حاضر|on it"))) {
+  // The app's own line is "طلب من منى في «البيت»: …" / "Mona is asking you for something in «…»".
+  const asked = /^(?:طلب من|request from)\s+(.+?)\s+(?:في|in)\s+«/u.exec(lastAssistant) ?? /^(.+?)\s+(?:طلب|طلبت|asked you|asked|is asking you)(?![\p{L}])/u.exec(lastAssistant);
+  if (asked && /«/.test(lastAssistant) && (isYes || isNo || has(t, "هجيبه|هجيبها|هعمله|هعملها|حاضر|on it|hagebo|hagebha|ha3melo|ha3melha|7ader|i'll do it|will do"))) {
     out.app_actions.push({ kind: "task_answer", person: asked[1]!.trim(), answer: isNo ? "no" : "yes" });
     return true;
   }
@@ -436,6 +480,15 @@ function answerToLastTurn(input: UnderstandInput, text: string, lastAssistant: s
   // "ألغي «فرح»؟" → yes cancels it.
   if (isYes && /(الغي|ألغي|cancel|امسح|delete)/i.test(lastAssistant) && /[؟?]/.test(lastAssistant)) {
     const item = bestItem(open, lastAssistant) ?? (open.length === 1 ? open[0] : undefined);
+    if (item) {
+      out.update_items.push({ id: item.id, status: "cancelled" });
+      return true;
+    }
+  }
+  // The same, when the small model worded its question its own way ("أكيد؟", "sure?"): the user's
+  // last message asked to cancel a known item, so a plain yes confirms it.
+  if (isYes && lastUser && /[؟?]/.test(lastAssistant) && has(tokenize(lastUser), CANCEL)) {
+    const item = bestItem(open, lastUser);
     if (item) {
       out.update_items.push({ id: item.id, status: "cancelled" });
       return true;
@@ -508,14 +561,22 @@ function bestItem(open: UnderstandItem[], text: string): UnderstandItem | undefi
       tie = false;
     } else if (score === bestScore && score > 0) tie = true;
   }
-  return bestScore > 0 && !tie ? best : undefined;
+  if (bestScore > 0) return tie ? undefined : best;
+  // Across scripts: "5alast el ghasil" for «أنشر الغسيل», "el forn" for «الفرن» (three consonants or more).
+  const latin = tokenize(text).orig.filter((w) => /^[a-z0-9]+$/i.test(w) && w.length >= 4 && !STOP.has(fold(w)));
+  if (!latin.length) return undefined;
+  const hits = open.filter((o) => o.title.split(/\s+/).some((tw) => {
+    const k = soundKey(stem(tw));
+    return /[؀-ۿ]/.test(tw) && k.length >= 3 && latin.some((w) => soundKey(w) === k);
+  }));
+  return hits.length === 1 ? hits[0] : undefined;
 }
 
 // ======================================================================================
 // One request
 // ======================================================================================
 
-function handleClause(text: string, input: UnderstandInput, out: Understood, chained = false) {
+function handleClause(text: string, input: UnderstandInput, out: Understood, chained = false, multi = false) {
   const t = tokenize(text);
   // A short Latin part ("7pm") follows the message's script; a real English sentence keeps its own.
   const script = scriptOf(text) === "english" && out.script !== "english" && (text.match(/[a-z]{2,}/gi) ?? []).length < 3 ? out.script : scriptOf(text);
@@ -534,7 +595,8 @@ function handleClause(text: string, input: UnderstandInput, out: Understood, cha
   }
   const wake = find(t, "i wake up|i get up|بصحي|بصحى|بقوم من النوم|bas7a|bas7as|ba2oom");
   const sleep = find(t, "i sleep|i go to bed|بنام|banam|bnam");
-  if ((wake || sleep) && has(t, "now|دلوقتي|delwa2ty|dlw2ty|update|عدلها|غيرها|change|بقيت|بقى|ba2a")) {
+  const habit = !parseWhen(t.text, now).date && !has(t, REMIND + "|" + ALARM) && (has(t, "انا|ana|i|usually|عاده|عادة|كل يوم|daily|always|دايما|daiman") || t.orig.length <= 4);
+  if ((wake || sleep) && (habit || has(t, "now|دلوقتي|delwa2ty|dlw2ty|update|عدلها|غيرها|change|بقيت|بقى|ba2a"))) {
     const w = parseWhen(t.text, now);
     const c = w.clocks[0];
     if (c) {
@@ -546,10 +608,17 @@ function handleClause(text: string, input: UnderstandInput, out: Understood, cha
     }
   }
 
+  // "call me Kiko", "ناديني كيمو", "2oly ya Kiko": what Zaki calls the user.
+  const callMe = /(?:^|\s)(?:call me|ناديني|ناديلي|قولي يا|سميني|2oly ya|nadeeny|nadini)\s+(\S{2,20})\s*$/iu.exec(text);
+  if (callMe && !parseWhen(t.text, now).clocks.length && !/^(at|tomorrow|later|back|when|on|in|bokra|بكره|بكرة)$/i.test(callMe[1]!)) {
+    out.app_actions.push({ kind: "settings", setting: "name", text: callMe[1]!.replace(/[.!]$/, "") });
+    return;
+  }
+
   // ---- forget a memory ----
-  const forget = find(t, "انسى ان|انسي ان|انسى إن|انسي|انسى|forget that|forget about|ensa en|ensa");
+  const forget = find(t, "انسى ان|انسي ان|انسى إن|انسي|انسى|forget that|forget about|forget what|forget everything|ensa en|ensa");
   if (forget && !bestItem(open, text)) {
-    const what = text.slice(text.search(/انسى|انسي|forget|ensa/i)).replace(/^(انسى|انسي|forget|ensa)\s*(that|about|ان|إن|en)?\s*/i, "");
+    const what = text.slice(text.search(/انسى|انسي|forget|ensa/i)).replace(/^(انسى|انسي|forget|ensa)\s*(that|about|what i told you about|what i said about|ان|إن|en)?\s*/i, "");
     if (what.trim()) {
       out.app_actions.push({ kind: "forget", text: what.trim().slice(0, 200) });
       return;
@@ -624,10 +693,17 @@ function handleClause(text: string, input: UnderstandInput, out: Understood, cha
     const m = R(`(?:${circleWord})\\s+(?:جديده\\s+|new\\s+)?(?:for|ل|لل|lel|le|l|li)?\\s*(.+)$`).exec(t.text);
     let name = m ? m[1]! : "";
     if (m) {
-      const startTok = t.starts.findIndex((s) => s >= m.index + m[0].length - m[1]!.length);
-      name = t.orig.slice(startTok).join(" ");
+      // The name may start inside a token ("لشلة الكورة": ل then the name): cut that token there.
+      const p = m.index + m[0].length - m[1]!.length;
+      let tok = t.starts.length - 1;
+      while (tok > 0 && t.starts[tok]! > p) tok--;
+      const cut = p - t.starts[tok]!;
+      let first = cut > 0 && t.orig[tok]!.length === t.f[tok]!.length ? t.orig[tok]!.slice(cut) : t.orig[tok]!;
+      if (cut > 0 && cut <= 2 && t.orig[tok]!.startsWith("لل")) first = `ال${t.orig[tok]!.slice(2)}`;
+      name = [first, ...t.orig.slice(tok + 1)].join(" ").replace(/^(اسمها|اسمه|called|named|esmaha|esmo|esmha)\s+/i, "");
     }
-    name = name.replace(/^(for|my|the|ل|لل|lel|le|l)\s+/i, "").replace(/^ل(?=\p{L}{3,})/u, "").replace(/^(my|the)\s+/i, "");
+    // "للعيلة" is ل + العيلة: keep the article ("العيلة", not "لعيلة").
+    name = name.replace(/^(for|my|the|ل|لل|lel|le|l)\s+/i, "").replace(/^لل(?=\p{L}{2,})/u, "ال").replace(/^ل(?!ل)(?=\p{L}{3,})/u, "").replace(/^(my|the)\s+/i, "");
     if (script === "franco") name = name.split(/\s+/).map((w) => FRANCO_WORDS[w.replace(/^(el|l|lel)/, "")] ?? FRANCO_WORDS[w] ?? w).join(" ");
     if (!name.trim()) {
       out.ask = "what";
@@ -687,13 +763,13 @@ function handleClause(text: string, input: UnderstandInput, out: Understood, cha
   // ---- memories ----
   if (memoryIntent(t, text, script, out)) return;
 
+  if (isQuestion) return;
+
   // ---- shopping list ----
   if (listIntent(t, text, script, out)) return;
 
-  if (isQuestion) return;
-
   // ---- reminders and tasks ----
-  reminderIntent(t, text, input, script, out, chained);
+  reminderIntent(t, text, input, script, out, chained, multi);
 }
 
 function firstName(t: Toks, script: Script): string | null {
@@ -723,19 +799,29 @@ function daftarIntent(t: Toks, text: string, input: UnderstandInput, script: Scr
     }
   }
   // Remove a Daftar entry: "امسح دين حسن من الدفتر".
-  if (has(t, CANCEL) && has(t, "دين|الدفتر|debt|daftar|dein")) {
+  if (has(t, CANCEL) && has(t, "دين|الدفتر|debt|daftar|dein|deen")) {
     const who = findMember(t, input);
     if (who) {
       out.app_actions.push({ kind: "daftar_cancel", person: who.m.name });
       return true;
     }
+    // Someone outside the circles ("olghy dein abdelkareem"): the server looks the name up in the Daftar.
+    const m = /(?:دين|debt|dein|deen)\s+(?:with\s+|of\s+|بتاع\s+|bta3\s+)?([\p{L}][\p{L}\s]{1,30}?)\s*(?:من الدفتر|from the daftar|men el daftar|$)/iu.exec(text);
+    const name = m?.[1]?.trim();
+    if (name && !/^(ده|دا|دي|da|dah|this|that|el)$/i.test(name)) {
+      out.app_actions.push({ kind: "daftar_cancel", person: script === "franco" ? cap(name) : name });
+      return true;
+    }
   }
   // Settled: "طارق رجعلي الفلوس", "Hassan paid me back", "رجعت لأحمد فلوسه", "محمود دفع الفلوس".
-  const paidMe = has(t, "رجعلي|رجعتلي|رجع لي|رجعهم|دفعلي|دفع الفلوس|دفعت الفلوس|سدد|paid me back|paid me|gave me back|returned|paid back|rag3li|rag3ly|rag3etly|rag3etli|rag3itly|gave me back|dafa3ly|dafa3 el felous");
-  const iPaid = (has(t, "رجعت|rag3t") && has(t, money)) || has(t, "رجعتله|رجعتلها|سددت|i paid back|i returned|paid him back|paid her back|rag3tlo|rag3tlaha");
+  const paidMe = has(t, "raga3ly|raga3li|ragga3ly|rag3ly el|رجعلي|رجعتلي|رجع لي|رجعهم|دفعلي|دفع الفلوس|دفعت الفلوس|سدد|paid me back|paid me|gave me back|returned|paid back|rag3li|rag3ly|rag3etly|rag3etli|rag3itly|gave me back|dafa3ly|dafa3 el felous");
+  const iPaid = (has(t, "اديت|اديته|اديتها|اديتله|اديتلها|edeet|adeet|edeto|adeto") && has(t, "فلوسه|فلوسها|حقه|حقها|felouso|felousha|7a2o|7a2aha")) || (has(t, "رجعت|rag3t") && has(t, money)) || has(t, "رجعتله|رجعتلها|سددت|i paid back|i returned|paid him back|paid her back|rag3tlo|rag3tlaha");
   if (paidMe || iPaid || (has(t, "دفع|دفعت|dafa3|paid") && has(t, money))) {
     const words = concepts(text);
-    const debt = open.find((o) => o.type === "debt" && o.debt_person && [...concepts(o.debt_person)].some((c) => words.has(c)));
+    const member = findMember(t, input);
+    const debt = open.find(
+      (o) => o.type === "debt" && o.debt_person && ([...concepts(o.debt_person)].some((c) => words.has(c)) || (member && sameName(o.debt_person, member.m.name)) || t.orig.some((w) => sameName(w, o.debt_person!))),
+    );
     if (debt) {
       out.update_items.push({ id: debt.id, status: "done" });
       return true;
@@ -750,6 +836,9 @@ function daftarIntent(t: Toks, text: string, input: UnderstandInput, script: Scr
   // New debt.
   const d = parseDebt(t, text, script);
   if (!d) return false;
+  // A circle member keeps the spelling the app knows ("nada" → "Nada", "sami" → "سامي").
+  const known = members(input).find((m) => sameName(d.person, m.name));
+  if (known) d.person = known.name;
   if (!d.amount) {
     out.ask = "amount";
     out.askAbout = d.person;
@@ -837,8 +926,17 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
   }
   m = /(?:عليا|عليّا|عليّ)\s+\S+\s+(?:لـ|ل)\s*(\S+)/u.exec(text) ?? /(?:عليا|عليّا)\s+(?:لـ|ل)(\S+)/u.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
-  m = /(?:مستلف|مستلفه|استلفت|اتسلفت)\s+(?:\S+\s+)?من\s+(\S+)/u.exec(text);
+  // "ليه عندي ٣٠٠ لحسن" / "حسن ليه عندي ٣٠٠": money of theirs the user holds.
+  m = /(?:^|\s)(?:ليه|ليها)\s+عندي\s+\S+(?:\s+\S+)?\s+(?:لـ|ل)\s*(\S+)/u.exec(text) ?? /(\S+)\s+(?:ليه|ليها)\s+عندي(?![\p{L}])/u.exec(text);
+  if (m && !/^(انا|هو|هي)$/.test(m[1]!)) return { person: person(m[1]!.replace(/^ل(?=\p{L}{3,})/u, "")), amount: amountOf(), direction: "i_owe" };
+  // "مريم مستلفة مني ١٠٠٠" / "يوسف مديون ليا ب ٥٠٠": they owe the user.
+  m = /(\S+)\s+(?:مستلف|مستلفه|مستلفة|واخد|واخده|واخدة|مديون|مديونه|مديونة)\s+(?:\S+\s+)?(?:مني|منى|ليا|لي)(?![\p{L}])/u.exec(text);
+  if (m && !/^(انا|أنا|انت|إنت)$/.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
+  m = /(?:مستلف|مستلفه|مستلفة|استلفت|اتسلفت)\s+(?:\S+\s+)?من\s+(\S+)/u.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
+  // "انا مديون ليوسف ب ٦٠٠": the user owes them.
+  m = /(?:مديون|مديونه|مديونة|مدين)\s+(?:لـ\s*|ل)(\S{2,})/u.exec(text);
+  if (m && !/^(ي|يا)$/.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
 
   // Franco
   i = idxOf(/\b(5ad|5adet|5adt|akhad|estalaf|estalafet|esstalaf)\b/i);
@@ -846,9 +944,17 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
     const p = tokensBefore(i, 1);
     if (p && /^[a-z]+$/i.test(p)) return { person: person(p), amount: amountOf(/(hayedfa3|hatedfa3|hayrag3)/i), direction: "owed_to_me" };
   }
+  m = /\b(?:salaft|sallaft|salaf|edeet|adeet|edeit)\s+([a-z]+)\b/i.exec(text);
+  if (m && !/^(el|men|felous|flos)$/i.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
+  m = /\b(?:leeh|leeha|leh|liha)\s+3andy\s+\S+\s+(?:l|le|li|lel)\s*([a-z]+)/i.exec(text) ?? /\b([a-z]+)\s+(?:leeh|leeha|lih|liha)\s+3andy\b/i.exec(text);
+  if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
   m = /\b([a-z]+)\s+(?:3aleh|3aleha|3alih|3aleeh)\b/i.exec(text);
   if (m && !/^(elly|ely)$/i.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
   m = /\b(?:3alaya|3alaia|3alya)\s+\S+\s+(?:l|le|li|lel)\s+([a-z0-9]+)/i.exec(text);
+  if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
+  m = /\b([a-z]+)\s+(?:mestalef|mestalfa|msalef|wa5ed|wa5da|madyoon|madyoona|madyon)\s+(?:\S+\s+)?(?:meny|menny|meni|liya|leya)\b/i.exec(text);
+  if (m && !/^(ana|enta|enty)$/i.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
+  m = /\b(?:madyoon|madyoona|madyon)\s+(?:l|le|li|lel)\s*([a-z]{2,})/i.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
   m = /\b(?:msalef|mestalef|mtsalef|estalaft|metsalef)\s+(?:\S+\s+)?men\s+([a-z]+)/i.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
@@ -874,7 +980,8 @@ function taskIntent(t: Toks, text: string, input: UnderstandInput, script: Scrip
     return true;
   }
   // Remind a whole circle: "فكر الجماعة في الجيم بالتمرين", "remind everyone in Family".
-  if (circle && has(t, "فكر|فكري|remind everyone|remind|fakar|fakkar|قول للكل|tell everyone|ask everyone|ask")) {
+  const toCircle = circle && !who && has(t, "قول|قولي|2ol|2oly|tell|بلغ|ballagh|e2ol");
+  if (circle && (toCircle || has(t, "فكر|فكري|remind everyone|remind|fakar|fakkar|قول للكل|tell everyone|ask everyone|ask"))) {
     out.app_actions.push({ kind: "ask_circle", circle: circle.name, text: text.slice(0, 200) });
     return true;
   }
@@ -899,9 +1006,11 @@ function taskIntent(t: Toks, text: string, input: UnderstandInput, script: Scrip
   if (!target) {
     // "قول لسامح يجيب" with someone not in any circle: ask who that is.
     const looksLikeName = /^ل\p{L}{2,}/u.test(t.orig[askTok]! === "قول" ? nextWord : t.orig[askTok]!) || (/^(ask|tell)$/i.test(t.orig[askTok]!) && /^[A-Z]/.test(nextWord));
-    if (looksLikeName && t.orig.length >= 3 && !has(t, "اني|إني|eny|i'm|im")) {
+    // Franco "2ol l ahmed yegeeb…": the name comes after l / le / li.
+    const francoName = /^(2ol|e2ol|5ali|5aly)$/i.test(t.orig[askTok]!) && /^(l|le|li)$/i.test(nextWord) ? t.orig[askTok + 2] : undefined;
+    if ((looksLikeName || (francoName && /^[a-z0-9]{3,}$/i.test(francoName) && !TITLE_DROP_FR.test(fold(francoName)) && !TITLE_DROP_EN.test(fold(francoName)))) && t.orig.length >= 3 && !has(t, "اني|إني|eny|i'm|im")) {
       out.ask = "person";
-      out.askAbout = nextWord.replace(/^ل/, "");
+      out.askAbout = francoName ? FRANCO_WORDS[fold(francoName)] ?? cap(francoName) : nextWord.replace(/^ل/, "");
       return true;
     }
     return false;
@@ -944,25 +1053,31 @@ function trackerOf(input: UnderstandInput, t: Toks): { kind: string; name: strin
       for (const o of t.orig) {
         const w = stem(o);
         const wf = stem(FRANCO_WORDS[w] ?? w);
-        if (w === n || wf === n || (root.length >= 3 && (w.startsWith(root) || wf.startsWith(root))) || readingWord(w, n) || stepsWord(w, n)) return { kind: tr.kind, name: tr.name };
+        if (w === n || wf === n || (root.length >= 3 && (w.startsWith(root) || wf.startsWith(root))) || readingWord(w, n) || stepsWord(w, n) || sportWord(w, n) || walkWord(w, n) || prayWord(w, n)) return { kind: tr.kind, name: tr.name };
       }
     }
   }
-  for (const tw of TRACKER_WORDS) if (has(t, tw.words)) {
+  for (const tw of TRACKER_WORDS) if (hasP(t, tw.words)) {
     const tr = trackers.find((x) => x.kind === tw.kind);
     if (tr) return { kind: tr.kind, name: tr.name ?? tw.ar };
   }
   return null;
 }
 const readingWord = (w: string, name: string) => /قراي|قرايه|قراءه/.test(name) && /^(قريت|صفحه|صفحات|pages?|2reet|2areet|2aret|saf7a|saf7at|read)$/.test(w);
+const sportWord = (w: string, name: string) => /رياض/.test(name) && /^(workout|worked|exercise|exercised|trained|training|riyada|reyada|ryada|tamreen|tmreen|et2amart|اتمرنت|تمرين|تمرنت|لعبت)$/.test(w);
+const walkWord = (w: string, name: string) => /مشي|مشى|walk/.test(name) && /^(walk|walked|walking|walks|مشيت|اتمشيت|mashet|mesheet|et2mshet|etmashet|ettmashet)$/.test(w);
+const prayWord = (w: string, name: string) => /صلا|صلو|pray/.test(name) && /^(صليت|صلي|صلاه|الضهر|العصر|المغرب|العشا|الفجر|prayed|pray|prayer|salet|salleit|salleet|sallet)$/.test(w);
 const stepsWord = (w: string, name: string) => /خطو/.test(name) && /^(steps?|خطوه|خطوات|walked|مشيت|5atwa|5atwat)$/.test(w);
 
 function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Script, out: Understood, isQuestion: boolean): boolean {
   const now = { local: input.nowLocal };
   const tr = trackerOf(input, t);
   // Undo the last log: "غلطت، مشربتش الكوباية دي", "undo that, I didn't drink it".
-  if (has(t, "undo|غلطت|مشربتش|ماشربتش|متحسبهاش|didn't drink|didnt drink|ma shrebtsh|mashrebtsh|ghelte|8let")) {
-    const hist = (input.history ?? []).filter((h) => h.role === "user").pop()?.text ?? "";
+  const hist = (input.history ?? []).filter((h) => h.role === "user").pop()?.text ?? "";
+  const explicitUndo = has(t, "undo|غلطت|متحسبهاش|ghelte|8let|شيلها|امسحها");
+  // "مشربتش مية خالص النهارده" is news, not an undo, unless it takes back the log just made.
+  const takesBack = has(t, "مشربتش|ماشربتش|didn't drink|didnt drink|ma shrebtsh|mashrebtsh") && /مية|ميه|water|maya|شربت|drank|shrebt/i.test(hist) && !has(t, "خالص|اصلا|at all|5ales|aslan|النهارده كله");
+  if (explicitUndo || takesBack) {
     const htr = tr ?? trackerOf(input, tokenize(hist));
     if (htr || /مية|water|drank|شربت/i.test(hist)) {
       out.app_actions.push({ kind: "undo_tracker", tracker: htr?.name ?? (script === "english" ? "water" : "مية") });
@@ -1007,7 +1122,7 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
         return true;
       }
     }
-    const known = TRACKER_WORDS.find((x) => has(t, x.words));
+    const known = TRACKER_WORDS.find((x) => hasP(t, x.words));
     let goal: number | undefined;
     const half = has(t, "نص ساعه|nos sa3a|half an hour");
     if (half) goal = 30;
@@ -1033,7 +1148,9 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
   // Log: "شربت ٢ كوباية مية", "walked 6500 steps", "قريت ١٢ صفحه", "2reet 15 saf7a".
   if (tr && has(t, "شربت|اشربت|قريت|مشيت|صليت|اتمرنت|خدت|drank|had|read|walked|did|prayed|took|shrebt|2reet|2areet|2aret|mesheet|saleet|et2amart|logged|log|سجل|sagel")) {
     const n = numbers(t).filter((x) => x.value > 0);
-    out.app_actions.push({ kind: "log_tracker", tracker: tr.name, ...(n.length ? { amount: n[0]!.value } : {}) });
+    // "كوبايتين", "kobayten", "صفحتين": two, said as a dual.
+    const dual = has(t, "كوبايتين|كبايتين|صفحتين|مرتين|kobayten|kobaytein|kobaiten|kbayten|saf7ten|saf7tein|marten|marteen|marrten");
+    out.app_actions.push({ kind: "log_tracker", tracker: tr.name, ...(n.length ? { amount: n[0]!.value } : dual ? { amount: 2 } : {}) });
     return true;
   }
   return false;
@@ -1043,10 +1160,24 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
 // Money
 // ======================================================================================
 
+// Category words → the section names people give that category (the first one they have wins).
 const SECTION_HINTS: [string, string[]][] = [
-  ["أكل|اكل|الاكل|عالاكل|akl|food|lunch|dinner|breakfast|groceries|ghada|3asha|fetar|grocer|supermarket|سوبر ماركت|السوبر|مطعم|restaurant|غدا|عشا|فطار|coffee|قهوه", ["أكل", "food"]],
-  ["عربيه|العربيه|3arabeya|3arabiya|car|بنزين|benzeen|gas|fuel|ميكانيكي", ["العربية", "car"]],
-  ["اوبر|uber|careem|كريم باص|تاكسي|taxi|مواصلات|metro|مترو|bus|اتوبيس|mowaslat", ["مواصلات", "transport"]],
+  ["أكل|اكل|الاكل|عالاكل|akl|food|lunch|dinner|breakfast|groceries|ghada|3asha|fetar|grocer|supermarket|سوبر ماركت|سوبرماركت|السوبر|مطعم|restaurant|غدا|عشا|فطار|coffee|قهوه|خضار|خضره|فاكهه|لحمه|فراخ|سمك|عيش|بقاله|khodar|fera5|la7ma|vegetables|fruit|meat|chicken|bread",
+    ["أكل", "food", "سوبرماركت", "سوبر ماركت", "supermarket", "بقالة", "groceries", "طلبات", "مطبخ"]],
+  ["عربيه|العربيه|3arabeya|3arabiya|car|بنزين|benzeen|benzine|gas|fuel|ميكانيكي|mechanic|غسيل العربيه",
+    ["العربية", "car", "بنزين", "benzine", "gas", "fuel"]],
+  ["اوبر|uber|careem|كريم باص|تاكسي|taxi|مواصلات|metro|مترو|bus|اتوبيس|mowaslat|ميكروباص|توكتوك|tuktuk|microbus",
+    ["مواصلات", "transport", "transportation"]],
+  ["فاتوره|فواتير|كهربا|الكهربا|كهرباء|انترنت|النت|غاز|تليفون|موبايل|رصيد|bill|bills|electricity|internet|wifi|phone|fatora|fawater|kahraba|net",
+    ["فواتير", "bills", "فاتورة", "utilities"]],
+  ["مدرسه|المدرسه|مدارس|كتب|مصاريف|school|books|tuition|madrasa|كورس|دروس|درس|course|lessons",
+    ["مدارس", "school", "تعليم", "education", "دراسة", "المدرسة"]],
+  ["مرتب|المرتب|مرتبي|salary|paycheck|pay|morattab|mortab|el morattab|ma3ash|معاش",
+    ["مرتب", "salary", "المرتب"]],
+  ["فريلانس|الفريلانس|freelance|شغل حر|مشروع|client|عميل|side job|gig",
+    ["شغل حر", "freelance", "شغل اضافي", "دخل اضافي", "side income"]],
+  ["طلبات البيت|البيت|house|home|beit|el beit|groceries",
+    ["البيت", "home", "house"]],
 ];
 
 function sectionFor(t: Toks, input: UnderstandInput, kind: "expense" | "income"): string | undefined {
@@ -1086,7 +1217,7 @@ function moneyIntent(t: Toks, text: string, input: UnderstandInput, script: Scri
     }
   }
   if (newSection && has(t, "اعمل|اعملي|ضيف|افتح|make|create|add|new|a3mel|a3ml|zawed|جديد|gedeed")) {
-    const m = /(?:قسم|section|2esm|2ism|category|بند)\s+(?:جديد\s+|gedeed\s+|new\s+)?(?:for\s+|called\s+|named\s+|اسمه\s+|esmo\s+|ل|لل|lel\s*|le\s+|l\s+)?\s*([^\s،,]+)/iu.exec(text);
+    const m = /(?:قسم|section|2esm|2ism|category|بند)\s+(?:جديد\s+|gedeed\s+|new\s+)?(?:for\s+|called\s+|named\s+|اسمه\s+|esmo\s+|ل|لل|lel\s*|le\s+|l\s+)?\s*(?:the\s+|my\s+|our\s+|el\s+)?([^\s،,]+)/iu.exec(text);
     let name = m ? m[1]!.replace(/^(لل|ل)/, "") : "";
     if (/^(lel|le|l)$/i.test(name)) name = "";
     if (script === "franco") {
@@ -1100,8 +1231,8 @@ function moneyIntent(t: Toks, text: string, input: UnderstandInput, script: Scri
     out.app_actions.push({ kind: "create_section", name: name.replace(/[،,]$/, ""), money_kind: "expense", ...(n.length ? { amount: n[0]!.value } : {}) });
     return true;
   }
-  // Delete an entry: "امسح الـ٢٠٠ اللي سجلتها على الأكل", "delete the 85 I logged for uber".
-  if (has(t, "امسح|شيل|اشطب|delete|remove|ems7|sheel") && has(t, "سجلتها|سجلته|سجلت|logged|entry|added|sagelt")) {
+  // Delete an entry: "امسح الـ٢٠٠ اللي سجلتها على الأكل", "delete the 85 I logged for uber", "امسح آخر مصروف".
+  if (has(t, "امسح|شيل|اشطب|delete|remove|ems7|sheel|undo") && (has(t, "سجلتها|سجلته|سجلت|logged|entry|added|sagelt") || (has(t, "اخر|last|a5er|akher") && has(t, "مصروف|مصاريف|expense|masroof|حاجه|entry|دفعه|payment")))) {
     const n = numbers(t, false).filter((x) => x.value > 0);
     const raw = /ال?ـ?(\d+)/.exec(fold(text));
     const amount = n[0]?.value ?? (raw ? Number(raw[1]) : undefined);
@@ -1109,7 +1240,9 @@ function moneyIntent(t: Toks, text: string, input: UnderstandInput, script: Scri
     return true;
   }
   const income = has(t, "قبضت|قبضنا|جالي|جاتلي|اخدت المرتب|استلمت المرتب|got paid|received|earned|salary|bonus|2abadt|2abaddt|geli|gali|استلمت");
-  const expense = has(t, "حطيت بنزين|عبيت بنزين|موّنت|مونت|7atet benzeen|fawelt|صرفت|دفعت|سجل|سجلي|اشتريت|spent|paid|bought|log|sgl|sagel|sagal|saraft|dafa3t|eshtarait|masroof|مصروف");
+  // "جبت طلبات البيت ب ٨٥٠", "ركبت تاكسي ب ٦٠", "got a cab for 90": a price after ب / for is a purchase.
+  const priced = has(t, "جبت|اشتريت|ركبت|خدت|اخدت|طلبت|gebt|rkbt|rekebt|5adt|talabt|got|took|ordered|bought|took a") && /(?:^|\s)(?:ب|بـ|b|for|be)\s*[\d٠-٩]/iu.test(text);
+  const expense = priced || has(t, "sraft|srft|dfa3t|edfa3t|حطيت بنزين|عبيت بنزين|موّنت|مونت|7atet benzeen|fawelt|صرفت|دفعت|سجل|سجلي|اشتريت|spent|paid|bought|log|sgl|sagel|sagal|saraft|dafa3t|eshtarait|masroof|مصروف");
   if (!income && !expense) return false;
   // Debts and bills are not money logs.
   if (has(t, "عليه|عليها|عليا|استلف|خد مني|3aleh|3aleha|5ad meny|borrowed|owes|lazem|لازم|هدفع|have to|need to")) return false;
@@ -1117,7 +1250,7 @@ function moneyIntent(t: Toks, text: string, input: UnderstandInput, script: Scri
   markWhen(t, w);
   const n = nums();
   if (!n.length) {
-    if (has(t, "مصروف|masroof|expense|سجل|sagel|sgl")) {
+    if (has(t, "مصروف|masroof|expense|سجل|sagel|sgl|log|ride|uber|taxi|اوبر|تاكسي")) {
       out.ask = "amount";
       return true;
     }
@@ -1139,7 +1272,10 @@ function updateIntent(t: Toks, text: string, input: UnderstandInput, out: Unders
   const open = input.openItems ?? [];
   if (!open.length) return false;
   const now = { local: input.nowLocal };
-  const item = bestItem(open, text);
+  const lastZakiLine = (input.history ?? []).filter((h) => h.role === "assistant").pop()?.text ?? "";
+  // "أجلها لبكرة", "a5arha", "snooze": a pronoun points at the item Zaki just talked about.
+  const pronoun = has(t, "اخرها|اخره|اجلها|اجله|غيرها|غيره|خليها|خليه|a5arha|a5aro|2agelha|2agelo|ghayarha|ghayaro|5aleeha|5aleeh|snooze|it|later|بعدين|ba3den|b3den");
+  const item = bestItem(open, text) ?? (pronoun ? bestItem(open, lastZakiLine) ?? (open.length === 1 ? open[0] : undefined) : undefined);
   // Stop a reminder: "5alas batal tfakarny bel maya".
   if (has(t, STOP_REMIND)) {
     const target = item ?? (open.filter((o) => o.repeat).length === 1 ? open.find((o) => o.repeat) : undefined);
@@ -1161,7 +1297,10 @@ function updateIntent(t: Toks, text: string, input: UnderstandInput, out: Unders
   if (item && has(t, MOVE_VERB) && (w.date || w.clocks.length)) {
     const cur = item.due_local ?? `${now.local.slice(0, 10)}T09:00`;
     // "الساعة ٧ بدل ٥": the first time is the new one.
-    const clock = w.clocks[0];
+    let clock = w.clocks[0];
+    // "الساعة ٨ بدل ٧" for an evening item means 20:00: a bare hour keeps the item's half of the day.
+    if (clock && clock.explicit === false && clock.h < 12 && Number(cur.slice(11, 13)) >= 12 && clock.h + 12 < 24) clock = { ...clock, h: clock.h + 12 };
+    if (clock && clock.explicit === false && clock.h >= 12 && clock.h < 20 && Number(cur.slice(11, 13)) < 12 && /^(1[2-9])$/.test(String(clock.h)) && !/pm|العصر|المغرب|بالليل/i.test(text)) clock = { ...clock, h: clock.h - 12 || 12 };
     const date = w.date ?? cur.slice(0, 10);
     const when = `${date}T${clock ? clockStr(clock) : cur.slice(11, 16)}`;
     out.update_items.push({ id: item.id, due_at_local: when, remind_at_local: when });
@@ -1180,7 +1319,7 @@ function updateIntent(t: Toks, text: string, input: UnderstandInput, out: Unders
     return true;
   }
   // Later: "فكرني بيها كمان ساعة" right after its reminder.
-  if (w.relMin && has(t, REMIND + "|بيها|بيه|beeha|beeh")) {
+  if (w.relMin && has(t, REMIND + "|بيها|بيه|beeha|beeh|snooze|later|بعدين|ba3den|b3den|اجلها|اخرها|a5arha|2agelha")) {
     const last = (input.history ?? []).filter((h) => h.role === "assistant").pop()?.text ?? "";
     const target = item ?? bestItem(open, last);
     if (target) {
@@ -1214,6 +1353,8 @@ function memoryIntent(t: Toks, text: string, script: Script, out: Understood): b
   m = /\bmy\s+(dentist|doctor|gym|school|clinic|work|office)\s+is\s+(.+)/i.exec(text);
   if (m) return add("place", m[1]!, text);
   if (/(مراتي|جوزي|ابني|بنتي|اخويا|اختي|امي|ابويا|مديري|صاحبي|صاحبتي)\s+(اسمه|اسمها)\s+\S+/u.test(fold(text)) || /(\S+)\s+(ابني|بنتي|مراتي|جوزي|اخويا|اختي)(?![\p{L}])/u.test(text)) return add("person", text.split(/\s+/)[0]!, text);
+  m = /\b(mrati|merati|meraty|mrati|gozy|gozi|ebny|ebni|benty|benti|a5oya|o5ty|omy|ommy|aboya|modiry|sa7by|sa7bty|sa7beti)\s+(?:esmo|esmaha|esmha|esmuh)\s+(\S+)/i.exec(text);
+  if (m) return add("person", m[2]!, `${text}`);
   m = /(?:^|\s)(?:اسمي|my name is|i'm called|ana esmy|ana esmi|esmy|esmi)\s+(\S+)/iu.exec(text);
   if (m) return add("person", "اسم المستخدم", `اسم المستخدم ${m[1]} (${cleanWord(m[1]!, script)})`);
   m = /(?:esmak|اسمك|سميتك|call you|your name is)\s+(?:ba3d keda\s+|بعد كده\s+)?(?:enta esmak\s+)?(.{2,40}?)(?:\s+ba3d keda|$)/iu.exec(text);
@@ -1262,7 +1403,7 @@ function listIntent(t: Toks, text: string, script: Script, out: Understood): boo
 // Reminders and tasks
 // ======================================================================================
 
-function reminderIntent(t: Toks, text: string, input: UnderstandInput, script: Script, out: Understood, chained = false) {
+function reminderIntent(t: Toks, text: string, input: UnderstandInput, script: Script, out: Understood, chained = false, multi = false) {
   const now = { local: input.nowLocal };
   const w = parseWhen(t.text, now);
   if (w.past) return;
@@ -1286,8 +1427,10 @@ function reminderIntent(t: Toks, text: string, input: UnderstandInput, script: S
   // English news about something else ("the new episode comes out Friday at 9, can't wait").
   if (script === "english" && !remind && !oblige && !having && !appt && !alarm && /\b(comes out|come out|airs|is out|releases|drops|premieres|can't wait|cant wait)\b/i.test(text)) return;
   if (!title && !alarm) return;
+  // "ناوي أشرب مية كتير النهارده": an intention about a tracked habit, not a task.
+  if (!hasTime && (!w.date || w.date === now.local.slice(0, 10)) && !remind && has(t, "ناوي|ناويه|نفسي|هحاول|na2wy|hawel|i'll try|i plan|planning to|going to try") && TRACKER_WORDS.some((x) => has(t, x.words))) return;
   // Nothing to do here: plain talk with no time and no request.
-  if (!hasTime && !remind && !oblige && !alarm && !w.vague && !(appt && having) && !(w.date && futureVerb)) return;
+  if (!hasTime && !remind && !oblige && !alarm && !w.vague && !(appt && having) && !(w.date && futureVerb) && !(w.date && !chained && !multi && hasP(t, "عيد ميلاد|birthday|3eed melad|عيد جواز|anniversary"))) return;
   // A time anchored to something we can't compute ("after the dawn prayer"): ask.
   if (!hasTime && (alarm || (remind && !w.date && !w.vague))) {
     out.ask = "time";
