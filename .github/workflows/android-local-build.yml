@@ -1,0 +1,53 @@
+# Android test build made on GitHub's own machine ("eas build --local"), so it doesn't use the EAS
+# free build quota (used up until 1 Dec 2026). Same profile, signing key and EAS "preview"
+# environment variables as the cloud build. The APK is attached to a GitHub pre-release (and kept
+# as a workflow artifact); the release page link is the install link.
+# Runs when a pushed commit message contains "[android-local-build]", or by hand from the Actions tab.
+# arm64 phones only (every Android phone from the last ~7 years), to halve the native compile time.
+name: Android local build
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[android-local-build]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Free disk space (the NDK build needs room)
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+      - run: npm ci --ignore-scripts
+      - name: Build the APK on this machine
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ORG_GRADLE_PROJECT_reactNativeArchitectures: arm64-v8a
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+        run: npx eas-cli@latest build --local --profile preview --platform android --non-interactive --output "$GITHUB_WORKSPACE/zaki-preview.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zaki-preview-apk
+          path: zaki-preview.apk
+      - name: Publish the APK as a pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="android-local-${{ github.run_number }}"
+          gh release create "$tag" zaki-preview.apk --prerelease --target "${{ github.sha }}" \
+            --title "Zaki Android test build ${{ github.run_number }}" \
+            --notes "Built from ${{ github.ref_name }} at ${{ github.sha }}. Install on an arm64 Android phone (allow installs from this source)."
+          echo "Install link: https://github.com/${{ github.repository }}/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"

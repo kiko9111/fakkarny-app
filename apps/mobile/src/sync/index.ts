@@ -1,7 +1,10 @@
 import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
-import { getMe, listMessagesAfter, patchMe, postMessage } from "@/lib/api";
+import { getMe, listMessagesAfter, patchMe, postMessageRaw } from "@/lib/api";
+import { PostMessageResponse } from "@fakkarni/shared";
+import { sendWithBrain } from "@/brain/flow";
+import { phoneBrainReady, thinkOnPhone, warmBrain } from "@/brain/engine";
 import { language } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { createEmitter } from "@/lib/emitter";
@@ -31,7 +34,14 @@ const store: OutboxStore = {
 
 export const syncQueue = createSyncQueue({
   store,
-  send: postMessage,
+  // Zaki's brain on the phone (Android test mode) or in the cloud; the cloud answers if the phone fails.
+  send: (body) =>
+    sendWithBrain(body, {
+      post: postMessageRaw,
+      parse: (raw) => PostMessageResponse.parse(raw),
+      think: phoneBrainReady() ? thinkOnPhone : null,
+      fallback: prefs.get("brain_fallback") !== "0",
+    }),
   onChange: () => messagesChanged.emit(),
   onBusyChange: (busy) => syncBusy.emit(busy),
   onLockedChange: (locked) => {
@@ -94,6 +104,8 @@ export function startSync() {
   };
   refresh();
   void syncLanguage();
+  // The on-phone model takes a few seconds to load: do it now, not when the first message waits.
+  warmBrain();
   addNetworkStateListener(({ isConnected, isInternetReachable }) => {
     if (isConnected && isInternetReachable !== false) refresh();
   });

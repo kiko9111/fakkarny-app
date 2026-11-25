@@ -148,9 +148,14 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
 }
 
 export async function postMessage(body: PostMessageRequest): Promise<PostMessageResponse> {
+  return PostMessageResponse.parse(await postMessageRaw(body));
+}
+
+/** POST /messages, unparsed: with the phone brain on, the server may answer 202 (NeedsBrainResponse). */
+export async function postMessageRaw(body: PostMessageRequest): Promise<unknown> {
   // Zaki's reply is an AI call: give it longer than a screen load, or a slow reply is cut off,
   // retried, and the message sits there looking unsent.
-  return PostMessageResponse.parse(await request("/messages", { method: "POST", body: JSON.stringify(body) }, REPLY_TIMEOUT_MS));
+  return request("/messages", { method: "POST", body: JSON.stringify(body) }, REPLY_TIMEOUT_MS);
 }
 
 /** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */

@@ -67,7 +67,7 @@
         {
           "photosPermission": "Zaki uses the photo you pick to read a receipt or hand in homework.",
           "cameraPermission": "Zaki uses the camera only when you snap a receipt or homework page.",
-          "microphonePermission": false
+          "microphonePermission": "Zaki uses the microphone only for voice typing. Your voice stays on your phone."
         }
       ],
       [
@@ -77,6 +77,14 @@
           "imageWidth": 160,
           "resizeMode": "contain",
           "backgroundColor": "#FFF8F2"
+        }
+      ],
+      [
+        "llama.rn",
+        {
+          "enableEntitlements": false,
+          "forceCxx20": true,
+          "enableOpenCLAndHexagon": false
         }
       ]
     ],

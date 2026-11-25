@@ -277,7 +277,7 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
 
   it("asks the phone for its answer, then applies it with no cloud call and no allowance used", async () => {
     const { model, calls } = fakeModel([]);
-    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }), requireSubscription: true });
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }), billing: { requireSubscription: true } });
     const clientId = randomUUID();
     const payload = { client_id: clientId, text: "fakarny bokra el sa3a 6 el dentist", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
     const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
@@ -294,6 +294,8 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
     expect(body.replies.map((r) => r.text)).toEqual(output.reply);
     expect(body.items[0]).toMatchObject({ title: "الدكتور", remind_at: "2026-11-20T15:00:00.000Z" });
     expect(calls).toHaveLength(0);
+    // On the phone: free, no allowance (pricing undecided).
+    expect(body.ai_allowance?.limit ?? null).toBeNull();
     const ev = await prisma.event.findFirst({ where: { name: "ai_call" } });
     expect(ev?.propsJson).toMatchObject({ purpose: "phone", valid: true });
 

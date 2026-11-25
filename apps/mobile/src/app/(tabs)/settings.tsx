@@ -16,6 +16,7 @@ import { legalUrl } from "@/lib/api-url";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
 import { shareInvite } from "@/referral/share";
+import { BrainSection, showBrainSettings, VoiceSection } from "@/brain/BrainSettings";
 import { ask, Button, Card, confirm, fonts, Icon, notify, palette, PersonAvatar, radius, Screen, space, Text, textStart, ThemePicker, type IconName } from "@/ui";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -274,6 +275,17 @@ export default function SettingsScreen() {
           />
         </View>
       </Group>
+
+      {showBrainSettings() ? (
+        <>
+          <Group title={t.brain.title}>
+            <BrainSection />
+          </Group>
+          <Group title={t.voice.title}>
+            <VoiceSection />
+          </Group>
+        </>
+      ) : null}
 
       <Group title={t.alarms.title}>
         <View style={styles.field}>
