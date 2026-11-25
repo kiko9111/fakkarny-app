@@ -115,6 +115,9 @@ export interface Added {
  * level per month). In a shared book the other members hear about it in their chat with a push,
  * and Zaki posts it in the circle feed.
  */
+/** An add without an id that repeats one from the last 2 minutes is a retry (see addEntry). */
+export const APP_RETRY_WINDOW_MS = 2 * 60_000;
+
 export async function addEntry(
   prisma: PrismaClient,
   section: SectionWithCircle,
@@ -129,6 +132,15 @@ export async function addEntry(
       if (had.sectionId !== section.id || had.userId !== user.id) throw new Error("money entry id in use");
       return { entry: had, monthTotal: 0, notices: [], replay: true };
     }
+  } else if (input.source === "app") {
+    // App builds from before 2026-11-25 send no id and gave up after 20 s on a slow server while
+    // the add still went through, so a second tap saved it twice. The same amount and note in the
+    // same section from the same person within 2 minutes is that retry, not a new entry.
+    const had = await prisma.moneyEntry.findFirst({
+      where: { sectionId: section.id, userId: user.id, amount: new Prisma.Decimal(input.amount), note: input.note, source: "app", at: { gte: new Date(now.getTime() - APP_RETRY_WINDOW_MS) } },
+      orderBy: { at: "desc" },
+    });
+    if (had) return { entry: had, monthTotal: 0, notices: [], replay: true };
   }
   return prisma.$transaction(async (tx) => {
     const month = monthOf(now, user.timezone);

@@ -7,7 +7,7 @@ import { fill } from "@/circles/logic";
 import { formatMoney, parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
 import { deleteSection, forgetSection, getSection, peekMoney, peekMoneySaved, peekSection, peekSectionSaved, saveMoney, saveSection, updateSection } from "@/lib/api";
-import { logAmount, realSectionId, removeAmount } from "@/money/actions";
+import { findMovedSection, logAmount, realSectionId, removeAmount } from "@/money/actions";
 import { budgetState, detailFromSection, monthLabel, toggleSplit, withoutSection, withSection } from "@/money/logic";
 import { HttpError } from "@/sync/queue";
 import { Badge, Button, Card, Chip, confirm, IconButton, Note, notify, palette, ProgressBar, Screen, SectionHeader, space, Text, TextField } from "@/ui";
@@ -45,7 +45,15 @@ export default function SectionScreen() {
       setState("ok");
     } catch (err) {
       // A section made on this phone that the server hasn't got yet is not "gone".
-      if (err instanceof HttpError && err.status === 404 && realSectionId(params.id) === id && !peekMoney()?.sections.some((x) => x.id === id)) setState("gone");
+      const missing = err instanceof HttpError && err.status === 404;
+      // A twin merged into the older section of the same name: open that one instead.
+      const moved = missing ? await findMovedSection(id) : null;
+      if (moved) {
+        setId(moved);
+        setData((d) => peekSection(moved) ?? d);
+        return;
+      }
+      if (missing && realSectionId(params.id) === id && !peekMoney()?.sections.some((x) => x.id === id)) setState("gone");
       else setState("failed");
       setData((d) => d ?? first());
     }

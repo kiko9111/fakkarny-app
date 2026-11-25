@@ -153,6 +153,15 @@ describe.skipIf(!hasTestDb)("wider Daftar: sections, budgets, shared books", () 
     const omarBook = await section(omar, { name: "x" });
     expect((await post(omar, `/money/sections/${omarBook.id}/entries`, { id: entryId, amount: 1 })).statusCode).toBe(422);
 
+    // An old app (no id) that gave up on a slow answer and was tapped again: still one entry.
+    const noId = await post(mona, `/money/sections/${id}/entries`, { amount: 29000, note: null });
+    expect(noId.statusCode).toBe(201);
+    const retry = await post(mona, `/money/sections/${id}/entries`, { amount: 29000, note: null });
+    expect([retry.statusCode, SectionResponse.parse(retry.json()).section.month_total]).toEqual([200, 38000]);
+    // A different amount is a new entry.
+    expect((await post(mona, `/money/sections/${id}/entries`, { amount: 1000 })).statusCode).toBe(201);
+    await prisma.moneyEntry.deleteMany({ where: { sectionId: id, amount: { in: [29000, 1000] } } });
+
     // Twins made before this fix are merged into the oldest on the next look, entries and budget kept.
     const older = await prisma.moneySection.create({ data: { ownerId: mona.id, name: "Car", kind: "expense", createdAt: new Date("2026-11-01T00:00:00Z") } });
     const newer = await prisma.moneySection.create({ data: { ownerId: mona.id, name: "car", kind: "expense", budget: 2000, createdAt: new Date("2026-11-02T00:00:00Z") } });

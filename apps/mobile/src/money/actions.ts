@@ -1,6 +1,7 @@
 import { randomUUID } from "expo-crypto";
 import type { MoneyKind, MoneySection, SectionDetail } from "@fakkarni/shared";
-import { addMoney, createSection, deleteMoneyEntry, queueAddMoney, peekMoney, peekMoneySaved, peekSectionSaved, saveMoney, saveSection } from "@/lib/api";
+import { addMoney, createSection, deleteMoneyEntry, getMoney, queueAddMoney, peekMoney, peekMoneySaved, peekSectionSaved, saveMoney, saveSection } from "@/lib/api";
+import { HttpError } from "@/sync/queue";
 import { dataChanged } from "@/lib/live";
 import { QueuedOffline } from "@/sync/writes";
 import { detailFromSection, sameSection, withEntry, withSection } from "./logic";
@@ -20,6 +21,27 @@ const creating = new Map<string, Promise<unknown>>();
 /** A server from before 2026-11-25 ignores the phone's id and picks its own: phone id → server id. */
 const aliases = new Map<string, string>();
 export const realSectionId = (id: string) => aliases.get(id) ?? id;
+
+/**
+ * The server answered 404 for a section this phone knows: it was a twin ("moratab" made twice
+ * while the server was slow) and got merged into the oldest one. Look the name up again and
+ * follow it. Returns the section's id now, or null when it is really gone.
+ */
+export async function findMovedSection(id: string): Promise<string | null> {
+  const known = peekSectionSaved(id)?.section ?? peekMoneySaved()?.sections.find((s) => s.id === id);
+  if (!known) return null;
+  try {
+    const now = await getMoney();
+    const match = sameSection(now.sections.filter((s) => s.id !== id), known.name, known.kind, known.circle_id);
+    if (!match) return null;
+    aliases.set(id, match.id);
+    return match.id;
+  } catch {
+    return null;
+  }
+}
+
+const isGone = (err: unknown) => err instanceof HttpError && err.status === 404;
 
 /** A new section, or the one the user already has with that name and kind ("Salary" = "salary"). */
 export function makeSection(input: { name: string; kind: MoneyKind; budget: number | null; circle_id: string | null }, cb: { onFailed: () => void; onQueued?: () => void }): Made {
@@ -62,7 +84,14 @@ export function logAmount(sectionId: string, input: { amount: number; note: stri
         },
       )
     : addMoney(realSectionId(sectionId), body);
-  void send
+  // A merged twin: send the same add (same id, so never twice) to the section it went into.
+  const sent = send.catch(async (err: unknown) => {
+    if (!isGone(err)) throw err;
+    const moved = await findMovedSection(realSectionId(sectionId));
+    if (!moved) throw err;
+    return addMoney(moved, body);
+  });
+  void sent
     .then((res) => {
       const d = peekSectionSaved(res.section.id);
       if (d && res.entry) saveSection({ ...withEntry(d, res.entry), section: res.section });
