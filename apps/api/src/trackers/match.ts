@@ -23,6 +23,8 @@ export function normalize(text: string): string {
 }
 
 // Questions, plans, reminders and "not yet" are never a log entry.
+// Glued negation too: "مشربتش", "ماصليتش", "ma shrebtsh", "mashrebtesh".
+const NEGATED = /(?:^|\s)(?:ما ?|م)\S{2,}ش(?:\s|$)|\bma ?\S{3,}(?:tsh|tesh|sh)\b/;
 const NOT_A_LOG = /[?؟]|فكرني|فكريني|remind|بكره|tomorrow|هشرب|هروح|هصلي|هاخد|هذاكر|هدفع|will |going to|gonna|عايز|عاوز|محتاج|لازم|need to|want to|should|مش |ما |لسه|نسيت|\bnot\b|n't|never|forgot|لو |\bif\b/;
 const DEBT_WORDS = /سلف|استلف|عليا|ليا |عليه|\bowe|\blent\b|borrow|رجع|\bback\b/;
 
@@ -58,7 +60,7 @@ function positive(n: number | null): number | null {
 /** "شربت كوبايتين مية" → { kind: "water", amount: 2 }, only for kinds the user follows. */
 export function matchTrackerLog(text: string, kinds: readonly TrackerKind[]): TrackerHit | null {
   const t = normalize(text);
-  if (t.length > 80 || t.split(/\s+/).length > 9 || NOT_A_LOG.test(t)) return null;
+  if (t.length > 80 || t.split(/\s+/).length > 9 || NOT_A_LOG.test(t) || NEGATED.test(t)) return null;
   for (const kind of kinds) {
     if (kind === "custom") continue;
     const amount = MATCHERS[kind](t);

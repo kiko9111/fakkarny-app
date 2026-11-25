@@ -19,7 +19,7 @@ describe("when", () => {
     expect(parseWhen("كمان نص ساعه", { local: now })).toMatchObject({ relMin: 30 });
   });
   it("chains hours forward", () => {
-    expect(parseWhen("الساعه ٢ و ٨", { local: now }).clocks).toEqual([{ h: 14, m: 0 }, { h: 20, m: 0 }]);
+    expect(parseWhen("الساعه ٢ و ٨", { local: now }).clocks.map(({ h, m }) => ({ h, m }))).toEqual([{ h: 14, m: 0 }, { h: 20, m: 0 }]);
   });
 });
 
@@ -51,6 +51,52 @@ describe("understand", () => {
   it("splits the bill with circle members by name", () => {
     const app = { circles: [{ name: "البيت", kind: "family", members: ["منى", "عمر"] }] };
     expect(u("2asem 750 ben ana w mona w omar", { app }).app_actions[0]).toMatchObject({ kind: "split_bill", amount: 750, people: ["منى", "عمر"] });
+  });
+  it("reads bare hours, thousands and names across scripts (holdout4 misses)", () => {
+    expect(u("صحيني بكرة ٦ ونص").create_items[0]).toMatchObject({ due_at_local: "2026-11-20T06:30", alarm: true });
+    expect(u("remind me bokra 9 to send el report").create_items[0]).toMatchObject({ type: "reminder", due_at_local: "2026-11-20T09:00" });
+    expect(u("fkrny 5 ela rob3 akalem 5alty").create_items[0]?.due_at_local).toBe("2026-11-19T16:45");
+    expect(u("دفعت ١٬٢٠٠ للسباك").app_actions[0]).toMatchObject({ kind: "log_money", amount: 1200 });
+    const app = { circles: [{ name: "الشغل", kind: "friends", members: ["سامي", "Nada"] }] };
+    expect(u("salaft nada 1500", { app }).create_items[0]?.debt).toMatchObject({ person: "Nada", amount: 1500 });
+    expect(u("transfer money to the landlord tomorrow at 1", { app }).app_actions).toEqual([]);
+    const openItems = [{ id: "d", type: "debt" as const, title: "سامي عليه ٢٠٠", debt_person: "سامي", debt_amount: 200, debt_direction: "owed_to_me" as const }];
+    expect(u("sami raga3ly el felous", { app, openItems }).update_items).toEqual([{ id: "d", status: "done" }]);
+  });
+  it("answers Zaki's questions however the phone model worded them (QA run)", () => {
+    const openItems = [
+      { id: "a", type: "reminder" as const, title: "a5od الدوا", due_local: "2026-11-20T16:45" },
+      { id: "b", type: "task" as const, title: "اكلم السباك" },
+    ];
+    // Cancel asked first; the model said "تمام، قولّي بس التفاصيل؟" instead of "ألغي «…»؟".
+    const yes = u("ايوه", { openItems, history: [{ role: "user", text: "الغي ميعاد الدوا" }, { role: "assistant", text: "تمام، قولّي بس التفاصيل؟" }] });
+    expect(yes.update_items).toEqual([{ id: "a", status: "cancelled" }]);
+    // A task request, in the app's own wording.
+    const ok = u("ماشي هجيبه", { history: [{ role: "assistant", text: "طلب من Mona في «البيت»: تجيب عيش. براحتك 🌟" }] });
+    expect(ok.app_actions).toEqual([{ kind: "task_answer", person: "Mona", answer: "yes" }]);
+  });
+  it("names a circle without the ل of \"for\"", () => {
+    const name = (t: string) => (u(t).app_actions[0] as { name?: string } | undefined)?.name;
+    expect(name("اعمل دايرة للعيلة")).toBe("العيلة");
+    expect(name("اعمل جروب لشلة الكورة")).toBe("شلة الكورة");
+  });
+  it("reads holdout5 misses: thousands, borrowed-from-me, custom sections and trackers", () => {
+    const app = {
+      circles: [{ name: "صحاب الكلية", kind: "friends", members: ["Youssef", "Mariam"] }],
+      sections: [{ name: "فواتير", kind: "expense" as const }, { name: "شغل حر", kind: "income" as const }],
+      trackers: [{ kind: "custom", name: "المشي", goal: 30 }, { kind: "custom", name: "الصلاة", goal: 5 }, { kind: "water", goal: 8 }],
+    };
+    expect(u("spent 1,250 on the plumber", { app }).app_actions[0]).toMatchObject({ kind: "log_money", amount: 1250 });
+    expect(u("مريم مستلفة مني ١٠٠٠", { app }).create_items[0]?.debt).toMatchObject({ amount: 1000, direction: "owed_to_me" });
+    expect(u("انا مديون ليوسف ب ٦٠٠", { app }).create_items[0]?.debt).toMatchObject({ amount: 600, direction: "i_owe" });
+    expect(u("دفعت فاتورة الكهربا ٦٥٠", { app }).app_actions[0]).toMatchObject({ section: "فواتير", amount: 650 });
+    expect(u("got paid 4000 for the freelance job", { app }).app_actions[0]).toMatchObject({ section: "شغل حر", money_kind: "income" });
+    expect(u("walked 20 minutes", { app }).app_actions[0]).toMatchObject({ kind: "log_tracker", tracker: "المشي", amount: 20 });
+    expect(u("صليت الضهر", { app }).app_actions[0]).toMatchObject({ kind: "log_tracker", tracker: "الصلاة" });
+    expect(u("shrebt kobayten maya", { app }).app_actions[0]).toMatchObject({ kind: "log_tracker", amount: 2 });
+    expect(u("fakkarny ba3d rob3 sa3a at2aked men el forn").create_items[0]?.due_at_local).toBe("2026-11-19T10:15");
+    expect(u("fakkarny 3al 7 ashoof el match").create_items[0]?.due_at_local).toBe("2026-11-19T19:00");
+    expect(u("5alast el ghasil", { openItems: [{ id: "g", type: "reminder", title: "أنشر الغسيل" }] }).update_items).toEqual([{ id: "g", status: "done" }]);
   });
   it("flags crisis and does nothing else", () => {
     expect(u("مبقتش عايز أعيش")).toMatchObject({ crisis: true, create_items: [] });

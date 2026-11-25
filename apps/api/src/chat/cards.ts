@@ -255,10 +255,10 @@ const words = (text: string) =>
 
 const CONFIRM = new Set([
   "اه", "آه", "أه", "ايوه", "أيوه", "ايوة", "أيوة", "اكيد", "أكيد", "تمام", "ماشي", "اوك", "اوكي", "ابعت", "ابعتها", "ابعته", "ابعتهالها", "ابعتهاله", "انزل", "نزلها",
-  "اعمل", "اعملها", "يلا", "يالا", "موافق", "تم", "اه يا", "يا", "زكي", "اوي", "بالظبط", "صح",
+  "اعمل", "اعملها", "يلا", "يالا", "موافق", "تم", "حاضر", "هجيبه", "هجيبها", "هعمله", "هعملها", "هجيبهم", "من", "عيني", "عنيا", "7ader", "hagebo", "hagebha", "ha3melo", "ha3melha", "will", "i'll", "ill", "on", "got", "اه يا", "يا", "زكي", "اوي", "بالظبط", "صح",
   "yes", "yeah", "yep", "yup", "ok", "okay", "sure", "send", "it", "go", "ahead", "do", "please", "yalla", "aywa", "aiwa", "ah", "tamam", "mashy", "mashi", "ebaat", "eb3at", "eb3atha", "zaki",
 ]);
-const CONFIRM_CORE = new Set([...CONFIRM].filter((w) => !["يا", "زكي", "اوي", "it", "please", "zaki", "ahead", "do"].includes(w)));
+const CONFIRM_CORE = new Set([...CONFIRM].filter((w) => !["يا", "زكي", "اوي", "it", "please", "zaki", "ahead", "do", "من", "will", "i'll", "ill", "on", "got"].includes(w)));
 const CANCEL = new Set(["لا", "لأ", "لاء", "بلاش", "الغي", "الغيها", "لغيها", "خلاص", "سيبك", "مش", "دلوقتي", "no", "nope", "cancel", "dont", "don", "t", "la", "la2", "balash", "not", "now", "never", "mind", "يا", "زكي", "zaki"]);
 const CANCEL_CORE = new Set(["لا", "لأ", "لاء", "بلاش", "الغي", "الغيها", "لغيها", "سيبك", "no", "nope", "cancel", "la", "la2", "balash"]);
 

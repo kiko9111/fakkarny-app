@@ -15,6 +15,7 @@ import { moneyFastPath } from "../money/store";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
+import { settleCards } from "../chat/more-actions";
 import { CANCELLED_REPLY, CONFIRMED_REPLY, HOME_REPLY, homeCheckin, isCancel, isConfirm, isUndo, LABEL, storedCards, type StoredCard } from "../chat/cards";
 import { UNDO_WINDOW_MS, undoCard } from "../chat/undo";
 import type { Message } from "../generated/prisma/client";
@@ -215,7 +216,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       // the keyword safety net above always counts.
       crisis ||= understood.crisis || (said.success && said.data.crisis && looksDistressed(message.text));
       // The model's words, unless it failed or promises a reminder the code didn't set: then the code's own words.
-      replies = modelOk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
+      // When the code needs an answer (a missing time / amount / person, or "really cancel?") the reply
+      // must ask: a small model that only says "تمام" leaves the user thinking it was saved.
+      const skippedAsk = Boolean(understood.ask) && !wrote.some((w) => /[؟?]/.test(w));
+      replies = modelOk && !skippedAsk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
     } else {
       const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
       // A failure that may come from the stored chat itself (a request the API refuses, or output that
@@ -331,6 +335,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // A debt with someone in their circles: offer the shared Daftar too (unless the model already did).
     const debts = crisis ? [] : actions.create_items.flatMap((i) => (i.type === "debt" && i.debt && !appActions.some((a) => a.kind === "daftar_add") ? [i.debt] : []));
     if (debts.length) applied = await withCards(prisma, applied, await debtCards(prisma, user, debts, script).catch(() => []));
+    // A debt closed in chat that is also in the shared Daftar: offer to settle that entry too.
+    const closed = crisis ? [] : applied.items.filter((i) => i.type === "debt" && i.status === "done" && i.debtPerson && actions.update_items.some((u) => u.id === i.id && u.status === "done"));
+    if (closed.length && !appActions.some((a) => a.kind === "daftar_settle"))
+      applied = await withCards(prisma, applied, await settleCards(prisma, user, closed.map((i) => ({ person: i.debtPerson!, amount: i.debtAmount == null ? null : Number(i.debtAmount) })), script, now).catch(() => []));
 
     await aiEvent;
 
