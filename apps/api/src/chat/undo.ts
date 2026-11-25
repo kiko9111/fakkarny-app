@@ -89,6 +89,10 @@ export async function undoCard(prisma: PrismaClient, user: User, c: StoredCard, 
         const e = await prisma.daftarEntry.findFirst({ where: { id: u.entryId, creatorId: user.id, otherUserId: null, status: "pending" } });
         return e ? cancelEntry(prisma, e.id) : false;
       }
+      case "item_status": {
+        const r = await prisma.item.updateMany({ where: { id: u.itemId, userId: user.id }, data: { status: u.status } });
+        return r.count > 0;
+      }
       case "task_remind": {
         const t = await prisma.circleTask.findFirst({ where: { id: u.taskId, OR: [{ assignerId: user.id }, { assigneeId: user.id }] } });
         if (!t) return false;

@@ -166,7 +166,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 2. One model call with persona (cached) + context + recent chat.
     // A tracker step logged just above changes the numbers: load them again.
     const ctx = closesReminder ? await loadContext(prisma, user, now) : await ctxEarly;
-    const history: ChatTurn[] = ctx.recent.map((m) => ({ role: m.role === "user" ? "user" : "assistant", text: m.text }));
+    const history = historyUpTo(ctx.recent, message);
     let replies: string[];
     let actions = EMPTY_ACTIONS;
     let crisis = crisisKeyword;
@@ -217,21 +217,34 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       replies = modelOk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
     } else {
       const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
-      try {
-        const result = await model.respond(modelInput);
-        usage = result.usage;
-        if (result.ok) {
-          modelOk = true;
-          replies = result.output.reply;
-          actions = result.output;
-          crisis ||= result.output.crisis;
-        } else {
+      // A failure that may come from the stored chat itself (a request the API refuses, or output that
+      // doesn't validate) gets one more try with only the message being answered, so one bad line in
+      // the recent chat can't turn every reply into "my brain froze". Timeouts and outages don't.
+      const tries = [modelInput, { ...modelInput, history: history.slice(-1) }];
+      replies = [FALLBACK_REPLY[script]];
+      for (const [n, input] of tries.entries()) {
+        try {
+          const result = await model.respond(input);
+          usage = usage ? addUsage(usage, result.usage) : result.usage;
+          if (result.ok) {
+            modelOk = true;
+            replies = result.output.reply;
+            actions = result.output;
+            crisis ||= result.output.crisis;
+            if (n > 0) await event(prisma, user.id, "ai_recovered", { short_history: true }).catch(() => {});
+            break;
+          }
           log?.warn({ reason: result.reason }, "friend model returned no usable output");
-          replies = [FALLBACK_REPLY[script]];
+          await event(prisma, user.id, "ai_error", { status: null, kind: result.reason, attempt: n }).catch(() => {});
+          if (result.reason === "refusal") break;
+        } catch (err) {
+          log?.error({ err: errorSummary(err) }, "friend model call failed");
+          // Counted (status and a coarse kind, never text) so /admin shows why replies fail.
+          const props = aiErrorProps(err);
+          await event(prisma, user.id, "ai_error", { ...props, attempt: n }).catch(() => {});
+          // Outages, timeouts and account problems won't be fixed by a shorter chat: stop there.
+          if (["timeout", "rate_limit", "overloaded", "credit"].includes(props.kind) || (props.status !== null && props.status !== 400)) break;
         }
-      } catch (err) {
-        log?.error({ err: errorSummary(err) }, "friend model call failed");
-        replies = [FALLBACK_REPLY[script]];
       }
       cloudInput = modelInput;
     }
@@ -308,6 +321,9 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (shown && !applied.items.some((i) => i.id === shown!.id)) applied = { ...applied, items: [...applied.items, shown] };
     if (appActions.length) {
       const ran = await runAppActions(prisma, user, appActions, script, now, { requireSubscription: requireSubscription ?? false });
+      // Nothing the model asked for could be done ("cancel Karim's debt" with no such debt): its
+      // words ("I'll cancel it") would be a false promise, so the reply says what happened instead.
+      if (ran.cards.length && ran.cards.every((c) => c.status === "failed") && !applied.items.length) applied = await honestReply(prisma, applied, ran.cards, script);
       applied = await withCards(prisma, applied, ran.cards);
       applied = { ...applied, notices: [...(applied.notices ?? []), ...ran.notices] };
     }
@@ -380,6 +396,36 @@ async function event(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: s
   await prisma.event.create({ data: { userId, name, propsJson: props } });
 }
 
+/**
+ * The chat the model sees, ending with the message being answered. Anything stored after it (a
+ * reminder or status line from the tick, or later messages when a retry answers an older one)
+ * is left out: it came after what the user wrote, and a history that ends with Zaki's own turn
+ * is a prefill, which the API refuses with a 400 (every such turn fell back to "my brain froze").
+ */
+export function historyUpTo(recent: Pick<Message, "id" | "role" | "text" | "createdAt">[], message: Pick<Message, "id" | "text" | "createdAt">): ChatTurn[] {
+  const before = recent.filter((m) => m.id !== message.id && m.createdAt.getTime() <= message.createdAt.getTime());
+  return [
+    ...before.map((m): ChatTurn => ({ role: m.role === "user" ? "user" : "assistant", text: m.text })),
+    { role: "user", text: message.text },
+  ];
+}
+
+/** A model failure as counted props: HTTP status and a coarse kind read from the API's message. */
+export function aiErrorProps(err: unknown): { status: number | null; kind: string } {
+  const e = (err ?? {}) as { status?: number; message?: string; name?: string };
+  const msg = String(e.message ?? "").toLowerCase();
+  const kind = /prefill|final assistant|must end with a user/.test(msg) ? "prefill"
+    : /credit balance|billing/.test(msg) ? "credit"
+    : /non-empty|must not be empty|empty/.test(msg) ? "empty_text"
+    : /surrogate|unicode|utf-?8|invalid json/.test(msg) ? "unicode"
+    : /too complex/.test(msg) ? "schema"
+    : /timed? ?out|timeout/.test(msg) || e.name === "APIConnectionTimeoutError" ? "timeout"
+    : e.status === 429 ? "rate_limit"
+    : e.status === 529 || e.status === 503 ? "overloaded"
+    : "other";
+  return { status: typeof e.status === "number" ? e.status : null, kind };
+}
+
 /** Error info that is safe to log (status/type only, never prompt or message text). */
 function errorSummary(err: unknown) {
   if (err && typeof err === "object") {
@@ -387,6 +433,23 @@ function errorSummary(err: unknown) {
     return { name: e.name, status: e.status, code: e.code };
   }
   return { name: "unknown" };
+}
+
+const FAILED_TAIL: Record<ReplyLang, string> = {
+  arabic: "قولّي تقصد إيه بالظبط وأنا أظبطها.",
+  english: "Tell me exactly what you meant and I'll sort it.",
+};
+
+/** Replace the turn's replies with one line saying what couldn't be done (card words, not model words). */
+async function honestReply<T extends { replies: Message[] }>(prisma: Parameters<MessagePipeline>[0]["prisma"], result: T, cards: StoredCard[], lang: ReplyLang): Promise<T> {
+  const [first, ...rest] = result.replies;
+  if (!first) return result;
+  const text = `${[...new Set(cards.map((c) => c.label))].join(" · ")}. ${FAILED_TAIL[lang]}`;
+  const [saved] = await Promise.all([
+    prisma.message.update({ where: { id: first.id }, data: { text } }),
+    rest.length ? prisma.message.deleteMany({ where: { id: { in: rest.map((m) => m.id) } } }) : null,
+  ]);
+  return { ...result, replies: [saved] };
 }
 
 /** Put action cards on the last reply of a turn (saved, and in the returned replies). */

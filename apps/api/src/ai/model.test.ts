@@ -53,3 +53,22 @@ describe("toAppActions", () => {
     expect(out).toEqual([{ kind: "create_circle", name: "Gym" }]);
   });
 });
+
+describe("buildMessages", () => {
+  it("never sends blank turns, broken emoji halves or a trailing assistant turn", async () => {
+    const { buildMessages } = await import("./model");
+    const msgs = buildMessages({
+      context: "ctx \uD83D",
+      history: [
+        { role: "user", text: "alo" },
+        { role: "assistant", text: "   " },
+        { role: "user", text: "zaki \uDE05" },
+        { role: "assistant", text: "العصر دخل" },
+      ],
+    });
+    expect(msgs.map((m) => m.role)).toEqual(["user", "user", "user"]);
+    const json = JSON.stringify(msgs);
+    expect(json).not.toMatch(/\\ud8|\\ude/i);
+    expect(msgs.at(-1)!.content).toBe("zaki �");
+  });
+});

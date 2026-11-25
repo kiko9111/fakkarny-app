@@ -59,7 +59,8 @@ export type UndoPayload =
   | { kind: "split"; splitId: string }
   | { kind: "split_paid"; splitId: string; index: number }
   | { kind: "daftar_entry"; entryId: string }
-  | { kind: "task_remind"; taskId: string; remindAt: string | null };
+  | { kind: "task_remind"; taskId: string; remindAt: string | null }
+  | { kind: "item_status"; itemId: string; status: "open" };
 
 /** Cards for the wire, without the server-only fields. Tolerates anything stored (old rows: null). */
 export function wireActions(json: unknown): ChatAction[] {
@@ -216,7 +217,10 @@ export const LABEL = {
     l === "english" ? `Tell ${person} ${ok ? "well done" : "to redo"} ${q(title)}?` : `أقول لـ ${person} ${ok ? "برافو على" : "يعيد"} ${q(title)}؟`,
   reviewed: (l: ReplyLang, person: string, ok: boolean) => (l === "english" ? `Told ${person}: ${ok ? "well done" : "redo"}` : `قلت لـ ${person}: ${ok ? "برافو" : "يعيدها"}`),
   noTask: (l: ReplyLang) => (l === "english" ? "I couldn't find that task" : "مالقيتش المهمة دي"),
-  noDaftar: (l: ReplyLang) => (l === "english" ? "I couldn't find that in the Daftar" : "مالقيتهاش في الدفتر"),
+  noDaftar: (l: ReplyLang, person?: string) =>
+    person ? (l === "english" ? `Nothing open with ${person} in the Daftar or your debts` : `مفيش حاجة مفتوحة مع ${person} في الدفتر ولا في الديون`) : l === "english" ? "I couldn't find that in the Daftar" : "مالقيتهاش في الدفتر",
+  debtClosed: (l: ReplyLang, person: string, cancelled: boolean) =>
+    l === "english" ? `${cancelled ? "Removed" : "Marked paid"}: the debt with ${person}` : `${cancelled ? "اتشال" : "اتسدّد"} الدين مع ${person}`,
   splitMade: (l: ReplyLang, total: number, people: number, share: number) =>
     l === "english" ? `Split ${egp(l, total)} between ${people} · about ${egp(l, share)} each · tap to send the link` : `اتقسم ${egp(l, total)} على ${people} · حوالي ${egp(l, share)} للفرد · دوس وابعت اللينك`,
   splitPaid: (l: ReplyLang, person: string) => (l === "english" ? `${person} paid their share` : `${person} دفع نصيبه`),
