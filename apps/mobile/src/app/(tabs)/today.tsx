@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import { useLive } from "@/lib/live";
 import { StyleSheet, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import type { CircleTask, Item, Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { PlanRow } from "@/components/PlanRow";
@@ -44,7 +45,7 @@ export default function TodayScreen() {
       })
       .catch(() => {});
   }, []);
-  useFocusEffect(loadOnline);
+  useLive(loadOnline);
   const reload = () => {
     loadOnline();
     void refresh();

@@ -8,11 +8,13 @@ import { phoneBrainReady, thinkOnPhone, warmBrain } from "@/brain/engine";
 import { language } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { createEmitter } from "@/lib/emitter";
+import { dataChanged } from "@/lib/live";
+import { LIVE_EVERY_MS } from "@/lib/live-plan";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
 import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
-import { prefetchAll } from "@/lib/prefetch";
+import { prefetchAll, prefetchSoon } from "@/lib/prefetch";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
 /** Fired whenever local messages change, so screens can reload from SQLite. */
@@ -29,6 +31,8 @@ const store: OutboxStore = {
     await sqliteOutbox.markSynced(clientId, res);
     // New or changed reminders become local notifications (they fire offline).
     await scheduleItems(res.items).catch(() => {});
+    // Zaki may have changed anything (money, trackers, tasks, circles): open screens reload now.
+    dataChanged.emit();
   },
 };
 
@@ -63,6 +67,8 @@ export async function pullMessages() {
     if (fromFriend.length) {
       await insertServerMessages(fromFriend);
       messagesChanged.emit();
+      // News from other people (a task, a Daftar answer, a circle post) changes their screens too.
+      dataChanged.emit();
     }
   } catch {
     // offline: try again on the next foreground/network change
@@ -95,7 +101,10 @@ export function startSync() {
   const refresh = () => {
     void syncQueue.wake();
     // Shared-data taps made offline (tracker steps, check-ins) go out first, then screens reload.
-    void writeOutbox.flush().catch(() => {});
+    void writeOutbox
+      .flush()
+      .then((r) => (r === "done" ? dataChanged.emit() : undefined))
+      .catch(() => {});
     void pullMessages();
     // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
     void listScheduled().then(scheduleItems).catch(() => {});
@@ -105,6 +114,9 @@ export function startSync() {
     if (prefs.get("onboarded") === "1") prefetchAll();
   };
   refresh();
+  dataChanged.subscribe(() => {
+    if (prefs.get("onboarded") === "1") prefetchSoon();
+  });
   void syncLanguage();
   // The on-phone model takes a few seconds to load: do it now, not when the first message waits.
   warmBrain();
@@ -114,6 +126,11 @@ export function startSync() {
   AppState.addEventListener("change", (state) => {
     if (state === "active") refresh();
   });
+  // While the app is open, Zaki's own lines and news from other people arrive without a push
+  // (push is not set up on every build) and without leaving and reopening the app.
+  setInterval(() => {
+    if (AppState.currentState === "active") void pullMessages();
+  }, LIVE_EVERY_MS);
 }
 
 /**

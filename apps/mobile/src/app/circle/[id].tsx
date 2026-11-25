@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLive } from "@/lib/live";
 import { QueuedOffline } from "@/sync/writes";
 import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
-import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
@@ -52,11 +53,7 @@ export default function CircleScreen() {
   }, [id]);
 
   // Reload on every return to the screen (after sending a request, for example).
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useLive(load);
 
   const invite = async () => {
     if (inviting) return;

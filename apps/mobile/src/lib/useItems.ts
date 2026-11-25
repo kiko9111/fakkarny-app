@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useFocusEffect } from "expo-router";
+import { useLive } from "./live";
 import type { Item } from "@fakkarni/shared";
 import { upsertItem } from "@/db/messages";
 import { patchItem } from "@/lib/api";
@@ -27,11 +27,13 @@ export function useItems(load: () => Promise<Item[]>) {
     }
   }, [reloadLocal]);
 
-  useFocusEffect(
-    useCallback(() => {
-      void reloadLocal().then(refresh);
-    }, [reloadLocal, refresh]),
-  );
+  // On view, when a chat reply or another change lands, and every 30 s while in view.
+  useLive(async () => {
+    await reloadLocal();
+    // Quiet: no pull-to-refresh spinner for the background reloads.
+    await pullItems().catch(() => {});
+    await reloadLocal();
+  });
 
   /** Mark done (or paid) and cancel its notifications. */
   const complete = useCallback(

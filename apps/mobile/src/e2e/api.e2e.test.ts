@@ -16,6 +16,7 @@ vi.mock("@/db/kv", () => ({ getInstallId: async () => installId }));
 vi.mock("@/lib/supabase", () => ({ accessToken: async () => null }));
 vi.mock("@/lib/demo", () => ({ isDemo: false }));
 vi.mock("@/demo/server", () => ({ demoRequest: async () => null }));
+vi.mock("expo-crypto", () => ({ randomUUID: () => globalThis.crypto.randomUUID() }));
 
 type Api = typeof import("@/lib/api");
 let api: Api;

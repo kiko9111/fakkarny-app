@@ -632,6 +632,17 @@ Rules:
   (apps/api/src/plugins/idempotency.ts, per install id, 1 day) so nothing is applied twice. The screen
   keeps its guess (`QueuedOffline`). Tracker logs carry `at` (≤3 days back) so streaks count the tap's
   day. Route more writes through `writeOrQueue` (api.ts) when their screen can show a guess.
+- Live screens (2026-11-25, kareem: "nothing updates until I close and reopen"): screens load with
+  `useLive` (apps/mobile/src/lib/live.ts) instead of useFocusEffect: on focus, whenever `dataChanged`
+  fires (a chat reply arrived, pulled messages, a card tap, offline taps sent), and every 30 s while in
+  view with the app in front. The app also pulls Zaki's messages every 30 s while open (push isn't on
+  every build), and `prefetchSoon` refreshes every saved copy after a change. Use `useLive` for any
+  new server screen (not for forms: Settings and new-split keep useFocusEffect).
+- OTA fixes apply without a restart: src/lib/updates.ts checks on start and on return (at most every
+  10 min), downloads in the background and reloads when the user leaves the app.
+- Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
+  "<id>.part", each retried with growing waits; a stopped download keeps its bytes ("paused"),
+  resumes by itself when the network returns, and the button says Resume.
 - Android builds without the EAS quota: .github/workflows/android-local-build.yml runs `eas build
   --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
   and attaches the APK to a GitHub pre-release.

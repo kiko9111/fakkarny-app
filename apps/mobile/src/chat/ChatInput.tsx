@@ -35,7 +35,7 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
       const m = voiceModel();
       confirm(t.voice.needModel.replace("{size}", sizeLabel(m.bytes)), t.brain.download.replace("{size}", sizeLabel(m.bytes)), () => {
         notify(t.brain.downloading.replace("{pct}", "0"), "info");
-        startDownload(m.id, m.url).catch(() => notify(t.brain.failed, "error"));
+        startDownload(m.id, m.url, m.bytes).catch(() => notify(t.brain.failed, "error"));
       });
       return;
     }
