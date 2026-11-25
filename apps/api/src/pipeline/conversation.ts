@@ -208,7 +208,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       });
       if (!decided.success) log?.warn({ issues: decided.error.issues.length }, "rule engine output failed validation");
       actions = decided.success ? decided.data : EMPTY_ACTIONS;
-      crisis ||= understood.crisis || (said.success && said.data.crisis);
+      // Small phone models raise the crisis flag on plain chat ("enta gamed ya zaki" did, in the
+      // phone eval), which would bury a friendly reply under helpline numbers. Their flag counts
+      // when the message shows distress (looksDistressed, a wider net than the crisis keywords);
+      // the keyword safety net above always counts.
+      crisis ||= understood.crisis || (said.success && said.data.crisis && looksDistressed(message.text));
       // The model's words, unless it failed or promises a reminder the code didn't set: then the code's own words.
       replies = modelOk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
     } else {
