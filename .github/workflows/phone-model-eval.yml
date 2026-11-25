@@ -42,16 +42,28 @@ jobs:
         env:
           DATABASE_URL: postgresql://x:x@localhost:5432/x
         run: npx prisma generate
-      - name: Get llama.cpp's server (prebuilt release)
+      - name: Get llama.cpp's server (prebuilt CPU release, else build it)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          url=$(gh api repos/ggml-org/llama.cpp/releases/latest --jq '[.assets[] | select(.name | test("bin-ubuntu-x64\\.(zip|tar\\.gz)$"))][0].browser_download_url')
-          echo "llama.cpp: $url"
+          gh api repos/ggml-org/llama.cpp/releases/latest --jq '.assets[].name' > assets.txt || true
+          echo "Release assets:"; cat assets.txt
+          name=$(grep -iE 'ubuntu' assets.txt | grep -iE 'x64|x86_64|amd64' | grep -viE 'vulkan|rocm|cuda|sycl|openvino|hip|arm|s390' | head -1 || true)
           mkdir -p llama && cd llama
-          curl -sSL "$url" -o pkg
-          if [[ "$url" == *.zip ]]; then unzip -q pkg; else tar xzf pkg; fi
+          if [ -n "$name" ]; then
+            tag=$(gh api repos/ggml-org/llama.cpp/releases/latest --jq '.tag_name')
+            gh release download "$tag" -R ggml-org/llama.cpp -p "$name"
+            case "$name" in *.zip) unzip -q "$name" ;; *) tar xzf "$name" ;; esac
+          fi
           bin=$(find . -name llama-server -type f | head -1)
+          if [ -z "$bin" ]; then
+            echo "No prebuilt server found; building from source"
+            git clone --depth 1 https://github.com/ggml-org/llama.cpp src
+            cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=ON
+            cmake --build build --target llama-server -j 4
+            bin=$(find build -name llama-server -type f | head -1)
+          fi
+          chmod +x "$bin"
           echo "LLAMA_SERVER=$PWD/$bin" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$PWD/$(dirname "$bin")" >> "$GITHUB_ENV"
       - name: Download the model (Q4_K_M)
