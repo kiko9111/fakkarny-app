@@ -973,7 +973,10 @@ on("GET", "/money", () => {
   return { month: iso(now()).slice(0, 7), sections, totals: { expense: sum("expense"), income: sum("income") } };
 });
 on("POST", "/money/sections", (_m, b) => {
-  const r: SectionRow = { id: id(), name: String(b.name ?? ""), kind: b.kind === "income" ? "income" : "expense", budget: (b.budget as number | null) ?? null, circle_id: (b.circle_id as string | null) ?? null, entries: [] };
+  const key = (n: string) => n.trim().toLowerCase();
+  const had = money().find((x) => x.id === b.id || (key(x.name) === key(String(b.name ?? "")) && x.kind === (b.kind === "income" ? "income" : "expense") && x.circle_id === ((b.circle_id as string | null) ?? null)));
+  if (had) return { section: toSection(had) };
+  const r: SectionRow = { id: typeof b.id === "string" ? b.id : id(), name: String(b.name ?? ""), kind: b.kind === "income" ? "income" : "expense", budget: (b.budget as number | null) ?? null, circle_id: (b.circle_id as string | null) ?? null, entries: [] };
   money().push(r);
   return { section: toSection(r) };
 });
@@ -998,8 +1001,9 @@ on("DELETE", "/money/sections/([^/]+)", (m) => {
 on("POST", "/money/sections/([^/]+)/entries", (m, b) => {
   const r = findSection(m[1]!);
   const split = r.circle_id ? (Array.isArray(b.split) ? b.split.length : state.circles.find((c) => c.id === r.circle_id)?.members.length ?? 1) : 1;
-  r.entries.push({ id: id(), amount: Number(b.amount), note: (b.note as string | null) ?? null, at: iso(now()), payer: null, mine: true, split });
-  return { section: toSection(r) };
+  const e = { id: typeof b.id === "string" ? b.id : id(), amount: Number(b.amount), note: (b.note as string | null) ?? null, at: iso(now()), payer: null, mine: true, split };
+  if (!r.entries.some((x) => x.id === e.id)) r.entries.push(e);
+  return { section: toSection(r), entry: { id: e.id, section_id: r.id, amount: e.amount, note: e.note, at: e.at, payer_name: null, is_mine: true, split_count: split } };
 });
 on("DELETE", "/money/entries/([^/]+)", (m) => {
   for (const r of money()) r.entries = r.entries.filter((x) => x.id !== m[1]);

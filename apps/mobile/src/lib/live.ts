@@ -22,10 +22,29 @@ export function useLive(load: () => unknown) {
   useFocusEffect(
     useCallback(() => {
       let timer: ReturnType<typeof setTimeout> | null = null;
+      let alive = true;
       let last = Date.now();
+      // One load at a time: on a slow connection the 30 s poll and change signals must not pile
+      // requests on top of one still waiting. A call that lands meanwhile runs once after.
+      let running = false;
+      let again = false;
       const run = () => {
         last = Date.now();
-        void Promise.resolve(ref.current()).catch(() => {});
+        if (running) {
+          again = true;
+          return;
+        }
+        running = true;
+        void Promise.resolve()
+          .then(() => ref.current())
+          .catch(() => {})
+          .finally(() => {
+            running = false;
+            if (again && alive) {
+              again = false;
+              run();
+            }
+          });
       };
       const soon = () => {
         if (timer) clearTimeout(timer);
@@ -37,6 +56,7 @@ export function useLive(load: () => unknown) {
         if (shouldPoll({ active: AppState.currentState === "active", now: Date.now(), last })) run();
       }, LIVE_EVERY_MS / 2);
       return () => {
+        alive = false;
         off();
         clearInterval(poll);
         if (timer) clearTimeout(timer);

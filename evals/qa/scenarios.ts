@@ -245,6 +245,27 @@ async function main() {
     check("income", said(r, /15,000|15000/), JSON.stringify(cardsOf(r.replies)) + textOf(r.replies));
     r = await a.say("how much did I spend on food this month?", ["You spent 850 on food"]);
     check("question does not log", cardsOf(r.replies).length === 0, JSON.stringify(cardsOf(r.replies)));
+
+    // Twins (kareem 2026-11-25: "salary" and "Salary" both showed): one section, whatever the case.
+    const s1 = await a.post("/money/sections", { name: "salary", kind: "income" });
+    const s2 = await a.post("/money/sections", { name: "Salary", kind: "income" });
+    check("twin section refused", s1.json?.section?.id === s2.json?.section?.id && s2.status === 200, `${s1.status} ${s2.status}`);
+    // A phone-made id: the create and the add show at once on the phone and count once when resent.
+    const pid = randomUUID();
+    const c1 = await a.post("/money/sections", { id: pid, name: "مرتب", kind: "income" });
+    const c2 = await a.post("/money/sections", { id: pid, name: "مرتب", kind: "income" });
+    check("phone id create is idempotent", c1.status === 201 && c2.status === 200 && c2.json?.section?.id === pid, `${c1.status} ${c2.status}`);
+    const eid = randomUUID();
+    await a.post(`/money/sections/${pid}/entries`, { id: eid, amount: 12000 });
+    await a.post(`/money/sections/${pid}/entries`, { id: eid, amount: 12000 });
+    const det = (await a.get(`/money/sections/${pid}`)).json;
+    check("phone id add counted once", det?.section?.month_total === 12000 && det?.entries?.length === 1, JSON.stringify(det?.section));
+    const ov = (await a.get("/money")).json;
+    check("income total includes salary", (ov?.totals?.income ?? 0) >= 12000, JSON.stringify(ov?.totals));
+    r = await a.say("got paid 3000 salary");
+    const ov2 = (await a.get("/money")).json;
+    const salaries = (ov2?.sections ?? []).filter((s: Json) => /salary/i.test(s.name));
+    check("chat income goes to the one salary section", salaries.length === 1, JSON.stringify(salaries.map((s: Json) => [s.name, s.month_total])) + textOf(r.replies));
   });
 
   // ---------------- circles, check-ins, feed ----------------

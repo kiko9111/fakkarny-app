@@ -15,7 +15,7 @@ import { Prisma, type PrismaClient, type User } from "../generated/prisma/client
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
 import { balances, monthOf, monthRange, settleUp } from "../money/rules";
-import { addEntry, toWireEntry, toWireSection, visibleTo } from "../money/store";
+import { addEntry, mergeDuplicateSections, sameSection, toWireEntry, toWireSection, toWireSections, visibleTo } from "../money/store";
 import { monthGift } from "../money/gift";
 
 export interface MoneyRoutesOptions {
@@ -45,8 +45,9 @@ export const moneyRoutes: FastifyPluginAsync<MoneyRoutesOptions> = async (app, o
 
   app.get("/money", async (req) => {
     const month = monthFor(req.query, req.user);
-    const rows = await prisma.moneySection.findMany({ where: visibleTo(req.user.id), include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 200 });
-    const sections = await Promise.all(rows.map((s) => toWireSection(prisma, s, req.user, month)));
+    const found = await prisma.moneySection.findMany({ where: visibleTo(req.user.id), include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 200 });
+    const rows = await mergeDuplicateSections(prisma, req.user.id, found);
+    const sections = await toWireSections(prisma, rows, req.user, month);
     // Totals are the caller's own money: their share of shared books, all of their own sections.
     const sum = (kind: string) => Math.round(sections.filter((s) => s.kind === kind).reduce((n, s) => n + s.my_share, 0) * 100) / 100;
     return { month, sections, totals: { expense: sum("expense"), income: sum("income") } } satisfies MoneyOverview;
@@ -55,10 +56,28 @@ export const moneyRoutes: FastifyPluginAsync<MoneyRoutesOptions> = async (app, o
   app.post("/money/sections", async (req, reply) => {
     const body = CreateSectionRequest.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
-    if (body.data.circle_id && !(await prisma.circleMember.count({ where: { circleId: body.data.circle_id, userId: req.user.id } }))) return reply.code(400).send({ error: "invalid_circle" });
-    if ((await prisma.moneySection.count({ where: { ownerId: req.user.id } })) >= MAX_SECTIONS) return reply.code(409).send({ error: "too_many" });
+    const circleId = body.data.circle_id ?? null;
+    const month = monthOf(now(), req.user.timezone);
+    // One round of lookups (each is ~0.1 s in production): membership, a section with this id
+    // (a retried create), and the sections this one could duplicate.
+    const [member, had, near] = await Promise.all([
+      circleId ? prisma.circleMember.count({ where: { circleId, userId: req.user.id } }) : Promise.resolve(1),
+      body.data.id ? prisma.moneySection.findUnique({ where: { id: body.data.id }, include: { circle: { select: { name: true } } } }) : Promise.resolve(null),
+      prisma.moneySection.findMany({ where: circleId ? { circleId } : { ownerId: req.user.id }, include: { circle: { select: { name: true } } }, take: 300 }),
+    ]);
+    if (!member) return reply.code(400).send({ error: "invalid_circle" });
+    if (had) {
+      if (had.ownerId !== req.user.id) return reply.code(422).send({ error: "id_in_use" });
+      return reply.code(200).send({ section: await toWireSection(prisma, had, req.user, month) } satisfies SectionResponse);
+    }
+    // "Salary" when "salary" exists: the existing one, never a twin.
+    const same = sameSection(near, req.user.id, body.data.name, body.data.kind, circleId);
+    if (same) return reply.code(200).send({ section: await toWireSection(prisma, same, req.user, month) } satisfies SectionResponse);
+    // 422, not 409: a phone resends writes that got a 409 (busy), and this one will never pass.
+    if (near.filter((x) => x.ownerId === req.user.id).length >= MAX_SECTIONS) return reply.code(422).send({ error: "too_many" });
     const made = await prisma.moneySection.create({
       data: {
+        ...(body.data.id ? { id: body.data.id } : {}),
         ownerId: req.user.id,
         circleId: body.data.circle_id ?? null,
         name: body.data.name,
@@ -69,7 +88,8 @@ export const moneyRoutes: FastifyPluginAsync<MoneyRoutesOptions> = async (app, o
       include: { circle: { select: { name: true } } },
     });
     await prisma.event.create({ data: { userId: req.user.id, name: "money_section_created", propsJson: { kind: made.kind, shared: Boolean(made.circleId), budget: Boolean(made.budget) } } });
-    return reply.code(201).send({ section: await toWireSection(prisma, made, req.user, monthOf(now(), req.user.timezone)) } satisfies SectionResponse);
+    // A new section has no entries yet: no need to ask the database for them.
+    return reply.code(201).send({ section: await toWireSection(prisma, made, req.user, month, []) } satisfies SectionResponse);
   });
 
   app.get("/money/sections/:id", async (req, reply) => {
@@ -89,7 +109,8 @@ export const moneyRoutes: FastifyPluginAsync<MoneyRoutesOptions> = async (app, o
       ? settleLines(balances(all.map((e) => ({ payerId: e.userId, amount: Number(e.amount), split: e.split }))), names, req.user.id)
       : [];
     const res: SectionDetail = {
-      section: await toWireSection(prisma, s, req.user, month),
+      // This month's entries are already here: no second query for the total.
+      section: await toWireSection(prisma, s, req.user, month, entries),
       entries: entries.map((e) => toWireEntry(e, req.user.id)),
       settle,
       members: members.map((m) => ({ user_id: m.userId, name: m.user.name, is_me: m.userId === req.user.id })),
@@ -125,10 +146,21 @@ export const moneyRoutes: FastifyPluginAsync<MoneyRoutesOptions> = async (app, o
     if (!s) return reply.code(404).send({ error: "not_found" });
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
     const at = now();
-    const added = await addEntry(prisma, s, req.user, { amount: body.data.amount, note: body.data.note || null, split: body.data.split, source: "app" }, at);
-    void pushNotices(prisma, opts.push, added.notices.filter((n) => n.userId !== req.user.id), app.log);
-    await prisma.event.create({ data: { userId: req.user.id, name: "money_logged", propsJson: { via: "app", shared: Boolean(s.circleId) } } });
-    return reply.code(201).send({ section: await toWireSection(prisma, s, req.user, monthOf(at, req.user.timezone)) } satisfies SectionResponse);
+    let added;
+    try {
+      added = await addEntry(prisma, s, req.user, { ...(body.data.id ? { id: body.data.id } : {}), amount: body.data.amount, note: body.data.note || null, split: body.data.split, source: "app" }, at);
+    } catch (err) {
+      if (body.data.id && err instanceof Error && err.message === "money entry id in use") return reply.code(422).send({ error: "id_in_use" });
+      throw err;
+    }
+    if (!added.replay) {
+      void pushNotices(prisma, opts.push, added.notices.filter((n) => n.userId !== req.user.id), app.log);
+      void prisma.event.create({ data: { userId: req.user.id, name: "money_logged", propsJson: { via: "app", shared: Boolean(s.circleId) } } }).catch(() => {});
+    }
+    return reply.code(added.replay ? 200 : 201).send({
+      section: await toWireSection(prisma, s, req.user, monthOf(at, req.user.timezone)),
+      entry: toWireEntry({ ...added.entry, user: { name: req.user.name } }, req.user.id),
+    } satisfies SectionResponse);
   });
 
   /** Remove one of your own entries (a slip of the thumb, or it was wrong). */

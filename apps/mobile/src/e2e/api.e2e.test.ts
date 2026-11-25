@@ -97,8 +97,8 @@ describe.skipIf(!URL_)("phone client against a live API", () => {
     await as(A, () => api.settleDaftar(d.entry.id));
 
     // Money
-    const sec = await as(A, () => api.createSection({ name: "أكل", kind: "expense", budget: 3000 }));
-    await as(A, () => api.addMoney(sec.id, { amount: 150, note: "عيش" }));
+    const sec = await as(A, () => api.createSection({ id: crypto.randomUUID(), name: "أكل", kind: "expense", budget: 3000 }));
+    await as(A, () => api.addMoney(sec.id, { id: crypto.randomUUID(), amount: 150, note: "عيش" }));
     await as(A, () => api.getMoney());
     await as(A, () => api.getSection(sec.id));
     await as(A, () => api.getMonthGift().catch(() => null));

@@ -1,61 +1,88 @@
-import { useCallback, useState } from "react";
-import { useLive } from "@/lib/live";
+import { useCallback, useEffect, useState } from "react";
+import { dataChanged, useLive } from "@/lib/live";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { SectionDetail } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { formatMoney, parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
-import { addMoney, deleteMoneyEntry, deleteSection, getSection, peekSection } from "@/lib/api";
-import { budgetState, monthLabel, toggleSplit } from "@/money/logic";
+import { deleteSection, forgetSection, getSection, peekMoney, peekMoneySaved, peekSection, peekSectionSaved, saveMoney, saveSection, updateSection } from "@/lib/api";
+import { logAmount, removeAmount } from "@/money/actions";
+import { budgetState, detailFromSection, monthLabel, toggleSplit, withoutSection, withSection } from "@/money/logic";
+import { HttpError } from "@/sync/queue";
 import { Badge, Button, Card, Chip, confirm, IconButton, Note, notify, palette, ProgressBar, Screen, SectionHeader, space, Text, TextField } from "@/ui";
+
+/** The row the Daftar list already has for this section, shown while its entries load. */
+const fromList = (id: string): SectionDetail | null => {
+  const s = peekMoney()?.sections.find((x) => x.id === id);
+  return s ? detailFromSection(s) : null;
+};
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { weekday: "short", day: "numeric", month: "short" });
 
 /** One section: this month's total against its budget, quick adding, entries, and for a shared book, who pays whom. */
 export default function SectionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [data, setData] = useState<SectionDetail | null>(() => peekSection(id));
-  const [failed, setFailed] = useState(false);
+  // Draws at once: the saved copy of this screen, else the row the Daftar list already has.
+  const first = () => peekSection(id) ?? fromList(id);
+  const [data, setData] = useState<SectionDetail | null>(first);
+  const [fresh, setFresh] = useState(false);
+  const [state, setState] = useState<"ok" | "failed" | "gone">("ok");
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");
   const [split, setSplit] = useState<string[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [budgetText, setBudgetText] = useState("");
 
   const load = useCallback(async () => {
     try {
       const d = await getSection(id);
       setData(d);
       setSplit((s) => s ?? (d.members.length ? d.members.map((m) => m.user_id) : null));
-      setFailed(false);
-    } catch {
-      setFailed(true);
+      setFresh(true);
+      setState("ok");
+    } catch (err) {
+      // A section made on this phone that the server hasn't got yet is not "gone".
+      if (err instanceof HttpError && err.status === 404 && !peekMoney()?.sections.some((x) => x.id === id)) setState("gone");
+      else setState("failed");
+      setData((d) => d ?? first());
     }
   }, [id]);
   useLive(load);
+  // A change made here or by Zaki in the chat: redraw from the phone's copy at once, then refresh.
+  useEffect(() => dataChanged.subscribe(() => setData((d) => peekSection(id) ?? d)), [id]);
 
   const amount = parseAmount(amountText);
-  const add = async () => {
-    if (amount === null || busy) return;
-    setBusy(true);
-    try {
-      await addMoney(id, { amount, note: note.trim() || null, ...(split && data?.section.circle_id ? { split } : {}) });
-      setAmountText("");
-      setNote("");
-      notify(t.book.logged);
-      await load();
-    } catch {
-      notify(t.book.failed, "error");
-    } finally {
-      setBusy(false);
-    }
+  const add = () => {
+    if (amount === null || !data) return;
+    logAmount(id, { amount, note: note.trim() || null, split: data.section.circle_id ? split : null }, { onFailed: () => notify(t.book.failed, "error"), onQueued: () => notify(t.book.waiting) });
+    setAmountText("");
+    setNote("");
+    setData(peekSection(id) ?? data);
+    notify(t.book.logged);
   };
 
-  if (!data) {
+  if (state === "gone") {
     return (
       <Screen>
         <Stack.Screen options={{ title: "" }} />
-        {failed ? <Note icon="cloud-offline-outline">{t.book.offline}</Note> : <ActivityIndicator color={palette.primary} />}
+        <Note icon="alert-circle-outline">{t.book.gone}</Note>
+        <Button label={t.book.back} kind="tonal" onPress={() => router.back()} />
+      </Screen>
+    );
+  }
+  if (!data) {
+    return (
+      <Screen onRefresh={load}>
+        <Stack.Screen options={{ title: "" }} />
+        {state === "failed" ? (
+          <>
+            <Note icon="cloud-offline-outline">{t.book.offline}</Note>
+            <Button label={t.book.retry} kind="tonal" onPress={() => void load()} />
+          </>
+        ) : (
+          <ActivityIndicator color={palette.primary} />
+        )}
       </Screen>
     );
   }
@@ -66,13 +93,35 @@ export default function SectionScreen() {
   const remove = () =>
     confirm(t.book.deleteConfirm, t.book.yes, () =>
       void deleteSection(id)
-        .then(() => router.back())
+        .then(() => {
+          const o = peekMoneySaved();
+          if (o) saveMoney(withoutSection(o, id));
+          forgetSection(id);
+          dataChanged.emit();
+          router.back();
+        })
         .catch(() => notify(t.book.failed, "error")),
       t.book.no,
     );
+  const newBudget = budgetText.trim() === "" ? null : parseAmount(budgetText);
+  const saveBudget = () => {
+    if (budgetText.trim() !== "" && newBudget === null) return;
+    setBudgetOpen(false);
+    void updateSection(id, { budget: newBudget })
+      .then((sec) => {
+        const d = peekSectionSaved(id);
+        if (d) saveSection({ ...d, section: sec });
+        const o = peekMoneySaved();
+        if (o) saveMoney(withSection(o, sec));
+        setData((cur) => (cur ? { ...cur, section: sec } : cur));
+        dataChanged.emit();
+        notify(t.book.budgetSaved);
+      })
+      .catch(() => notify(t.book.failed, "error"));
+  };
 
   return (
-    <Screen keyboard>
+    <Screen keyboard onRefresh={load}>
       <Stack.Screen options={{ title: s.name, headerRight: s.is_owner ? () => <IconButton name="trash-outline" label={t.book.deleteSection} color={palette.danger} onPress={remove} /> : undefined }} />
       <Card>
         <Text variant="smallStrong" color={palette.inkSoft}>
@@ -90,7 +139,29 @@ export default function SectionScreen() {
           </>
         ) : null}
         {shared ? <Badge label={fill(t.book.yourShare, { n: formatMoney(s.my_share) })} tone="primary" /> : null}
+        {s.kind === "expense" && s.is_owner ? (
+          budgetOpen ? (
+            <View style={styles.row}>
+              <View style={styles.flex}>
+                <TextField value={budgetText} onChangeText={setBudgetText} placeholder={t.book.noBudgetHint} keyboardType="decimal-pad" maxLength={12} />
+              </View>
+              <Button label={t.book.saveBudget} size="sm" disabled={budgetText.trim() !== "" && newBudget === null} onPress={saveBudget} />
+            </View>
+          ) : (
+            <Button
+              label={s.budget ? t.book.editBudget : t.book.setBudget}
+              kind="text"
+              size="sm"
+              icon="create-outline"
+              onPress={() => {
+                setBudgetText(s.budget ? String(s.budget) : "");
+                setBudgetOpen(true);
+              }}
+            />
+          )
+        ) : null}
       </Card>
+      {state === "failed" ? <Note icon="cloud-offline-outline">{t.book.stale}</Note> : null}
 
       <SectionHeader title={t.book.add} />
       <Card>
@@ -98,7 +169,7 @@ export default function SectionScreen() {
           <View style={styles.flex}>
             <TextField value={amountText} onChangeText={setAmountText} placeholder={t.book.amount} keyboardType="decimal-pad" maxLength={12} />
           </View>
-          <Button label={t.book.log} icon="add" busy={busy} disabled={amount === null} onPress={() => void add()} />
+          <Button label={t.book.log} icon="add" disabled={amount === null} onPress={add} />
         </View>
         <TextField value={note} onChangeText={setNote} placeholder={t.book.note} maxLength={80} />
         {shared && data.members.length > 1 && split ? (
@@ -137,7 +208,7 @@ export default function SectionScreen() {
       <SectionHeader title={t.book.entries} />
       {data.entries.length === 0 ? (
         <Text variant="small" color={palette.inkSoft} align="center">
-          {t.book.noEntries}
+          {fresh || state === "failed" || s.month_total === 0 ? t.book.noEntries : t.book.loadingEntries}
         </Text>
       ) : (
         <Card style={styles.list}>
@@ -154,7 +225,17 @@ export default function SectionScreen() {
                   name="close"
                   label={t.book.remove}
                   size={32}
-                  onPress={() => confirm(t.book.removeConfirm, t.book.yes, () => void deleteMoneyEntry(e.id).then(load).catch(() => notify(t.book.failed, "error")), t.book.no)}
+                  onPress={() =>
+                    confirm(
+                      t.book.removeConfirm,
+                      t.book.yes,
+                      () => {
+                        removeAmount(data, e.id, { onFailed: () => notify(t.book.failed, "error") });
+                        setData(peekSection(id) ?? data);
+                      },
+                      t.book.no,
+                    )
+                  }
                 />
               ) : null}
             </View>

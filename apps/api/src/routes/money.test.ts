@@ -127,4 +127,44 @@ describe.skipIf(!hasTestDb)("wider Daftar: sections, budgets, shared books", () 
     expect((await app.inject({ method: "DELETE", url: `/money/entries/${mamaEntry.id}`, headers: omar })).statusCode).toBe(404);
     expect((await app.inject({ method: "DELETE", url: `/money/entries/${mamaEntry.id}`, headers: mama })).statusCode).toBe(204);
   });
+
+  it("never makes twin sections, takes phone-made ids, and merges old twins", async () => {
+    const mona = await signedIn("منى");
+    const id = randomUUID();
+    const first = await post(mona, "/money/sections", { id, name: "salary", kind: "income" });
+    expect(first.statusCode).toBe(201);
+    expect(SectionResponse.parse(first.json()).section.id).toBe(id);
+    // The same create sent again (a lost answer) and a "Salary" twin: both get the one section.
+    const again = await post(mona, "/money/sections", { id, name: "salary", kind: "income" });
+    expect([again.statusCode, SectionResponse.parse(again.json()).section.id]).toEqual([200, id]);
+    const twin = await post(mona, "/money/sections", { id: randomUUID(), name: " Salary ", kind: "income" });
+    expect([twin.statusCode, SectionResponse.parse(twin.json()).section.id]).toEqual([200, id]);
+    // Same name as spending is a different section.
+    expect((await post(mona, "/money/sections", { name: "Salary", kind: "expense" })).statusCode).toBe(201);
+
+    // An add with a phone-made id counts once however often it is sent.
+    const entryId = randomUUID();
+    const add = await post(mona, `/money/sections/${id}/entries`, { id: entryId, amount: 9000 });
+    expect(add.statusCode).toBe(201);
+    expect(SectionResponse.parse(add.json()).entry?.id).toBe(entryId);
+    expect((await post(mona, `/money/sections/${id}/entries`, { id: entryId, amount: 9000 })).statusCode).toBe(200);
+    // Someone else's id is refused for good (422, which the phone does not resend).
+    const omar = await signedIn("عمر");
+    const omarBook = await section(omar, { name: "x" });
+    expect((await post(omar, `/money/sections/${omarBook.id}/entries`, { id: entryId, amount: 1 })).statusCode).toBe(422);
+
+    // Twins made before this fix are merged into the oldest on the next look, entries and budget kept.
+    const older = await prisma.moneySection.create({ data: { ownerId: mona.id, name: "Car", kind: "expense", createdAt: new Date("2026-11-01T00:00:00Z") } });
+    const newer = await prisma.moneySection.create({ data: { ownerId: mona.id, name: "car", kind: "expense", budget: 2000, createdAt: new Date("2026-11-02T00:00:00Z") } });
+    await prisma.moneyEntry.create({ data: { sectionId: newer.id, userId: mona.id, amount: 300, at: clock } });
+    const overview = MoneyOverview.parse((await get(mona, "/money")).json());
+    expect(overview.sections.map((s) => [s.name, s.kind, s.month_total, s.budget])).toEqual([
+      ["Car", "expense", 300, 2000],
+      ["salary", "income", 9000, null],
+      ["Salary", "expense", 0, null],
+    ]);
+    expect(overview.totals).toEqual({ expense: 300, income: 9000 });
+    expect(await prisma.moneySection.findUnique({ where: { id: newer.id } })).toBeNull();
+    expect(SectionDetail.parse((await get(mona, `/money/sections/${older.id}`)).json()).entries.map((e) => e.amount)).toEqual([300]);
+  });
 });

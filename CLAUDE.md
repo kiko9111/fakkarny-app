@@ -640,6 +640,18 @@ Rules:
   view with the app in front. The app also pulls Zaki's messages every 30 s while open (push isn't on
   every build), and `prefetchSoon` refreshes every saved copy after a change. Use `useLive` for any
   new server screen (not for forms: Settings and new-split keep useFocusEffect).
+- Loading and the Daftar (2026-11-25, kareem: "too much loading", Daftar sections failing): `Screen`
+  owns its pull-to-refresh spinner (shown only for a pull, at most 1.5 s, remounted after each pull
+  because Android left the circle stuck); never pass `refreshing`. `useLive` runs one load at a time.
+  Money is local-first: sections and amounts get their id on the phone (`CreateSectionRequest.id`,
+  `AddMoneyEntryRequest.id`; the server returns the existing row for a known id), writes in flight or
+  waiting in the outbox are laid over the saved copy (`overlayOverview` / `overlayDetail`,
+  money/logic.ts), and answered writes go into the saved copy (money/actions.ts). The section screen
+  opens from the list's row while its entries load. Twin sections ("salary" / "Salary", `sectionKey`)
+  are refused and old twins merged into the oldest on GET /money (`mergeDuplicateSections`). Money
+  routes answer 422 (not 409) for writes that will never pass, because the phone resends 409s. GET
+  /money reads every section's month in one query (`toWireSections`). DB pools: API 8
+  (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all.
 - OTA fixes apply without a restart: src/lib/updates.ts checks on start and on return (at most every
   10 min), downloads in the background and reloads when the user leaves the app.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to

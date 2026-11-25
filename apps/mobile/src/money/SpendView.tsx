@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLive } from "@/lib/live";
-import { StyleSheet, View } from "react-native";
+import { dataChanged, useLive } from "@/lib/live";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { MoneyOverview, MoneySection } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
@@ -16,6 +16,8 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
   const [data, setData] = useState<MoneyOverview | null>(() => peekMoney());
   const [gift, setGift] = useState<string[]>([]);
   const [offline, setOffline] = useState(false);
+  // A change made on this phone (a section, an amount, Zaki in the chat): redraw from the saved copy at once.
+  useEffect(() => dataChanged.subscribe(() => setData((d) => peekMoney() ?? d)), []);
 
   const load = useCallback(async () => {
     try {
@@ -34,8 +36,10 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
     if (reloadKey !== firstKey.current) void load();
   }, [reloadKey, load]);
 
-  if (!data) return offline ? <Note icon="cloud-offline-outline">{t.book.offline}</Note> : null;
+  if (!data) return offline ? <Note icon="cloud-offline-outline">{t.book.offline}</Note> : <ActivityIndicator color={palette.primary} />;
   const { own, shared } = groupSections(data.sections);
+  const spending = own.filter((s) => s.kind === "expense");
+  const income = own.filter((s) => s.kind === "income");
 
   return (
     <>
@@ -87,13 +91,21 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
         {t.book.chatHint}
       </Text>
 
-      <SectionHeader title={t.book.sections} />
+      {offline ? <Note icon="cloud-offline-outline">{t.book.stale}</Note> : null}
       {own.length === 0 ? (
-        <Card>
-          <EmptyState title={t.book.empty} />
-        </Card>
+        <>
+          <SectionHeader title={t.book.sections} />
+          <Card>
+            <EmptyState title={t.book.empty} />
+          </Card>
+        </>
       ) : null}
-      {own.map((s) => (
+      {spending.length ? <SectionHeader title={t.book.spendHeader} /> : null}
+      {spending.map((s) => (
+        <SectionRow key={s.id} s={s} />
+      ))}
+      {income.length ? <SectionHeader title={t.book.incomeHeader} /> : null}
+      {income.map((s) => (
         <SectionRow key={s.id} s={s} />
       ))}
       {shared.length ? <SectionHeader title={t.book.shared} /> : null}

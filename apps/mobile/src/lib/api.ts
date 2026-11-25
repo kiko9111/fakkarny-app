@@ -21,6 +21,7 @@ import {
   MonthGift,
   type MoneySection,
   type CreateSectionRequest,
+  type UpdateSectionRequest,
   type AddMoneyEntryRequest,
   type SharedTracker,
   type UpdateTrackerRequest,
@@ -73,7 +74,7 @@ import {
   type PostEventsRequest,
 } from "@fakkarni/shared";
 import { getInstallId } from "@/db/kv";
-import { HttpError } from "@/sync/queue";
+import { HttpError, isRetryable } from "@/sync/queue";
 import { createWriteOutbox, isOffline, QueuedOffline, type PendingWrite } from "@/sync/writes";
 import { randomUUID } from "expo-crypto";
 import { resolveApiUrl } from "./api-url";
@@ -81,6 +82,7 @@ import { accessToken } from "./supabase";
 import { isDemo } from "./demo";
 import { demoRequest } from "@/demo/server";
 import { createScreenCache, eachValid } from "./screen-cache";
+import { overlayDetail, overlayOverview } from "@/money/logic";
 
 export const API_URL = resolveApiUrl({
   envUrl: process.env.EXPO_PUBLIC_API_URL,
@@ -165,12 +167,15 @@ export const writeOutbox = createWriteOutbox({
  * A write to shared data that may wait on the phone: tried now (with its key); with no
  * connection it is kept and QueuedOffline is thrown, so the screen keeps what it showed.
  */
-async function writeOrQueue(method: PendingWrite["method"], path: string, body?: unknown): Promise<unknown> {
+async function writeOrQueue(method: PendingWrite["method"], path: string, body?: unknown, opts: { alsoOnServerError?: boolean; timeoutMs?: number } = {}): Promise<unknown> {
   const w: PendingWrite = { id: randomUUID(), method, path, body, at: new Date().toISOString() };
   try {
-    return await request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }), headers: { "x-idempotency-key": w.id } });
+    return await request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }), headers: { "x-idempotency-key": w.id } }, opts.timeoutMs);
   } catch (err) {
-    if (!isOffline(err) || isDemo) throw err;
+    // Writes that carry their own id are safe to resend after a server hiccup (a deploy restarting
+    // it, busy): the server knows the id and never applies them twice.
+    const keep = isOffline(err) || (opts.alsoOnServerError === true && isRetryable(err) && !(err instanceof HttpError && err.status === 409));
+    if (!keep || isDemo) throw err;
     writeOutbox.enqueue(w);
     throw new QueuedOffline();
   }
@@ -518,26 +523,74 @@ export async function answerInvite(circleId: string, postId: string, going: bool
   await request(`/circles/${circleId}/posts/${postId}/rsvp`, { method: "POST", body: JSON.stringify({ going }) });
 }
 
-// Wider Daftar: expense / income sections and circle shared books. Needs a connection.
-export async function getMoney(month?: string): Promise<MoneyOverview> {
-  return cachedGet(`/money${month ? `?month=${month}` : ""}`, MoneyOverview.parse);
+// Wider Daftar: expense / income sections and circle shared books. Local-first (2026-11-25):
+// the screens draw from the saved copy plus what waits on the phone, and every write carries an
+// id made here, so it shows at once and is sent (or resent) in the background.
+const MONEY_PATH = "/money";
+/**
+ * Money writes on their way right now (not yet answered). With the outbox (writes waiting for a
+ * connection) they are laid over the server's copy, so the screen never loses what was just typed.
+ */
+const moneyInflight = new Map<string, PendingWrite>();
+const waitingMoney = (): PendingWrite[] => {
+  const seen = new Set<string>();
+  return [...writeOutbox.pending(), ...moneyInflight.values()].filter((w) => {
+    const k = `${w.method} ${w.path} ${(w.body as { id?: string } | undefined)?.id ?? ""}`;
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+};
+async function moneyWrite(method: PendingWrite["method"], path: string, body?: { id?: string }): Promise<unknown> {
+  const key = `${method} ${path} ${body?.id ?? ""}`;
+  moneyInflight.set(key, { id: key, method, path, body, at: new Date().toISOString() });
+  try {
+    return await writeOrQueue(method, path, body, { alsoOnServerError: true });
+  } finally {
+    moneyInflight.delete(key);
+  }
 }
-export const peekMoney = (month?: string) => peek(`/money${month ? `?month=${month}` : ""}`, MoneyOverview.parse);
-export async function createSection(body: CreateSectionRequest): Promise<MoneySection> {
-  return SectionResponse.parse(await request("/money/sections", { method: "POST", body: JSON.stringify(body) })).section;
+
+export async function getMoney(): Promise<MoneyOverview> {
+  const fresh = await cachedGet(MONEY_PATH, MoneyOverview.parse);
+  return overlayOverview(fresh, waitingMoney());
 }
-export async function getSection(id: string, month?: string): Promise<SectionDetail> {
-  return cachedGet(`/money/sections/${id}${month ? `?month=${month}` : ""}`, SectionDetail.parse);
+/** The saved overview (the server's last answer, kept in step with answered writes) plus what waits. */
+export const peekMoney = (): MoneyOverview | null => {
+  const o = peekMoneySaved();
+  return o ? overlayOverview(o, waitingMoney()) : null;
+};
+export const peekMoneySaved = () => peek(MONEY_PATH, MoneyOverview.parse);
+export const saveMoney = (o: MoneyOverview) => screenCache.set(MONEY_PATH, o);
+const sectionPath = (id: string) => `/money/sections/${id}`;
+export async function getSection(id: string): Promise<SectionDetail> {
+  return overlayDetail(await cachedGet(sectionPath(id), SectionDetail.parse), waitingMoney());
 }
-export const peekSection = (id: string) => peek(`/money/sections/${id}`, SectionDetail.parse);
+export const peekSection = (id: string): SectionDetail | null => {
+  const d = peekSectionSaved(id);
+  return d ? overlayDetail(d, waitingMoney()) : null;
+};
+export const peekSectionSaved = (id: string) => peek(sectionPath(id), SectionDetail.parse);
+export const saveSection = (d: SectionDetail) => screenCache.set(sectionPath(d.section.id), d);
+export const forgetSection = (id: string) => screenCache.remove(sectionPath(id));
+
+/** Make a section with an id made on the phone. Throws QueuedOffline when it waits for a connection. */
+export async function createSection(body: CreateSectionRequest & { id: string }): Promise<MoneySection> {
+  return SectionResponse.parse(await moneyWrite("POST", "/money/sections", body)).section;
+}
+export async function updateSection(id: string, body: UpdateSectionRequest): Promise<MoneySection> {
+  return SectionResponse.parse(await request(sectionPath(id), { method: "PATCH", body: JSON.stringify(body) })).section;
+}
 export async function deleteSection(id: string): Promise<void> {
-  await request(`/money/sections/${id}`, { method: "DELETE" });
+  await request(sectionPath(id), { method: "DELETE" });
 }
-export async function addMoney(id: string, body: AddMoneyEntryRequest): Promise<MoneySection> {
-  return SectionResponse.parse(await request(`/money/sections/${id}/entries`, { method: "POST", body: JSON.stringify(body) })).section;
+export async function addMoney(id: string, body: AddMoneyEntryRequest & { id: string }): Promise<SectionResponse> {
+  return SectionResponse.parse(await moneyWrite("POST", `${sectionPath(id)}/entries`, body));
+}
+/** Put an add straight in the outbox, behind a section create that is waiting there itself. */
+export function queueAddMoney(id: string, body: AddMoneyEntryRequest & { id: string }): void {
+  writeOutbox.enqueue({ id: randomUUID(), method: "POST", path: `${sectionPath(id)}/entries`, body, at: new Date().toISOString() });
 }
 export async function deleteMoneyEntry(id: string): Promise<void> {
-  await request(`/money/entries/${id}`, { method: "DELETE" });
+  await moneyWrite("DELETE", `/money/entries/${id}`);
 }
 export async function getMonthGift(): Promise<MonthGift> {
   return MonthGift.parse(await request("/money/gift"));

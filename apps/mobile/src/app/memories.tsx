@@ -10,18 +10,15 @@ import { Card, confirm, EmptyState, IconButton, IconTile, ListRow, notify, palet
 export default function MemoriesScreen() {
   // Starts from the saved copy, so the list shows at once and refreshes behind.
   const [memories, setMemories] = useState<Memory[]>(() => peekMemories() ?? []);
-  const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(() => peekMemories() !== null);
 
   const load = useCallback(async () => {
     const cached = peekMemories() !== null;
-    if (!cached) setLoading(true);
     try {
       setMemories(await listMemories());
     } catch {
       if (!cached) notify(t.saved.offline, "error");
     } finally {
-      setLoading(false);
       setLoaded(true);
     }
   }, []);
@@ -36,7 +33,7 @@ export default function MemoriesScreen() {
     );
 
   return (
-    <Screen onRefresh={() => void load()} refreshing={loading} contentStyle={styles.content}>
+    <Screen onRefresh={load} contentStyle={styles.content}>
       {loaded && memories.length === 0 ? <EmptyState title={plain(t.memories.empty)} /> : null}
       {memories.length ? (
         <Card style={styles.list}>

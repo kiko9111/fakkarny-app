@@ -6,7 +6,9 @@ import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
-import { addMoney, createSection, getMoney, readReceipt } from "@/lib/api";
+import { getMoney, peekMoney, readReceipt } from "@/lib/api";
+import { logAmount, makeSection } from "@/money/actions";
+import { sameSection } from "@/money/logic";
 import { pickPhotos } from "@/lib/photos";
 import { handOffDraft } from "@/split/handoff";
 import { draftFromReceipt, startPeople } from "@/split/logic";
@@ -24,15 +26,19 @@ export default function ReceiptScreen() {
   const params = useLocalSearchParams<{ for?: string }>();
   const forSplit = params.for === "split";
   const [state, setState] = useState<State>({ step: "pick" });
-  const [sections, setSections] = useState<MoneySection[] | null>(null);
+  const expenses = (list: MoneySection[]) => list.filter((s) => s.kind === "expense");
+  const [sections, setSections] = useState<MoneySection[] | null>(() => {
+    const saved = peekMoney();
+    return saved ? expenses(saved.sections) : null;
+  });
   const [sectionId, setSectionId] = useState<string | "new" | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (forSplit) return;
     getMoney()
-      .then((m) => setSections(m.sections.filter((s) => s.kind === "expense")))
-      .catch(() => setSections([]));
+      .then((m) => setSections(expenses(m.sections)))
+      .catch(() => setSections((s) => s ?? []));
   }, [forSplit]);
 
   const snap = async (source: "camera" | "library") => {
@@ -63,7 +69,7 @@ export default function ReceiptScreen() {
 
   const guess = (r: Receipt) => {
     const name = r.category.trim() || t.receipt.defaultSection;
-    const match = sections?.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
+    const match = sameSection(sections ?? [], name, "expense", null);
     return { name, match };
   };
 
@@ -74,19 +80,18 @@ export default function ReceiptScreen() {
     setSectionId(match?.id ?? (sections.length ? sections[0]!.id : "new"));
   }, [state, sections, sectionId]);
 
-  const log = async (r: Receipt) => {
+  // Local-first: shown in the Daftar at once, sent behind (and resent if the connection drops).
+  const log = (r: Receipt) => {
     if (busy || !sectionId) return;
     setBusy(true);
-    try {
-      const section = sectionId === "new" ? await createSection({ name: guess(r).name.slice(0, 40), kind: "expense" }) : sections!.find((s) => s.id === sectionId)!;
-      await addMoney(section.id, { amount: r.total, note: r.merchant.slice(0, 80) || null });
-      track("receipt_logged", {});
-      notify(fill(t.receipt.logged, { name: section.name }));
-      router.back();
-    } catch {
-      notify(t.receipt.failed, "error");
-      setBusy(false);
-    }
+    const onFailed = () => notify(t.receipt.failed, "error");
+    const section =
+      sectionId === "new" ? makeSection({ name: guess(r).name.slice(0, 40), kind: "expense", budget: null, circle_id: null }, { onFailed }).section : sections?.find((s) => s.id === sectionId);
+    if (!section) return setBusy(false);
+    logAmount(section.id, { amount: r.total, note: r.merchant.slice(0, 80) || null, split: null }, { onFailed, onQueued: () => notify(t.book.waiting) });
+    track("receipt_logged", {});
+    notify(fill(t.receipt.logged, { name: section.name }));
+    router.back();
   };
 
   const split = (r: Receipt) => {

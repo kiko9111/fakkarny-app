@@ -1,4 +1,4 @@
-import { MoneyKind, type MoneyEntry as WireEntry, type MoneySection as WireSection } from "@fakkarni/shared";
+import { MoneyKind, sectionKey, type MoneyEntry as WireEntry, type MoneySection as WireSection } from "@fakkarni/shared";
 import { Prisma, type MoneyEntry, type MoneySection, type PrismaClient, type User } from "../generated/prisma/client";
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
@@ -19,9 +19,61 @@ export const langFor = (u: Pick<User, "language">): ReplyLang => (u.language ===
 
 const toSplit = (e: Pick<MoneyEntry, "userId" | "amount" | "split">) => ({ payerId: e.userId, amount: Number(e.amount), split: e.split });
 
-export async function toWireSection(db: Db, s: SectionWithCircle, viewer: Pick<User, "id" | "timezone">, month: string): Promise<WireSection> {
+type MonthEntry = Pick<MoneyEntry, "userId" | "amount" | "split">;
+
+export async function toWireSection(db: Db, s: SectionWithCircle, viewer: Pick<User, "id" | "timezone">, month: string, preloaded?: MonthEntry[]): Promise<WireSection> {
   const { from, to } = monthRange(month, viewer.timezone);
-  const entries = await db.moneyEntry.findMany({ where: { sectionId: s.id, at: { gte: from, lt: to } }, select: { userId: true, amount: true, split: true } });
+  const entries = preloaded ?? (await db.moneyEntry.findMany({ where: { sectionId: s.id, at: { gte: from, lt: to } }, select: { userId: true, amount: true, split: true } }));
+  return wireSection(s, viewer, entries);
+}
+
+/** Every section in one query for the month's entries (was one query per section: ~0.1 s each in production). */
+export async function toWireSections(db: Db, rows: SectionWithCircle[], viewer: Pick<User, "id" | "timezone">, month: string): Promise<WireSection[]> {
+  if (!rows.length) return [];
+  const { from, to } = monthRange(month, viewer.timezone);
+  const all = await db.moneyEntry.findMany({ where: { sectionId: { in: rows.map((s) => s.id) }, at: { gte: from, lt: to } }, select: { sectionId: true, userId: true, amount: true, split: true } });
+  const by = new Map<string, MonthEntry[]>();
+  for (const e of all) by.set(e.sectionId, [...(by.get(e.sectionId) ?? []), e]);
+  return rows.map((s) => wireSection(s, viewer, by.get(s.id) ?? []));
+}
+
+/** The user's own section with the same name and kind (case and spacing ignored), if any. */
+export function sameSection<T extends Pick<MoneySection, "name" | "kind" | "circleId" | "ownerId">>(rows: T[], ownerId: string, name: string, kind: string, circleId: string | null): T | null {
+  const key = sectionKey(name);
+  return rows.find((s) => (s.circleId ?? null) === circleId && s.kind === kind && sectionKey(s.name) === key && (circleId !== null || s.ownerId === ownerId)) ?? null;
+}
+
+/**
+ * Old duplicates ("salary" and "Salary", made before the server refused them): the user's own
+ * personal sections with the same name and kind are merged into the oldest one (entries moved,
+ * the larger budget kept). Returns the rows left. Shared books are never merged.
+ */
+export async function mergeDuplicateSections<T extends SectionWithCircle>(prisma: PrismaClient, ownerId: string, rows: T[]): Promise<T[]> {
+  const keep = new Map<string, T>();
+  const gone: { from: T; into: T }[] = [];
+  for (const s of rows) {
+    if (s.circleId || s.ownerId !== ownerId) continue;
+    const k = `${s.kind}|${sectionKey(s.name)}`;
+    const first = keep.get(k);
+    if (!first) keep.set(k, s);
+    else gone.push({ from: s, into: first });
+  }
+  if (!gone.length) return rows;
+  await prisma.$transaction(async (tx) => {
+    for (const { from, into } of gone) {
+      await tx.moneyEntry.updateMany({ where: { sectionId: from.id }, data: { sectionId: into.id } });
+      if (from.budget !== null && (into.budget === null || Number(from.budget) > Number(into.budget))) {
+        await tx.moneySection.update({ where: { id: into.id }, data: { budget: from.budget } });
+        into.budget = from.budget;
+      }
+      await tx.moneySection.delete({ where: { id: from.id } });
+    }
+  });
+  const removed = new Set(gone.map((g) => g.from.id));
+  return rows.filter((s) => !removed.has(s.id));
+}
+
+function wireSection(s: SectionWithCircle, viewer: Pick<User, "id">, entries: MonthEntry[]): WireSection {
   const total = entries.reduce((n, e) => n + Number(e.amount), 0);
   return {
     id: s.id,
@@ -54,6 +106,8 @@ export interface Added {
   entry: MoneyEntry;
   monthTotal: number;
   notices: Notice[];
+  /** The same id was added before: nothing new happened. */
+  replay?: boolean;
 }
 
 /**
@@ -65,9 +119,17 @@ export async function addEntry(
   prisma: PrismaClient,
   section: SectionWithCircle,
   user: Pick<User, "id" | "name" | "timezone" | "language">,
-  input: { amount: number; note: string | null; split?: string[]; source: "app" | "chat" },
+  input: { id?: string; amount: number; note: string | null; split?: string[]; source: "app" | "chat" },
   now: Date,
 ): Promise<Added> {
+  // A retried add from the phone (same id) is the same entry, never a second one.
+  if (input.id) {
+    const had = await prisma.moneyEntry.findUnique({ where: { id: input.id } });
+    if (had) {
+      if (had.sectionId !== section.id || had.userId !== user.id) throw new Error("money entry id in use");
+      return { entry: had, monthTotal: 0, notices: [], replay: true };
+    }
+  }
   return prisma.$transaction(async (tx) => {
     const month = monthOf(now, user.timezone);
     const { from, to } = monthRange(month, user.timezone);
@@ -79,7 +141,7 @@ export async function addEntry(
       if (!split.length) split = members;
     }
     const entry = await tx.moneyEntry.create({
-      data: { sectionId: section.id, userId: user.id, amount: new Prisma.Decimal(input.amount), note: input.note, split, source: input.source, at: now },
+      data: { ...(input.id ? { id: input.id } : {}), sectionId: section.id, userId: user.id, amount: new Prisma.Decimal(input.amount), note: input.note, split, source: input.source, at: now },
     });
     const after = before + input.amount;
     const notices: Notice[] = [];

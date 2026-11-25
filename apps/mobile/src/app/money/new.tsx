@@ -4,7 +4,10 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { Circle, MoneyKind } from "@fakkarni/shared";
 import { parseAmount } from "@/daftar/logic";
 import { t } from "@/i18n";
-import { createSection, listCircles } from "@/lib/api";
+import { fill } from "@/circles/logic";
+import { listCircles, peekCircles, peekMoney } from "@/lib/api";
+import { makeSection } from "@/money/actions";
+import { sameSection } from "@/money/logic";
 import { Button, Chip, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /** A new expense or income section, with an optional monthly budget, personal or shared with a circle. */
@@ -13,28 +16,30 @@ export default function NewSectionScreen() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<MoneyKind>("expense");
   const [budgetText, setBudgetText] = useState("");
-  const [circles, setCircles] = useState<Circle[]>([]);
+  const [circles, setCircles] = useState<Circle[]>(() => peekCircles() ?? []);
   const [circleId, setCircleId] = useState<string | null>(params.circle ?? null);
-  const [busy, setBusy] = useState(false);
   const budget = parseAmount(budgetText);
   const ready = name.trim().length > 0 && (budgetText.trim() === "" || budget !== null);
 
   useEffect(() => {
+    // The saved list shows at once; a failed refresh keeps it (it used to empty the chips).
     listCircles()
       .then(setCircles)
-      .catch(() => setCircles([]));
+      .catch(() => {});
   }, []);
 
-  const submit = async () => {
-    if (!ready || busy) return;
-    setBusy(true);
-    try {
-      const s = await createSection({ name: name.trim(), kind, budget: kind === "expense" ? budget : null, circle_id: circleId });
-      router.replace({ pathname: "/money/[id]", params: { id: s.id } });
-    } catch {
-      setBusy(false);
-      notify(t.book.failed, "error");
-    }
+  // "Salary" when "salary" exists opens that one instead of making a twin.
+  const twin = name.trim() ? sameSection(peekMoney()?.sections ?? [], name, kind, circleId) : null;
+
+  // Local-first: the section exists on the phone at once and goes to the server behind.
+  const submit = () => {
+    if (!ready) return;
+    const made = makeSection(
+      { name: name.trim(), kind, budget: kind === "expense" ? budget : null, circle_id: circleId },
+      { onFailed: () => notify(t.book.failed, "error"), onQueued: () => notify(t.book.waiting) },
+    );
+    if (made.existed) notify(fill(t.book.exists, { name: made.section.name }));
+    router.replace({ pathname: "/money/[id]", params: { id: made.section.id } });
   };
 
   const label = (text: string) => (
@@ -79,7 +84,8 @@ export default function NewSectionScreen() {
           {circleId ? <Note icon="people-outline">{plain(t.book.shareHint)}</Note> : null}
         </>
       ) : null}
-      <Button label={t.book.create} icon="add" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
+      {twin ? <Note icon="information-circle-outline">{fill(t.book.twin, { name: twin.name })}</Note> : null}
+      <Button label={twin ? twin.name : t.book.create} icon={twin ? "arrow-forward" : "add"} size="lg" block disabled={!ready} onPress={submit} />
     </Screen>
   );
 }

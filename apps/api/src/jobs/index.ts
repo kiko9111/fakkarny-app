@@ -21,7 +21,8 @@ export const HOUSEKEEPING_QUEUE = "housekeeping";
  */
 export async function startJobs(connectionString: string, deps: TickDeps & { log: FastifyBaseLogger; receipts?: ReceiptChecker }) {
   // deps.requireSubscription keeps locked chats quiet (FR-9).
-  const boss = new PgBoss(connectionString);
+  // Few connections: the session pooler's limit is shared with the API's own pool (db.ts).
+  const boss = new PgBoss({ connectionString, max: Number(process.env["PGBOSS_POOL_MAX"] ?? 3) });
   boss.on("error", (err) => deps.log.error({ err: err.name }, "pg-boss error"));
   await boss.start();
   await boss.unschedule(OLD_PROACTIVE_QUEUE).catch(() => {});

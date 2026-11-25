@@ -23,7 +23,7 @@ import { Button, Card, Chip, EmptyState, Icon, ListRow, Note, palette, PersonAva
 export default function MoneyScreen() {
   const [view, setView] = useState<"spend" | "debts" | "split">("spend");
   const [reloadKey, setReloadKey] = useState(0);
-  const { items, refreshing, refresh, complete } = useItems(listDebts);
+  const { items, refresh, complete } = useItems(listDebts);
   const { owedToMe, iOwe } = summarizeDebts(items);
   const [shared, setShared] = useState<DaftarEntry[] | null>(() => peekDaftar());
   const [offline, setOffline] = useState<string | null>(null);
@@ -48,11 +48,9 @@ export default function MoneyScreen() {
 
   return (
     <Screen
-      refreshing={refreshing}
       onRefresh={() => {
-        void refresh();
-        void loadShared();
         setReloadKey((k) => k + 1);
+        return Promise.all([refresh(), loadShared()]);
       }}
     >
       <View style={styles.switch}>

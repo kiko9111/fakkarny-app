@@ -12,18 +12,15 @@ import { scheduleItem } from "@/notifications";
  */
 export function useItems(load: () => Promise<Item[]>) {
   const [items, setItems] = useState<Item[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
 
   const reloadLocal = useCallback(async () => setItems(await load()), [load]);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true);
     try {
       // Also (re)plans notifications for items changed on the server (tasks, Session steps).
       await pullItems();
     } finally {
       await reloadLocal();
-      setRefreshing(false);
     }
   }, [reloadLocal]);
 
@@ -46,5 +43,5 @@ export function useItems(load: () => Promise<Item[]>) {
     [reloadLocal],
   );
 
-  return { items, refreshing, refresh, complete };
+  return { items, refresh, complete };
 }

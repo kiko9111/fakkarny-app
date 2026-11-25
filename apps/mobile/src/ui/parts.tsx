@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
@@ -7,21 +7,51 @@ import { plain } from "./plain";
 import { ZakiAvatar } from "./Zaki";
 import { glass, minTouch, palette, radius, space } from "./tokens";
 
-/** A scrolling page over the colour mesh, with pull-to-refresh when `onRefresh` is given. */
-export function Screen({ children, onRefresh, refreshing = false, contentStyle, keyboard }: { children: ReactNode; onRefresh?: () => void; refreshing?: boolean; contentStyle?: ViewStyle; keyboard?: boolean }) {
+/**
+ * A scrolling page over the colour mesh, with pull-to-refresh when `onRefresh` is given.
+ * The spinner shows only for a pull the person made, and for at most PULL_SPINNER_MS: the data
+ * keeps loading behind and draws when it lands. Background reloads (useLive) never show it.
+ * The RefreshControl is remounted after each pull because Android sometimes leaves the circle
+ * on screen after `refreshing` goes back to false.
+ */
+export function Screen({ children, onRefresh, contentStyle, keyboard }: { children: ReactNode; onRefresh?: () => unknown; refreshing?: boolean; contentStyle?: ViewStyle; keyboard?: boolean }) {
   // Edge-to-edge Android: the last thing on the page must clear the system buttons.
   const bottom = useSafeAreaInsets().bottom;
+  const [pulling, setPulling] = useState(false);
+  const [round, setRound] = useState(0);
+  const pull = useCallback(() => {
+    setPulling(true);
+    const started = Date.now();
+    let done = false;
+    const stop = () => {
+      if (done) return;
+      done = true;
+      // Never flip true -> false in the same frame (the stuck-spinner case on Android).
+      setTimeout(() => {
+        setPulling(false);
+        setRound((r) => r + 1);
+      }, Math.max(0, PULL_MIN_MS - (Date.now() - started)));
+    };
+    setTimeout(stop, PULL_SPINNER_MS);
+    void Promise.resolve()
+      .then(() => onRefresh?.())
+      .catch(() => {})
+      .finally(stop);
+  }, [onRefresh]);
   return (
     <ScrollView
       style={styles.page}
       contentContainerStyle={[styles.content, { paddingBottom: space.xxxl + bottom }, contentStyle]}
       keyboardShouldPersistTaps={keyboard ? "handled" : undefined}
-      refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.primary} colors={[palette.primary]} /> : undefined}
+      refreshControl={onRefresh ? <RefreshControl key={round} refreshing={pulling} onRefresh={pull} tintColor={palette.primary} colors={[palette.primary]} /> : undefined}
     >
       {children}
     </ScrollView>
   );
 }
+
+const PULL_SPINNER_MS = 1500;
+const PULL_MIN_MS = 400;
 
 /** A surface that groups one thing. Pass `onPress` to make the whole card a button. */
 export function Card({ children, onPress, style, tone, accessibilityLabel }: { children: ReactNode; onPress?: () => void; style?: ViewStyle | ViewStyle[]; tone?: string; accessibilityLabel?: string }) {

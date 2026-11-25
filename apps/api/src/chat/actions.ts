@@ -6,7 +6,7 @@ import { MAX_CIRCLES_PER_USER } from "../circles/rules";
 import { safeLocalToUtc } from "../pipeline/apply";
 import type { ReplyLang } from "../pipeline/rules";
 import type { Notice } from "../proactive/notify";
-import { addEntry, CATCH_ALL, visibleTo, type SectionWithCircle } from "../money/store";
+import { addEntry, CATCH_ALL, sameSection, visibleTo, type SectionWithCircle } from "../money/store";
 import { monthOf, monthRange } from "../money/rules";
 import { assignTask, withPeople as taskPeople, type TaskWithPeople } from "../tasks/store";
 import { withPeople as daftarPeople, type EntryWithPeople } from "../daftar/store";
@@ -242,7 +242,7 @@ async function logMoney(ctx: Ctx, a: AppAction): Promise<One> {
     const wanted = a.section?.trim();
     // A section they named that does not exist yet is made; otherwise the catch-all for that kind.
     section =
-      (wanted ? null : own.find((s) => s.kind === kind && (s.name === CATCH_ALL[kind].arabic || s.name === CATCH_ALL[kind].english))) ??
+      (wanted ? sameSection(own, user.id, wanted, kind, null) : own.find((s) => s.kind === kind && (s.name === CATCH_ALL[kind].arabic || s.name === CATCH_ALL[kind].english))) ??
       (await prisma.moneySection.create({ data: { ownerId: user.id, name: wanted || CATCH_ALL[kind][lang], kind, createdAt: ctx.now }, include: { circle: { select: { name: true } } } }));
     refresh = true;
   }
@@ -261,7 +261,8 @@ async function createSection(ctx: Ctx, a: AppAction): Promise<One> {
   if (!name) return { card: card(lang, a.kind, "failed", LABEL.failed(lang)) };
   const circle = a.circle ? matchByName(ctx.data.circles, a.circle, (c) => [c.name]) : null;
   if (a.circle && !circle) return { card: card(lang, a.kind, "failed", LABEL.notFound(lang, "circle", a.circle), "/circles") };
-  const existing = matchByName(ctx.data.sections.filter((s) => (s.circleId ?? null) === (circle?.id ?? null)), name, (s) => [s.name]);
+  const pool = ctx.data.sections.filter((s) => (s.circleId ?? null) === (circle?.id ?? null));
+  const existing = sameSection(pool, user.id, name, a.money_kind ?? "expense", circle?.id ?? null) ?? matchByName(pool, name, (s) => [s.name]);
   if (existing) {
     if (a.amount && existing.ownerId === user.id) {
       await prisma.moneySection.update({ where: { id: existing.id }, data: { budget: new Prisma.Decimal(a.amount) } });
