@@ -231,12 +231,12 @@ export function parseWhen(f: string, now: Now): WhenResult {
 
   // --- clock times ---
   const clockRe = re(
-    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:at|الساعه|الساعة|el ?sa3a|elsa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}`,
+    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:at|الساعه|الساعة|el ?sa3a|elsa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
     "giu",
   );
   const used: [number, number][] = [];
   while ((m = clockRe.exec(f))) {
-    const h0 = Number(m[2] ?? m[5] ?? m[7]);
+    const h0 = Number(m[2] ?? m[5] ?? m[7] ?? m[9]);
     let mm = Number(m[3] ?? m[6] ?? 0);
     const extra = (m[4] ?? "").trim();
     if (/نص|nos|half/.test(extra)) mm = 30;
@@ -269,7 +269,11 @@ export function parseWhen(f: string, now: Now): WhenResult {
       let cEnd = end + c[0].length;
       const p = periodNear(f, cEnd);
       if (p) cEnd = p.end;
-      out.clocks.push({ h: ch > 12 ? ch : hourOf(ch, p?.p ?? null, nightContext && !p), m: Number(c[2] ?? 0) });
+      let chH = ch > 12 ? ch : hourOf(ch, p?.p ?? null, nightContext && !p);
+      // "٢ و ٨" with no period words: a later hour in the same list goes forward (14:00 then 20:00).
+      const prev = out.clocks[out.clocks.length - 1]!;
+      if (!p && ch <= 12 && chH <= prev.h && chH + 12 < 24) chH += 12;
+      out.clocks.push({ h: chH, m: Number(c[2] ?? 0) });
       used.push([end, cEnd]);
       end = cEnd;
     }

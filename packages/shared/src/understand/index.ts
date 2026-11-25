@@ -730,7 +730,7 @@ function daftarIntent(t: Toks, text: string, input: UnderstandInput, script: Scr
     }
   }
   // Settled: "طارق رجعلي الفلوس", "Hassan paid me back", "رجعت لأحمد فلوسه", "محمود دفع الفلوس".
-  const paidMe = has(t, "رجعلي|رجعتلي|رجع لي|رجعهم|دفعلي|دفع الفلوس|دفعت الفلوس|سدد|paid me back|paid me|gave me back|returned|paid back|rag3li|rag3ly|dafa3ly|dafa3 el felous");
+  const paidMe = has(t, "رجعلي|رجعتلي|رجع لي|رجعهم|دفعلي|دفع الفلوس|دفعت الفلوس|سدد|paid me back|paid me|gave me back|returned|paid back|rag3li|rag3ly|rag3etly|rag3etli|rag3itly|gave me back|dafa3ly|dafa3 el felous");
   const iPaid = (has(t, "رجعت|rag3t") && has(t, money)) || has(t, "رجعتله|رجعتلها|سددت|i paid back|i returned|paid him back|paid her back|rag3tlo|rag3tlaha");
   if (paidMe || iPaid || (has(t, "دفع|دفعت|dafa3|paid") && has(t, money))) {
     const words = concepts(text);
@@ -815,15 +815,19 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
     const name = m[1]!.split(" ").filter((w) => !/^(ya3ni|so|and|that)$/i.test(w)).pop()!;
     return { person: cap(name), amount: amountOf(), direction: "owed_to_me" };
   }
+  m = /\bi\s+(?:lent|loaned|gave)\s+([a-z]+)\s+(?:\d|[a-z]+\s+\d)/i.exec(text);
+  if (m && !/^(him|her|them|it|my|the|a)$/i.test(m[1]!)) return { person: cap(m[1]!), amount: amountOf(), direction: "owed_to_me" };
   m = /\bi\s+(?:borrowed|took)\s+(?:\d+\s+)?(?:from|off)\s+([a-z]+)/i.exec(text) ?? /\bi\s+owe\s+([a-z]+)/i.exec(text);
   if (m) return { person: cap(m[1]!), amount: amountOf(), direction: "i_owe" };
 
   // Arabic
-  let i = idxOf(/(?<![\p{L}])(خد|خدت|اخد|استلف|استلفت|سلفته|اخدت مني)(?![\p{L}])/u);
-  if (i > 0 && !/^(انا|ana)$/.test(t.f[i - 1]!)) {
+  let i = idxOf(/(?<![\p{L}])(خد|خدت|استلف|استلفت|سلفته|اخدت مني)(?![\p{L}])/u);
+  if (i > 0 && !/^(انا|ana)$/.test(t.f[i - 1]!) && !R(`^(?:${REMIND})$`).test(t.f[i - 1]!)) {
     const p = tokensBefore(i);
     if (p) return { person: person(p), amount: amountOf(/(هيدفع|هتدفع|هيرجع|hayedfa3|hatedfa3|بـ|ب\d)/u), direction: "owed_to_me" };
   }
+  m = /(?:^|\s)(?:سلفت|سلّفت|ادّيت|اديت)\s+(?!من(?:\s|$))(\S+)/u.exec(text);
+  if (m && !/^(فلوس|الفلوس|\d)/.test(fold(m[1]!))) return { person: person(m[1]!.replace(/^ل(?=\p{L}{3,})/u, "")), amount: amountOf(), direction: "owed_to_me" };
   m = /(\S+(?:\s+\S+)?)\s+(عليه|عليها)\s+/u.exec(text);
   if (m) {
     const words = m[1]!.split(/\s+/);
@@ -1039,7 +1043,7 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
 // ======================================================================================
 
 const SECTION_HINTS: [string, string[]][] = [
-  ["أكل|اكل|الاكل|عالاكل|akl|food|grocer|supermarket|سوبر ماركت|السوبر|مطعم|restaurant|غدا|عشا|فطار|coffee|قهوه", ["أكل", "food"]],
+  ["أكل|اكل|الاكل|عالاكل|akl|food|lunch|dinner|breakfast|groceries|ghada|3asha|fetar|grocer|supermarket|سوبر ماركت|السوبر|مطعم|restaurant|غدا|عشا|فطار|coffee|قهوه", ["أكل", "food"]],
   ["عربيه|العربيه|3arabeya|3arabiya|car|بنزين|benzeen|gas|fuel|ميكانيكي", ["العربية", "car"]],
   ["اوبر|uber|careem|كريم باص|تاكسي|taxi|مواصلات|metro|مترو|bus|اتوبيس|mowaslat", ["مواصلات", "transport"]],
 ];
@@ -1081,7 +1085,7 @@ function moneyIntent(t: Toks, text: string, input: UnderstandInput, script: Scri
     }
   }
   if (newSection && has(t, "اعمل|اعملي|ضيف|افتح|make|create|add|new|a3mel|a3ml|zawed|جديد|gedeed")) {
-    const m = /(?:قسم|section|2esm|2ism|category|بند)\s+(?:جديد\s+|gedeed\s+|new\s+)?(?:for\s+|ل|لل|lel\s*|le\s+|l\s+)?\s*([^\s،,]+)/iu.exec(text);
+    const m = /(?:قسم|section|2esm|2ism|category|بند)\s+(?:جديد\s+|gedeed\s+|new\s+)?(?:for\s+|called\s+|named\s+|اسمه\s+|esmo\s+|ل|لل|lel\s*|le\s+|l\s+)?\s*([^\s،,]+)/iu.exec(text);
     let name = m ? m[1]!.replace(/^(لل|ل)/, "") : "";
     if (/^(lel|le|l)$/i.test(name)) name = "";
     if (script === "franco") {
@@ -1104,7 +1108,7 @@ function moneyIntent(t: Toks, text: string, input: UnderstandInput, script: Scri
     return true;
   }
   const income = has(t, "قبضت|قبضنا|جالي|جاتلي|اخدت المرتب|استلمت المرتب|got paid|received|earned|salary|bonus|2abadt|2abaddt|geli|gali|استلمت");
-  const expense = has(t, "صرفت|دفعت|سجل|سجلي|اشتريت|spent|paid|bought|log|sgl|sagel|sagal|saraft|dafa3t|eshtarait|masroof|مصروف");
+  const expense = has(t, "حطيت بنزين|عبيت بنزين|موّنت|مونت|7atet benzeen|fawelt|صرفت|دفعت|سجل|سجلي|اشتريت|spent|paid|bought|log|sgl|sagel|sagal|saraft|dafa3t|eshtarait|masroof|مصروف");
   if (!income && !expense) return false;
   // Debts and bills are not money logs.
   if (has(t, "عليه|عليها|عليا|استلف|خد مني|3aleh|3aleha|5ad meny|borrowed|owes|lazem|لازم|هدفع|have to|need to")) return false;
@@ -1160,6 +1164,15 @@ function updateIntent(t: Toks, text: string, input: UnderstandInput, out: Unders
     out.update_items.push({ id: item.id, due_at_local: when, remind_at_local: when });
     return true;
   }
+  // Pushed by a span: "push the oven reminder by an hour", "أخر الدكتور ساعة", "a5ar el meeting nos sa3a".
+  const by = /\b(?:push|delay|move)\b.*?\bby\s+(an?|one|two|half an?|\d+)\s*(hours?|minutes?|mins?)\b/i.exec(text) ?? /(?:اخر|أخر|أخّر|اخّر|a5ar|a5ar)\s+\S+(?:\s+\S+)?\s+(نص|ساعه|ساعتين|ربع|nos|sa3a|sa3teen|rob3)(?:\s*(ساعه|sa3a))?/iu.exec(fold(text));
+  if (item && item.due_local && by) {
+    const n = by[1]!.toLowerCase();
+    const mins = /^(نص|nos|half)/.test(n) ? 30 : /^(ربع|rob3)$/.test(n) ? 15 : /^(ساعتين|sa3teen|two)$/.test(n) ? 120 : /^(ساعه|sa3a|an?|one)$/.test(n) ? 60 : Number(n) * (/^h/i.test(by[2] ?? "h") ? 60 : 1);
+    const when = addMinutes(item.due_local, mins);
+    out.update_items.push({ id: item.id, due_at_local: when, remind_at_local: when });
+    return true;
+  }
   // Later: "فكرني بيها كمان ساعة" right after its reminder.
   if (w.relMin && has(t, REMIND + "|بيها|بيه|beeha|beeh")) {
     const last = (input.history ?? []).filter((h) => h.role === "assistant").pop()?.text ?? "";
@@ -1201,6 +1214,11 @@ function memoryIntent(t: Toks, text: string, script: Script, out: Understood): b
   if (m) {
     const nick = /abo el so7ab|ابو الصحاب/i.test(text) ? "أبو الصحاب (abo el so7ab)" : m[1]!;
     return add("preference", "اسم زكي", `المستخدم بيسمي زكي: ${nick}`);
+  }
+  // Likes and dislikes: "أنا بحب القهوة من غير سكر", "I love sushi", "ana b7eb el shay".
+  if (!/[?؟]/.test(text) && !parseWhen(t.text, { local: "2000-01-01T00:00" }).clocks.length && has(t, "بحب|مبحبش|بموت في|i love|i like|i hate|i prefer|i don't like|ba7eb|b7eb|mb7ebsh|mab7ebsh")) {
+    const rest = text.replace(/^(انا|أنا|ana|i)\s+/i, "");
+    if (rest.split(/\s+/).length >= 2) return add("preference", "ذوق", text);
   }
   if (has(t, "عندي حساسيه|حساسيه من|allergic to|i'm allergic|3andy 7asaseya")) return add("fact", "حساسية", text);
   // Habits said as "I don't…": "ana mabashrabsh ahwa ba3d el sa3a 5".
@@ -1259,6 +1277,8 @@ function reminderIntent(t: Toks, text: string, input: UnderstandInput, script: S
     /(?:^|\s)ه(?!دي|نا|ناك|و\s|ي\s)\p{L}{2,}/u.test(text) || /\bh(?!a?y|lw|elw|ena|edey|owa)a?[a-z0-9]{2,}/i.test(text) || /\b(will|going to|gonna|i'll)\b/i.test(text);
   const having = has(t, "عندي|عندنا|3andy|3andi|3ndy|i have|i've got|we have|my") || /^(3andy|3andi)/i.test(text);
 
+  // English news about something else ("the new episode comes out Friday at 9, can't wait").
+  if (script === "english" && !remind && !oblige && !having && !appt && !alarm && /\b(comes out|come out|airs|is out|releases|drops|premieres|can't wait|cant wait)\b/i.test(text)) return;
   if (!title && !alarm) return;
   // Nothing to do here: plain talk with no time and no request.
   if (!hasTime && !remind && !oblige && !alarm && !w.vague && !(appt && having) && !(w.date && futureVerb)) return;
