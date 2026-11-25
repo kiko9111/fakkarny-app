@@ -17,10 +17,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anthropicApiKey, createAnthropicModel, costUsd, type Usage } from "../apps/api/src/ai/model";
 import type { Item, Message, User } from "../apps/api/src/generated/prisma/client";
-import { mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneContext, type ConversationContext } from "../apps/api/src/pipeline/context";
-import { phoneToFriendResponse } from "../apps/api/src/ai/phone";
-import { PHONE_PERSONA_VERSION, PHONE_PROMPT } from "../apps/api/src/persona/phone";
-import { extractPhoneJson, PHONE_OUTPUT_JSON_SCHEMA, phoneMessages } from "@fakkarni/shared";
+import { mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneReplyContext, type ConversationContext } from "../apps/api/src/pipeline/context";
+import { describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../apps/api/src/persona/phone-reply";
+import { extractPhoneJson, PHONE_REPLY_JSON_SCHEMA, phoneMessages } from "@fakkarni/shared";
+import { promisesReminder } from "../apps/api/src/pipeline/rules";
 import { localToUtc } from "../apps/api/src/lib/time";
 import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
@@ -166,23 +166,25 @@ async function main() {
 }
 
 /**
- * The phone brain on llama-server: same prompt, context, grammar and conversion as the app.
- * One case at a time (a phone answers one message at a time too), timing each.
+ * The phone brain on llama-server, reply mode (as the app runs it since 2026-11-25): the rule
+ * engine decides the actions, the model only writes the reply, told what was done. Extraction is
+ * the engine's; style is the model's reply. One case at a time, timed.
  */
 async function runPhone(cases: EvalCase[]) {
-  console.log(`Phone brain "${label}" at ${baseUrl} (persona ${PHONE_PERSONA_VERSION}).`);
+  console.log(`Phone brain "${label}" at ${baseUrl} (${PHONE_REPLY_VERSION}, reply only).`);
   const results = [];
   let ms = 0;
   let promptTokens = 0;
   let outTokens = 0;
+  let fellBack = 0;
   for (const c of cases) {
     const ctx = contextObjectFor(c);
+    const u = understand(inputOf(c));
+    const titles = Object.fromEntries(c.open_items.map((o) => [o.id, o.title]));
     const history = [...c.history.map((h) => ({ role: h.role === "user" ? ("user" as const) : ("assistant" as const), text: h.text })), { role: "user" as const, text: c.message }].slice(-PHONE_RECENT_MESSAGES);
-    const messages = phoneMessages({ system: PHONE_PROMPT, context: renderPhoneContext(ctx), history, persona: PHONE_PERSONA_VERSION });
+    const messages = phoneMessages({ system: PHONE_REPLY_PROMPT, context: `${renderPhoneReplyContext(ctx)}\n${describeUnderstood(u, c.now, titles)}`, history, persona: PHONE_REPLY_VERSION });
     const t0 = Date.now();
     let reply: string[] = [];
-    let score: CaseScore;
-    let output: unknown = null;
     try {
       const res = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -190,43 +192,49 @@ async function runPhone(cases: EvalCase[]) {
         body: JSON.stringify({
           messages,
           temperature: 0.3,
-          max_tokens: 700,
-          response_format: { type: "json_schema", json_schema: { name: "zaki", schema: PHONE_OUTPUT_JSON_SCHEMA } },
+          max_tokens: 260,
+          response_format: { type: "json_schema", json_schema: { name: "zaki", schema: PHONE_REPLY_JSON_SCHEMA } },
           chat_template_kwargs: { enable_thinking: false },
         }),
       });
       const json = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
       promptTokens += json.usage?.prompt_tokens ?? 0;
       outTokens += json.usage?.completion_tokens ?? 0;
-      const raw = extractPhoneJson(json.choices?.[0]?.message?.content ?? "");
-      const parsed = phoneToFriendResponse(raw, c.now);
-      output = parsed;
-      reply = parsed.reply;
-      score = scoreCase(c, parsed);
-    } catch (err) {
-      score = { id: c.id, extraction: false, style: false, problems: [`no usable output (${(err as Error).message.slice(0, 120)})`] };
+      const raw = extractPhoneJson(json.choices?.[0]?.message?.content ?? "") as { reply?: unknown } | null;
+      reply = Array.isArray(raw?.reply) ? raw!.reply.filter((r): r is string => typeof r === "string" && r.trim().length > 0) : [];
+    } catch {
+      reply = [];
     }
     ms += Date.now() - t0;
-    results.push({ c, score, reply, output });
+    const lang = c.expect.script === "english" ? "english" : "arabic";
+    const usable = reply.length > 0 && !(promisesSomething(reply) && !didSomethingTimed(u));
+    if (!usable) fellBack++;
+    const finalReply = usable ? reply : templateReply(u, c.now, lang, titles);
+    const output = { ...asOutput(c, u), reply: finalReply };
+    results.push({ c, area: areaOf(c), score: scoreCase(c, output as never), reply: finalReply, modelReply: reply, output });
   }
   const n = results.length;
   const extractionOk = results.filter((r) => r.score.extraction).length;
   const styleOk = results.filter((r) => r.score.style).length;
-  for (const r of results.filter((r) => !r.score.extraction || !r.score.style)) {
-    console.log(`✗ ${r.c.id}: ${r.score.problems.join("; ")}`);
+  for (const r of results.filter((r) => !r.score.style)) {
+    console.log(`✗ style ${r.c.id}: ${r.score.problems.filter((p) => /reply|Arabic|English|Franco|checklist|chars/.test(p)).join("; ")}`);
     console.log(`    user: ${r.c.message}`);
-    console.log(`    friend: ${r.reply.join(" | ")}`);
+    console.log(`    zaki: ${r.reply.join(" | ")}`);
   }
   const pct = (k: number) => `${((100 * k) / n).toFixed(1)}%`;
   console.log("");
-  console.log(`[${label}] Extraction accuracy: ${extractionOk}/${n} = ${pct(extractionOk)}`);
-  console.log(`[${label}] Style checks passed: ${styleOk}/${n} = ${pct(styleOk)}`);
-  console.log(`[${label}] Avg ${Math.round(ms / n)} ms/case, ${Math.round(promptTokens / n)} prompt + ${Math.round(outTokens / n)} output tokens per case (server CPU, not a phone)`);
+  console.log(`[${label}/${set}] Actions right (code): ${extractionOk}/${n} = ${pct(extractionOk)}`);
+  console.log(`[${label}/${set}] Style checks passed: ${styleOk}/${n} = ${pct(styleOk)}`);
+  console.log(`[${label}/${set}] Code wrote the reply instead (model failed or over-promised): ${fellBack}/${n}`);
+  console.log(`[${label}/${set}] Avg ${Math.round(ms / n)} ms/case, ${Math.round(promptTokens / n)} prompt + ${Math.round(outTokens / n)} output tokens per case (runner CPU, not a phone)`);
   const outDir = join(here, "out");
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, `phone-${label}.json`), JSON.stringify({ label, persona: PHONE_PERSONA_VERSION, extractionOk, styleOk, n, avgMs: ms / n, results }, null, 2));
-  writeFileSync(join(outDir, `phone-${label}-summary.json`), JSON.stringify({ label, extraction: extractionOk / n, style: styleOk / n, n, avgMs: Math.round(ms / n), promptTokens: Math.round(promptTokens / n), outTokens: Math.round(outTokens / n) }));
+  writeFileSync(join(outDir, `phone-${label}-${set}.json`), JSON.stringify({ label, set, persona: PHONE_REPLY_VERSION, extractionOk, styleOk, fellBack, n, avgMs: ms / n, results }, null, 2));
 }
+
+/** A reply that says something was set or saved. */
+const promisesSomething = (reply: string[]) => promisesReminder(reply);
+const didSomethingTimed = (u: Understood) => u.create_items.some((i) => i.due_at_local) || u.update_items.some((x) => x.due_at_local) || u.app_actions.some((a) => a.ask_times?.length);
 
 /** The part of the app a case tests: its `area`, else read from what it expects. */
 function areaOf(c: EvalCase): string {

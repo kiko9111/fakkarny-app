@@ -78,13 +78,16 @@ jobs:
           "$LLAMA_SERVER" -m model.gguf -c 6144 -np 1 --port 8080 --jinja > server.log 2>&1 &
           for i in $(seq 1 120); do curl -sf localhost:8080/health && break; sleep 2; done
           curl -sf localhost:8080/health
-      - name: Score on the chat evals
-        run: npm run eval -w @fakkarni/evals -- --brain phone --base-url http://127.0.0.1:8080 --label ${{ matrix.label }} ${{ github.event.inputs.only && format('--only {0}', github.event.inputs.only) || '' }} | tee eval-${{ matrix.label }}.txt
+      - name: Score replies (the code decides the actions) on the chat evals
+        run: |
+          for set in cases holdout3; do
+            npm run eval -w @fakkarni/evals -- --brain phone --set $set --base-url http://127.0.0.1:8080 --label ${{ matrix.label }} ${{ github.event.inputs.only && format('--only {0}', github.event.inputs.only) || '' }} | tee -a eval-${{ matrix.label }}.txt
+          done
       - name: Summary
         if: always()
         run: |
           echo "### ${{ matrix.label }}" >> "$GITHUB_STEP_SUMMARY"
-          grep "^\[${{ matrix.label }}\]" eval-${{ matrix.label }}.txt >> "$GITHUB_STEP_SUMMARY" || echo "no result" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^\[${{ matrix.label }}" eval-${{ matrix.label }}.txt >> "$GITHUB_STEP_SUMMARY" || echo "no result" >> "$GITHUB_STEP_SUMMARY"
           tail -5 server.log || true
       - uses: actions/upload-artifact@v4
         if: always()

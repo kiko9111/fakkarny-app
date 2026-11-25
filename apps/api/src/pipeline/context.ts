@@ -258,6 +258,21 @@ export const PHONE_MAX_OPEN_ITEMS = 12;
  * The context for the on-device model (Android test mode): the same facts the cloud gets, cut to
  * what a 1–2B model can read in a few seconds. Names in the app, no numbers or summaries.
  */
+/** Phone reply mode: only what writing the reply needs (the code already decided the actions). */
+export function renderPhoneReplyContext(ctx: ConversationContext): string {
+  const { user, now } = ctx;
+  const tz = user.timezone;
+  const lines: string[] = [`NOW: ${describeNow(now, tz)}`];
+  const script = replyScript(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic");
+  if (script) lines.push(`REPLY SCRIPT: ${script.split(" (")[0]}`);
+  lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories, user.gender).split(" (")[0]}`);
+  if (user.name) lines.push(`USER NAME: ${user.name}`);
+  lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
+  const memories = ctx.memories.slice(0, PHONE_MAX_MEMORIES);
+  if (memories.length) lines.push(`MEMORIES: ${memories.map((m) => `${m.subject}: ${m.content}`).join(" · ")}`);
+  return lines.join("\n");
+}
+
 export function renderPhoneContext(ctx: ConversationContext): string {
   const { user, now } = ctx;
   const tz = user.timezone;

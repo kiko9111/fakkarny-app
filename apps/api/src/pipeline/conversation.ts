@@ -1,13 +1,13 @@
 import type { FastifyBaseLogger } from "fastify";
-import { TRACKER_TEMPLATES, type FriendResponse, type TrackerKind } from "@fakkarni/shared";
+import { FriendResponse, PHONE_REPLY_JSON_SCHEMA, PhoneOutput, TRACKER_TEMPLATES, understand, type TrackerKind } from "@fakkarni/shared";
 import { Prisma } from "../generated/prisma/client";
 import { addUsage, costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type Usage } from "../ai/model";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
-import { loadContext, mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneContext, userTexts } from "./context";
-import { createPhoneAnswerModel } from "../ai/phone";
-import { PHONE_PERSONA_VERSION, PHONE_PROMPT } from "../persona/phone";
+import { loadContext, mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneReplyContext, userTexts } from "./context";
+import { describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../persona/phone-reply";
+import { understandInput } from "./understand-input";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
@@ -172,36 +172,64 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
     let modelOk = false;
+    let cloudInput: Parameters<FriendModel["respond"]>[0] | null = null;
     const nowLocal = toLocalIso(now, user.timezone).slice(0, 16);
-    if (brain && brain.output === undefined) {
-      // Phone brain, first pass: hand the phone what its model needs. Nothing is stored; the
-      // phone sends the same message again with its model's answer.
-      return {
-        replies: [],
-        items: [],
-        memories: [],
-        needsBrain: { system: PHONE_PROMPT, context: renderPhoneContext(ctx), history: history.slice(-PHONE_RECENT_MESSAGES), persona: PHONE_PERSONA_VERSION },
-      };
-    }
-    const turnModel = brain ? createPhoneAnswerModel(brain.output) : model;
-    const modelInput = brain
-      ? { system: PHONE_PROMPT, context: renderPhoneContext(ctx), history: history.slice(-PHONE_RECENT_MESSAGES), todayLocal: nowLocal.slice(0, 10), nowLocal }
-      : { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
-    try {
-      const result = await turnModel.respond(modelInput);
-      usage = result.usage;
-      if (result.ok) {
-        modelOk = true;
-        replies = result.output.reply;
-        actions = result.output;
-        crisis ||= result.output.crisis;
-      } else {
-        log?.warn({ reason: result.reason }, "friend model returned no usable output");
+    if (brain) {
+      // Phone brain (owner decision, 2026-11-25: "the AI is for chatting only, the tasks are math"):
+      // the rule engine decides every action here, on the server, the same way on both passes.
+      // The phone's model only writes the reply, told what was done or what to ask.
+      const understood = understand(understandInput(ctx, message.text));
+      const titles = Object.fromEntries(ctx.openItems.map((i) => [i.id, i.title]));
+      if (brain.output === undefined) {
+        // First pass: nothing is stored; the phone sends the same message again with its reply.
+        return {
+          replies: [],
+          items: [],
+          memories: [],
+          needsBrain: {
+            system: PHONE_REPLY_PROMPT,
+            context: `${renderPhoneReplyContext(ctx)}\n${describeUnderstood(understood, nowLocal, titles)}`,
+            history: history.slice(-PHONE_RECENT_MESSAGES),
+            persona: PHONE_REPLY_VERSION,
+            schema: PHONE_REPLY_JSON_SCHEMA as unknown as Record<string, unknown>,
+          },
+        };
+      }
+      const said = PhoneOutput.safeParse(brain.output);
+      const wrote = said.success ? said.data.reply.map((r) => r.trim()).filter(Boolean).slice(0, 3) : [];
+      modelOk = wrote.length > 0;
+      const decided = FriendResponse.safeParse({
+        reply: wrote.length ? wrote : ["…"],
+        create_items: understood.create_items,
+        update_items: understood.update_items,
+        save_memories: understood.save_memories,
+        app_actions: understood.app_actions,
+        crisis: understood.crisis,
+      });
+      if (!decided.success) log?.warn({ issues: decided.error.issues.length }, "rule engine output failed validation");
+      actions = decided.success ? decided.data : EMPTY_ACTIONS;
+      crisis ||= understood.crisis || (said.success && said.data.crisis);
+      // The model's words, unless it failed or promises a reminder the code didn't set: then the code's own words.
+      replies = modelOk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
+    } else {
+      const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
+      try {
+        const result = await model.respond(modelInput);
+        usage = result.usage;
+        if (result.ok) {
+          modelOk = true;
+          replies = result.output.reply;
+          actions = result.output;
+          crisis ||= result.output.crisis;
+        } else {
+          log?.warn({ reason: result.reason }, "friend model returned no usable output");
+          replies = [FALLBACK_REPLY[script]];
+        }
+      } catch (err) {
+        log?.error({ err: errorSummary(err) }, "friend model call failed");
         replies = [FALLBACK_REPLY[script]];
       }
-    } catch (err) {
-      log?.error({ err: errorSummary(err) }, "friend model call failed");
-      replies = [FALLBACK_REPLY[script]];
+      cloudInput = modelInput;
     }
 
     // 3. Wellbeing safety net: crisis replies always carry helpline info, and never create items.
@@ -227,9 +255,9 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // promises one with nothing behind it gets one retry with the mistake spelled out; then an
     // item set in the last two hours counts (the user just confirmed it), else an honest reply.
     let shown: Awaited<ReturnType<typeof recentlySetItem>> = null;
-    if (!crisis && usage && promisesReminder(replies) && !setsReminder(actions)) {
+    if (!crisis && usage && cloudInput && promisesReminder(replies) && !setsReminder(actions)) {
       await event(prisma, user.id, "reminder_claim_unset", {});
-      const retry = await turnModel.respond({ ...modelInput, context: `${modelInput.context}\n\n${UNSET_CHECK}` }).catch(() => null);
+      const retry = await model.respond({ ...cloudInput, context: `${cloudInput.context}\n\n${UNSET_CHECK}` }).catch(() => null);
       if (retry) usage = addUsage(usage, retry.usage);
       if (retry?.ok && !retry.output.crisis && (setsReminder(retry.output) || !promisesReminder(retry.output.reply))) {
         replies = retry.output.reply;
@@ -249,7 +277,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
           // On the phone: no cost, never counted against the allowance. Counts only, no content.
           purpose: "phone",
           model: (brain.model ?? "phone").slice(0, 64),
-          persona: PHONE_PERSONA_VERSION,
+          persona: PHONE_REPLY_VERSION,
           valid: modelOk,
           items_created: actions.create_items.length,
           items_updated: actions.update_items.length,

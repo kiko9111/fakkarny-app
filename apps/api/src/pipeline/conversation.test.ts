@@ -275,7 +275,7 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
   beforeEach(() => resetDb(prisma));
   afterAll(() => prisma.$disconnect());
 
-  it("asks the phone for its answer, then applies it with no cloud call and no allowance used", async () => {
+  it("decides in code, asks the phone only for the reply, with no cloud call and no allowance used", async () => {
     const { model, calls } = fakeModel([]);
     const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }), billing: { requireSubscription: true } });
     const clientId = randomUUID();
@@ -283,16 +283,21 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
     const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
     expect(first.statusCode).toBe(202);
     const need = first.json().needs_brain;
-    expect(need.context).toContain("UPCOMING DAYS");
+    // The code already read the message: the phone's model is told what was done.
+    expect(need.context).toContain("DONE:");
+    expect(need.context).toContain("tomorrow at 6pm");
+    expect(need.schema).toMatchObject({ required: ["reply", "crisis"] });
     expect(need.history.at(-1)).toEqual({ role: "user", text: payload.text });
     expect(need.system).toContain("# WELLBEING");
 
-    const output = { reply: ["تمام، هفكرك بكرة الساعة ٥"], items: [{ type: "reminder", title: "الدكتور", when: "2026-11-20T18:00", remind: "2026-11-20T17:00" }], crisis: false };
+    // Anything but the reply is ignored: the model can't add or change a reminder.
+    const output = { reply: ["تمام، هفكرك بكرة الساعة ٦"], items: [{ type: "reminder", title: "حاجة غلط", when: "2026-11-21T09:00" }], crisis: false };
     const second = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: output, phone_model: "test" } });
     expect(second.statusCode).toBe(201);
     const body = PostMessageResponse.parse(second.json());
     expect(body.replies.map((r) => r.text)).toEqual(output.reply);
-    expect(body.items[0]).toMatchObject({ title: "الدكتور", remind_at: "2026-11-20T15:00:00.000Z" });
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ title: "دكتور السنان", due_at: "2026-11-20T16:00:00.000Z" });
     expect(calls).toHaveLength(0);
     // On the phone: free, no allowance (pricing undecided).
     expect(body.ai_allowance?.limit ?? null).toBeNull();
@@ -307,10 +312,33 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
   it("never lets the phone model claim an unset reminder", async () => {
     const { model } = fakeModel([]);
     const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
-    const payload = { client_id: randomUUID(), text: "remind me to call mom at 6", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone", phone_output: { reply: ["Done, I'll remind you at 6!"], crisis: false } };
+    const payload = { client_id: randomUUID(), text: "so tired today", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone", phone_output: { reply: ["Done, I'll remind you at 6!"], crisis: false } };
     const res = await app.inject({ method: "POST", url: "/messages", headers, payload });
     const body = PostMessageResponse.parse(res.json());
-    expect(body.replies[0]!.text).not.toContain("I'll remind you at 6");
+    expect(body.replies[0]!.text).not.toContain("remind you at 6");
+    expect(body.items).toHaveLength(0);
+  });
+
+  it("answers in code's own words when the phone model gives nothing usable", async () => {
+    const { model } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const payload = { client_id: randomUUID(), text: "remind me to call mom at 6", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone", phone_output: { nonsense: true } };
+    const res = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    const body = PostMessageResponse.parse(res.json());
+    expect(body.items[0]).toMatchObject({ due_at: "2026-11-19T16:00:00.000Z" });
+    expect(body.replies[0]!.text).toContain("today at 6pm");
+  });
+
+  it("asks for the missing time instead of guessing", async () => {
+    const { model } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const payload = { client_id: randomUUID(), text: "فكرني أكلم خالد", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
+    const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    expect(first.json().needs_brain.context).toContain("ASK: what time");
+    const res = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: { reply: ["أكيد، أفكرك إمتى؟"], crisis: false } } });
+    const body = PostMessageResponse.parse(res.json());
+    expect(body.items).toHaveLength(0);
+    expect(body.replies[0]!.text).toBe("أكيد، أفكرك إمتى؟");
   });
 
   it("keeps the crisis safety net for the phone model", async () => {

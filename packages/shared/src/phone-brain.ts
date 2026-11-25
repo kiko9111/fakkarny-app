@@ -165,6 +165,16 @@ export const PhoneOutput = z.object({
 });
 export type PhoneOutput = z.infer<typeof PhoneOutput>;
 
+/** Reply mode: the rule engine decided everything, the phone's model only writes the reply. */
+export const PHONE_REPLY_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    reply: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 2 },
+    crisis: { type: "boolean" },
+  },
+  required: ["reply", "crisis"],
+} as const;
+
 /** What the server hands the phone when it wants the phone's model to answer (POST /messages → 202). */
 export const PhoneBrainRequest = z.object({
   /** Short persona for small models (apps/api/src/persona/phone.ts). */
@@ -175,6 +185,11 @@ export const PhoneBrainRequest = z.object({
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string() })),
   /** Version of the phone persona, sent back with the answer for the cost/quality event. */
   persona: z.string(),
+  /**
+   * The JSON schema the phone's grammar should use. Set in reply mode (the code already did the
+   * work, the model writes only {reply, crisis}); absent = PHONE_OUTPUT_JSON_SCHEMA (older servers).
+   */
+  schema: z.record(z.string(), z.unknown()).optional(),
 });
 export type PhoneBrainRequest = z.infer<typeof PhoneBrainRequest>;
 

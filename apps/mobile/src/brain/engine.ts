@@ -69,10 +69,11 @@ export function warmBrain() {
 async function once(ctx: Ctx, req: PhoneBrainRequest, temperature: number): Promise<unknown> {
   const res = await ctx.completion({
     messages: phoneMessages(req),
-    n_predict: 700,
+    // Reply mode (the server's code already did the work) needs far fewer tokens.
+    n_predict: req.schema ? 260 : 700,
     temperature,
     top_p: 0.9,
-    response_format: { type: "json_schema", json_schema: { schema: PHONE_OUTPUT_JSON_SCHEMA as unknown as object } },
+    response_format: { type: "json_schema", json_schema: { schema: (req.schema ?? PHONE_OUTPUT_JSON_SCHEMA) as unknown as object } },
     enable_thinking: false,
   });
   return extractPhoneJson(res.text);
