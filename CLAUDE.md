@@ -61,6 +61,9 @@ Rules:
 - Production API: Railway project `mellow-reverence`, service `@fakkarni/api`, built
   from the root Dockerfile and deployed from branch `claude/new-session-60jlqv` on
   every push: https://fakkarniapi-production.up.railway.app (health check /health).
+  railway.json (config as code): traffic moves to a new deploy only after its /health answers, the old
+  one keeps serving 20 s more, then gets SIGTERM and 60 s to finish replies in flight. Deploys used to
+  drop chat for a minute (messages sat on "Sending…").
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
