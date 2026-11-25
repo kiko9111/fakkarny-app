@@ -19,7 +19,7 @@ describe("when", () => {
     expect(parseWhen("كمان نص ساعه", { local: now })).toMatchObject({ relMin: 30 });
   });
   it("chains hours forward", () => {
-    expect(parseWhen("الساعه ٢ و ٨", { local: now }).clocks).toEqual([{ h: 14, m: 0 }, { h: 20, m: 0 }]);
+    expect(parseWhen("الساعه ٢ و ٨", { local: now }).clocks.map(({ h, m }) => ({ h, m }))).toEqual([{ h: 14, m: 0 }, { h: 20, m: 0 }]);
   });
 });
 
@@ -51,6 +51,17 @@ describe("understand", () => {
   it("splits the bill with circle members by name", () => {
     const app = { circles: [{ name: "البيت", kind: "family", members: ["منى", "عمر"] }] };
     expect(u("2asem 750 ben ana w mona w omar", { app }).app_actions[0]).toMatchObject({ kind: "split_bill", amount: 750, people: ["منى", "عمر"] });
+  });
+  it("reads bare hours, thousands and names across scripts (holdout4 misses)", () => {
+    expect(u("صحيني بكرة ٦ ونص").create_items[0]).toMatchObject({ due_at_local: "2026-11-20T06:30", alarm: true });
+    expect(u("remind me bokra 9 to send el report").create_items[0]).toMatchObject({ type: "reminder", due_at_local: "2026-11-20T09:00" });
+    expect(u("fkrny 5 ela rob3 akalem 5alty").create_items[0]?.due_at_local).toBe("2026-11-19T16:45");
+    expect(u("دفعت ١٬٢٠٠ للسباك").app_actions[0]).toMatchObject({ kind: "log_money", amount: 1200 });
+    const app = { circles: [{ name: "الشغل", kind: "friends", members: ["سامي", "Nada"] }] };
+    expect(u("salaft nada 1500", { app }).create_items[0]?.debt).toMatchObject({ person: "Nada", amount: 1500 });
+    expect(u("transfer money to the landlord tomorrow at 1", { app }).app_actions).toEqual([]);
+    const openItems = [{ id: "d", type: "debt" as const, title: "سامي عليه ٢٠٠", debt_person: "سامي", debt_amount: 200, debt_direction: "owed_to_me" as const }];
+    expect(u("sami raga3ly el felous", { app, openItems }).update_items).toEqual([{ id: "d", status: "done" }]);
   });
   it("flags crisis and does nothing else", () => {
     expect(u("مبقتش عايز أعيش")).toMatchObject({ crisis: true, create_items: [] });

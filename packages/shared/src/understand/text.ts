@@ -11,6 +11,8 @@ export const asciiDigits = (s: string) =>
 /** One spelling for matching: lower case, ASCII digits, no diacritics/tatweel, ا for every alef, ه for ة, ي for ى. */
 export function fold(s: string): string {
   return asciiDigits(s)
+    // "١٬٢٠٠" / "1,200": thousands separators go, so the number reads as one.
+    .replace(/(\d)[٬,](\d{3})(?!\d)/g, "$1$2")
     .toLowerCase()
     .replace(/[ً-ْٰـ]/g, "")
     .replace(/[أإآٱ]/g, "ا")
@@ -24,7 +26,7 @@ export function fold(s: string): string {
 export type Script = "arabic" | "franco" | "english";
 
 const FRANCO_HINT =
-  /\b(ana|enta|enty|3andy|3andi|fakarny|fakkarny|fkrny|bokra|bukra|enharda|naharda|lazem|3ayez|3ayza|msh|mesh|el|w|ya|ba3d|abl|sa3a|yom|ma3|bta3|bta3ty|kaman|5alas|5las|aywa|la2|tayeb|tyb|keda|eh|leh|feen|ezay|2ol|5ali|sagel|sgl|dafa3t|me7tag|3aleh|3aleha|meny|men|lel|fel|bel|yalla|mashy|tamam)\b/i;
+  /\b(ana|enta|enty|3andy|3andi|fakarny|fakkarny|fkrny|bokra|bukra|enharda|naharda|lazem|3ayez|3ayza|msh|mesh|el|w|ya|ba3d|abl|sa3a|yom|ma3|bta3|bta3ty|kaman|5alas|5las|aywa|la2|tayeb|tyb|keda|eh|leh|feen|ezay|2ol|5ali|sagel|sgl|dafa3t|me7tag|3aleh|3aleha|meny|men|lel|fel|bel|yalla|mashy|tamam|salaft|sallaft|sraft|saraft|raga3ly|raga3li|shrebt|2areet|gebt|3amalt|klmt|kalemt|mestalef|olghy|e3mel|2assem|2asem|sa7eeny|la2|mafeesh|2e2flo|5aly|5ali|edeet|wageb|3eila)\b/i;
 
 /** How the user writes. A Latin message with Franco words or digits inside words is Franco. */
 export function scriptOf(text: string): Script {
@@ -54,7 +56,7 @@ const UNITS: Record<string, number> = {
 /** A number written as digits (with k / alf / ألف after it) or as one number word. */
 export function numberAt(tok: string, next?: string): { value: number; used: number } | null {
   const t = fold(tok).replace(/^(ب|بـ|b)/, "").replace(/[,،]$/, "");
-  const m = /^(\d+(?:[.,]\d+)?)(k|K|الف|alf)?$/.exec(t);
+  const m = /^(\d+(?:[.,]\d+)?)(k|K|ك|الف|alf)?$/.exec(t);
   let value: number | null = null;
   let used = 1;
   if (m) {

@@ -8,6 +8,8 @@
 export interface Clock {
   h: number;
   m: number;
+  /** The hour said its half of the day (pm, بالليل, 18:00); false for a bare "٨" read as 8 or 20. */
+  explicit?: boolean;
 }
 
 export interface WhenResult {
@@ -154,6 +156,8 @@ export function parseWhen(f: string, now: Now): WhenResult {
       return /^h/.test(x[2]!.toLowerCase()) ? n * 60 : n;
     }],
     [re(`${B}in\\s+half\\s+an\\s+hour${E}`, "iu"), () => 30],
+    // "snooze 20 min", "later, 10 minutes", "for 15 mins" (no "in").
+    [re(`${B}(?:snooze|later|another)\\s*,?\\s+(\\d+)\\s*(hours?|hrs?|h|minutes?|mins?|min)${E}`, "iu"), (x) => Number(x[1]) * (/^h/i.test(x[2]!) ? 60 : 1)],
     [re(`${B}(?:كمان|بعد)\\s+(?:(\\d+)\\s*)?(نص ساعه|ربع ساعه|ساعه ونص|ساعه الا ربع|ساعتين|ساعات|ساعه|دقيقتين|دقايق|دقيقه|دقائق)${E}`, "u"), (x) => {
       const n = x[1] ? Number(x[1]) : 1;
       const u = x[2]!;
@@ -234,7 +238,7 @@ export function parseWhen(f: string, now: Now): WhenResult {
 
   // --- clock times ---
   const clockRe = re(
-    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:at|الساعه|الساعة|el ?sa3a|elsa3a|asa3a|essa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
+    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:و|w ?)?(?:at|الساعه|الساعة|el ?sa3a|elsa3a|asa3a|essa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
     "giu",
   );
   const used: [number, number][] = [];
@@ -258,11 +262,12 @@ export function parseWhen(f: string, now: Now): WhenResult {
     if (!period && repeatPeriod) period = repeatPeriod;
     if (m[1]) out.before = true;
     let h = h0 > 12 ? h0 : hourOf(h0, period, nightContext && !period);
+    const explicit = Boolean(period) || h0 > 12 || h0 === 0;
     if (mm < 0) {
       h = (h + 23) % 24;
       mm += 60;
     }
-    out.clocks.push({ h, m: mm });
+    out.clocks.push({ h, m: mm, explicit });
     used.push([m.index, end]);
     // Chained hours: "at 9 and 9", "٩ الصبح و ٩ بالليل", "10 w 2 w 6", "9, 1 and 5".
     const chain = re(`^(?:\\s*(?:,|،|and|و|w|ثم|then)\\s*(?:at\\s+|الساعه\\s+|el sa3a\\s+)?(\\d{1,2})(?:[:.](\\d{2}))?)`, "iu");
@@ -284,6 +289,7 @@ export function parseWhen(f: string, now: Now): WhenResult {
     clockRe.lastIndex = end;
   }
   out.spans.push(...used);
+  if (!out.clocks.length && !out.relMin) bareHour(f, out, nightContext);
   // "6:30" / "5:45pm" were caught above; a period word alone ("tomorrow evening") is a named time.
   if (!out.clocks.length && !out.relMin) {
     const named: [string, Clock][] = [
@@ -307,6 +313,35 @@ export function parseWhen(f: string, now: Now): WhenResult {
   }
   // Remaining period words next to nothing ("الصبح" after a clock) are already in the clock spans.
   return out;
+}
+
+// A bare hour, as people type it: "bokra 9", "صحيني بكرة ٦ ونص", "فكرني ٢ أخد عمر", "5 ela rob3".
+// Only right after a day word or a remind / alarm verb, or with a half / quarter after it, and
+// never before a unit ("3 kobayat", "٥ جنيه", "10 pages").
+const BARE_BEFORE = `${TOMORROW}|${AFTER_TOMORROW}|${TODAY}|${WD}|فكرني|فكريني|ذكرني|نبهني|صحيني|منبه|fakarny|fakkarny|fkrny|fakarni|fakrny|sa7eeny|sa7eny|sa7any|mnabeh|monabeh|remind me|wake me|alarm`;
+const BARE_UNIT = "جنيه|ج|جنية|ريال|دولار|pounds?|egp|le|\\$|كوبايه|كوبايات|كوباية|kobaya|kobayat|glass|glasses|cups?|صفحه|صفحات|saf7a|saf7at|pages?|مرات|marat|times|ايام|يوم|days?|اسابيع|weeks?|شهور|months?|ساعه|ساعات|sa3a|sa3at|hours?|دقيقه|دقايق|d2aye2|da2aye2|minutes?|mins?|كيلو|kilo|kg|km|افراد|اشخاص|people|persons|عيال|wlad|ولاد|حاجات|حاجه|items?|%";
+function bareHour(f: string, out: WhenResult, nightContext: boolean) {
+  const r = re(
+    `(?:${B}(?:${BARE_BEFORE})\\s*(?:,|،)?\\s*)(\\d{1,2})(?!\\d|[:.]\\d)(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?${E}(?!\\s*(?:${BARE_UNIT})${E})|${B}(\\d{1,2})(\\s*(?:و ?نص|w ?nos|wnos|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))${E}`,
+    "iu",
+  );
+  const m = r.exec(f);
+  if (!m) return;
+  const h0 = Number(m[1] ?? m[3]);
+  if (h0 < 1 || h0 > 12) return;
+  const extra = (m[2] ?? m[4] ?? "").trim();
+  let mm = /نص|nos|half/.test(extra) ? 30 : /الا ربع|ela rob3|illa rob3/.test(extra) ? -15 : /ربع|rob3/.test(extra) ? 15 : 0;
+  let end = m.index + m[0].length;
+  const p = periodNear(f, end);
+  if (p) end = p.end;
+  let h = hourOf(h0, p?.p ?? null, nightContext && !p);
+  if (mm < 0) {
+    h = (h + 23) % 24;
+    mm += 60;
+  }
+  out.clocks.push({ h, m: mm, explicit: Boolean(p) });
+  const numStart = m.index + m[0].search(/\d/);
+  out.spans.push([numStart, end]);
 }
 
 export function nextWeekday(today: string, wd: number, allowToday: boolean): string {
@@ -337,7 +372,10 @@ export function resolveTimes(w: WhenResult, now: Now): string[] {
   const nowHm = now.local.slice(11, 16);
   if (w.relMin && !w.clocks.length) return [addMinutes(now.local, w.relMin)];
   return w.clocks.map((c) => {
-    const hm = clockStr(c);
+    // A bare 8–11 that already passed today while its evening twin is still ahead ("الساعة ٨"
+    // said at 10 am) means the evening.
+    const hm0 = clockStr(c);
+    const hm = !w.date && c.explicit === false && c.h >= 8 && c.h <= 11 && hm0 <= nowHm && clockStr({ h: c.h + 12, m: c.m }) > nowHm ? clockStr({ h: c.h + 12, m: c.m }) : hm0;
     if (w.date) return `${w.date}T${hm}`;
     return hm > nowHm ? `${today}T${hm}` : `${addDays(today, 1)}T${hm}`;
   });

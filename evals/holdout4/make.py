@@ -105,7 +105,9 @@ c("daftar", "ar-k", "كريم عليه ٢ك", "arabic", [D(["كريم", "karim"]
 c("daftar", "en-paid-back", "Karim gave me back the 300", "english", updates=[{"id": ID(20), "status": "done"}], open_items=[OI(20, "Karim owes 300", type="debt", debt_person="Karim", debt_amount=300, debt_direction="owed_to_me")])
 c("daftar", "fr-raga3", "sami raga3ly el felous", "franco", updates=[{"id": ID(21), "status": "done"}], open_items=[OI(21, "سامي عليه ٢٠٠", type="debt", debt_person="سامي", debt_amount=200, debt_direction="owed_to_me")])
 c("daftar", "ar-i-paid", "اديت حسن فلوسه", "arabic", updates=[{"id": ID(22), "status": "done"}], open_items=[OI(22, "عليا ٣٠٠ لحسن", type="debt", debt_person="حسن", debt_amount=300, debt_direction="i_owe")])
-c("daftar", "fr-cancel-no-debt", "olghy dein abdelkareem", "franco", ask="confirm")
+# Corrected after the first run: removing a Daftar entry is a daftar_cancel card (the server says if
+# there is none), not the confirm question used for reminders.
+c("daftar", "fr-cancel-no-debt", "olghy dein abdelkareem", "franco", actions=[A("daftar_cancel", person_any=["abdelkareem", "عبد الكريم", "عبدالكريم"])])
 c("daftar", "fr-loop-la2", "la2", "franco", updates=[], history=[("user", "olghy dein abdelkareem"), ("assistant", "مفيش دين باسم عبد الكريم في الدفتر. تقصد مين؟")])
 c("daftar", "fr-loop-2e2flo", "2e2flo", "franco", updates=[], history=[("user", "la2"), ("assistant", "تمام، مش هلغي حاجة.")])
 c("daftar", "fr-loop-mafeesh", "la2 mafeesh", "franco", updates=[], history=[("assistant", "لو فيه دين تاني عايز تشيله قولي عليه.")])
@@ -127,7 +129,9 @@ c("money", "ar-price-chat", "اللحمة بقت ب ٤٥٠ الكيلو", "arabi
 
 # ================= circles / check-ins =================
 c("circle", "fr-create", "e3mel group lel 3eila", "franco", actions=[A("create_circle", name_any=["عيلة", "عيله", "3eila"])])
-c("circle", "ar-home-checkin", "قول للبيت اني وصلت", "arabic", actions=[A("checkin", circle_any=["البيت"], checkin_kind="arrived")])
+# Corrected after the first run: cases/understanding.jsonl (act-checkin-home) already decided this exact
+# sentence means "home" for a family circle called البيت.
+c("circle", "ar-home-checkin", "قول للبيت اني وصلت", "arabic", actions=[A("checkin", circle_any=["البيت"], checkin_kind="home")])
 c("circle", "en-onway", "tell the family I'm on my way", "english", actions=[A("checkin", circle_any=["البيت"], checkin_kind="on_way")])
 c("circle", "ar-ask-omar", "اسأل عمر وصل ولا لا", "arabic", actions=[A("ask_checkin", person_any=["عمر"])])
 c("circle", "en-invite", "send an invite for the work group", "english", actions=[A("invite", circle_any=["الشغل"])])
@@ -148,7 +152,8 @@ c("tracker", "fr-water", "shrebt 3 kobayat maya", "franco", actions=[A("log_trac
 c("tracker", "ar-water-number", "شربت ٢ مية", "arabic", actions=[A("log_tracker", amount=2, name_any=["water", "مية"])])
 c("tracker", "en-workout", "did my workout today", "english", actions=[A("log_tracker", name_any=["رياضة", "رياضه"])])
 c("tracker", "ar-reading", "قريت ١٥ صفحة", "arabic", actions=[A("log_tracker", amount=15, name_any=["قراية"])])
-c("tracker", "ar-new-sleep", "عايز اتابع النوم", "arabic", actions=[A("create_tracker", tracker_kind="sleep")])
+# Corrected after the first run: "sleep" is not a tracker kind in packages/shared/src/trackers.ts, so a custom "النوم" is right.
+c("tracker", "ar-new-sleep", "عايز اتابع النوم", "arabic", actions=[A("create_tracker", tracker_kind="custom", name_any=["النوم"])])
 c("tracker", "en-new-custom", "track my walks for me", "english", actions=[A("create_tracker", name_any=["walk"])])
 c("tracker", "en-goal", "change my water goal to 10", "english", actions=[A("update_tracker", amount=10, name_any=["water", "مية"])])
 c("tracker", "ar-plan-not-log", "ناوي اشرب مية كتير النهارده", "arabic")
