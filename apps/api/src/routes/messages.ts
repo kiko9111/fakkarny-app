@@ -22,10 +22,14 @@ import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../seria
 import type { Message } from "../generated/prisma/client";
 
 /**
- * Messages this server is answering right now. A restart empties it, which is the point: a
- * retried message with no reply that isn't in here lost its reply mid-way and gets answered again.
+ * Messages this server is answering right now, with the answer on its way. A restart empties it,
+ * which is the point: a retried message with no reply that isn't in here lost its reply mid-way and
+ * gets answered again. A retry of one that is in here waits for that same answer (the phone gave
+ * up or lost the connection): it used to get 409 and wait up to a minute of backoff to ask again.
  */
-const inFlight = new Set<string>();
+const inFlight = new Map<string, Promise<PostMessageResponse | NeedsBrainResponse>>();
+/** How long a retry waits for the answer already being written before telling the phone to ask again. */
+const JOIN_WAIT_MS = 50_000;
 const flightKey = (userId: string, clientId: string) => `${userId}:${clientId}`;
 
 export interface MessageRoutesOptions {
@@ -78,7 +82,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
         // No reply yet. Still being worked on here (the phone gave up waiting): ask it to try
         // again shortly. Not being worked on means the work died (a server restart mid-reply),
         // and the message would never get an answer, so answer it now.
-        if (inFlight.has(flightKey(user.id, existing.clientId))) return reply.code(409).send({ error: "duplicate_in_flight" });
+        const running = inFlight.get(flightKey(user.id, existing.clientId));
+        if (running) {
+          const joined = await Promise.race([running.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), JOIN_WAIT_MS))]);
+          return joined ? send(joined) : reply.code(409).send({ error: "duplicate_in_flight" });
+        }
         return send(await answer(existing));
       }
       const res: PostMessageResponse = {
@@ -117,9 +125,18 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       return reply.code("needs_brain" in res ? 202 : 201).send(res);
     }
 
-    async function answer(message: Message): Promise<PostMessageResponse | NeedsBrainResponse> {
-    const key = flightKey(user.id, message.clientId);
-    inFlight.add(key);
+    function answer(message: Message): Promise<PostMessageResponse | NeedsBrainResponse> {
+      const key = flightKey(user.id, message.clientId);
+      const work = answerNow(message);
+      inFlight.set(key, work);
+      return work.finally(() => {
+        if (inFlight.get(key) === work) inFlight.delete(key);
+      });
+    }
+
+    async function answerNow(message: Message): Promise<PostMessageResponse | NeedsBrainResponse> {
+    const started = Date.now();
+    const timing: Record<string, number> = {};
     try {
     // The user answered: reset the check-in slowdown (F7) and note when they last wrote.
     // (Written alongside the reply; nothing below reads these fields.)
@@ -133,7 +150,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
     const brain = body.data!.brain === "phone" ? { output: body.data!.phone_output, model: body.data!.phone_model } : undefined;
-    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false, brain });
+    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false, brain, timing });
     // Phone brain, first pass: the phone's model writes the reply, then the phone sends it back.
     if (result.needsBrain) {
       await touched;
@@ -151,7 +168,12 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     };
     return res;
     } finally {
-      inFlight.delete(key);
+      // Where the wait went, for the phone (Server-Timing) and for /admin (numbers only, never text).
+      const total = Date.now() - started;
+      reply.header("Server-Timing", [...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`), `total;dur=${total}`].join(", "));
+      void prisma.event
+        .create({ data: { userId: user.id, name: "chat_timing", propsJson: { ...timing, total, brain: body.data!.brain ?? "cloud", pass: body.data!.phone_output ? 2 : 1 } } })
+        .catch(() => {});
     }
     }
   });

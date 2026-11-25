@@ -17,6 +17,8 @@ export interface PipelineInput {
    * it would call the model and returns needsBrain; with output it uses the phone's answer.
    */
   brain?: { output?: unknown; model?: string };
+  /** Filled with ms-since-start marks (rules, context, model, saved) so the route can report where the wait went. */
+  timing?: Record<string, number>;
 }
 
 export interface PipelineResult {

@@ -10,9 +10,9 @@ import "./storage";
  * `offer_tracker`: set at sign-up so the first-tracker picker shows once.
  * `brain`: "phone" when Zaki's model runs on the phone (Android test mode), else the cloud.
  * `brain_model`: the chosen on-phone model id (src/brain/catalog.ts). `brain_fallback`: "0" turns
- * off the cloud fallback when the phone model fails. `brain_last_ms`: last on-phone reply time.
+ * off the cloud fallback when the phone model fails. `brain_last_ms`: last on-phone reply time. `reply_last_ms`: last whole reply wait (send to reply).
  */
-export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak" | "split_daftar" | "brain" | "brain_model" | "brain_fallback" | "brain_last_ms";
+export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak" | "split_daftar" | "brain" | "brain_model" | "brain_fallback" | "brain_last_ms" | "reply_last_ms";
 
 export const prefs = {
   get(key: PrefKey): string | null {

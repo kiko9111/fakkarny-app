@@ -7,6 +7,7 @@ import { sendWithBrain } from "@/brain/flow";
 import { phoneBrainReady, thinkOnPhone, warmBrain } from "@/brain/engine";
 import { language } from "@/i18n";
 import { prefs } from "@/lib/prefs";
+import { track } from "@/lib/analytics";
 import { createEmitter } from "@/lib/emitter";
 import { dataChanged } from "@/lib/live";
 import { LIVE_EVERY_MS } from "@/lib/live-plan";
@@ -14,7 +15,7 @@ import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
 import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
-import { prefetchAll, prefetchSoon } from "@/lib/prefetch";
+import { prefetchAll, prefetchSoon, setChatBusy } from "@/lib/prefetch";
 import { createSyncQueue, type OutboxStore } from "./queue";
 
 /** Fired whenever local messages change, so screens can reload from SQLite. */
@@ -39,15 +40,37 @@ const store: OutboxStore = {
 export const syncQueue = createSyncQueue({
   store,
   // Zaki's brain on the phone (Android test mode) or in the cloud; the cloud answers if the phone fails.
-  send: (body) =>
-    sendWithBrain(body, {
-      post: postMessageRaw,
-      parse: (raw) => PostMessageResponse.parse(raw),
-      think: phoneBrainReady() ? thinkOnPhone : null,
-      fallback: prefs.get("brain_fallback") !== "0",
-    }),
+  send: async (body) => {
+    // How long the reply took, start to finish (numbers only), for Settings and /admin.
+    const started = Date.now();
+    const onPhone = phoneBrainReady();
+    let think = 0;
+    const done = (ok: boolean) => {
+      const total = Date.now() - started;
+      if (ok) prefs.set("reply_last_ms", String(total));
+      track("chat_reply", { total, think, brain: onPhone ? "phone" : "cloud", ok });
+    };
+    try {
+      const res = await sendWithBrain(body, {
+        post: postMessageRaw,
+        parse: (raw) => PostMessageResponse.parse(raw),
+        think: onPhone ? thinkOnPhone : null,
+        fallback: prefs.get("brain_fallback") !== "0",
+        onThought: (ms) => (think = ms),
+      });
+      done(true);
+      return res;
+    } catch (err) {
+      done(false);
+      throw err;
+    }
+  },
   onChange: () => messagesChanged.emit(),
-  onBusyChange: (busy) => syncBusy.emit(busy),
+  onBusyChange: (busy) => {
+    // Chat first: background screen loads wait while a message is being answered.
+    setChatBusy(busy);
+    syncBusy.emit(busy);
+  },
   onLockedChange: (locked) => {
     if (locked !== isChatLocked) {
       isChatLocked = locked;
