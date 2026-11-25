@@ -630,7 +630,7 @@ Rules:
   questions about the user's own data ("what do I have this week?", "sagelt kam?", "who owes me?",
   "shrbt kam?") are answered from the context by apps/api/src/pipeline/questions.ts (pure). Only
   small talk reaches the phone's model, which now runs the same `cleanPhoneReply` check (moved to
-  packages/shared/src/phone-brain.ts; the 202 carries `lang`) and stops after 20 s (`THINK_LIMIT_MS`):
+  packages/shared/src/phone-brain.ts; the 202 carries `lang`) and stops after 10 s (`THINK_LIMIT_MS`):
   either way cloud Zaki answers unless the fallback is off. Franco with no digits ("sagelt kam",
   "shrbt maya ahh") counts as Franco, "shrbt maya" logs water, and "ahh"/"aywa" answer a check-in.
 - Phone model evals: `npm run eval -- --brain phone --base-url <llama-server> --label <name>` scores a
