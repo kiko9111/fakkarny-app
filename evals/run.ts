@@ -24,7 +24,8 @@ import { extractPhoneJson, PHONE_OUTPUT_JSON_SCHEMA, phoneMessages } from "@fakk
 import { localToUtc } from "../apps/api/src/lib/time";
 import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
-import { understand } from "../packages/shared/src/understand";
+import { understand, type Understood } from "../packages/shared/src/understand";
+import { CLARIFY_VERSION, clarifyMessages, cleanRewrite, pickUnderstood } from "../packages/shared/src/understand/clarify";
 import type { AppData } from "../apps/api/src/chat/actions";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,7 +33,7 @@ const args = process.argv.slice(2);
 const strict = args.includes("--strict");
 const arg = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const only = arg("--only");
-const brain = arg("--brain") === "phone" ? "phone" : arg("--brain") === "rules" ? "rules" : "cloud";
+const brain = (["phone", "rules", "clarify"].includes(arg("--brain") ?? "") ? arg("--brain") : "cloud") as "phone" | "rules" | "clarify" | "cloud";
 const set = arg("--set") ?? "cases";
 const baseUrl = arg("--base-url") ?? "http://127.0.0.1:8080";
 const label = arg("--label") ?? "phone";
@@ -118,6 +119,7 @@ async function main() {
 
   if (brain === "phone") return runPhone(cases);
   if (brain === "rules") return runRules(cases);
+  if (brain === "clarify") return runClarify(cases);
   if (!anthropicApiKey()) {
     console.log("SKIPPED model run: neither FAKKARNI_ANTHROPIC_API_KEY nor ANTHROPIC_API_KEY is set. No accuracy measured.");
     return;
@@ -247,6 +249,68 @@ function areaOf(c: EvalCase): string {
   if (e.items.length) return e.items.some((i) => i.due || i.due_date || i.repeat) ? "reminder" : "task";
   if (e.memories_any) return "memory";
   return "chat";
+}
+
+function inputOf(c: EvalCase, text = c.message) {
+  return { text, nowLocal: c.now, history: c.history, openItems: c.open_items, app: c.app };
+}
+function asOutput(c: EvalCase, u: Understood) {
+  return { reply: [c.expect.script === "english" ? "Done." : "تمام."], create_items: u.create_items, update_items: u.update_items, save_memories: u.save_memories, app_actions: u.app_actions, crisis: u.crisis, ask: u.ask };
+}
+function areaTable(name: string, rows: { area: string; ok: boolean }[]) {
+  const by = new Map<string, { n: number; ok: number }>();
+  for (const r of rows) {
+    const a = by.get(r.area) ?? { n: 0, ok: 0 };
+    a.n++;
+    if (r.ok) a.ok++;
+    by.set(r.area, a);
+  }
+  const ok = rows.filter((r) => r.ok).length;
+  console.log(`\n${name}: ${ok}/${rows.length} = ${((100 * ok) / rows.length).toFixed(1)}%`);
+  for (const [a, v] of [...by.entries()].sort()) console.log(`  ${a.padEnd(16)}${String(v.ok).padStart(4)} / ${v.n}`);
+  return { ok, n: rows.length, byArea: Object.fromEntries(by) };
+}
+
+/**
+ * The hidden clear-form step: a small model on llama-server rewrites each message, the rule engine
+ * reads the rewrite. Scores code alone, rewrite alone, and both (rewrite used only when the code
+ * found nothing on the original), per area.
+ */
+async function runClarify(cases: EvalCase[]) {
+  console.log(`Clear-form rewrite "${label}" at ${baseUrl} (${CLARIFY_VERSION}) on ${cases.length} cases from evals/${set}/.`);
+  const rows = [];
+  let ms = 0;
+  for (const c of cases) {
+    const t0 = Date.now();
+    let rewrite: string | null = null;
+    try {
+      const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: clarifyMessages(c.message, c.history), temperature: 0, max_tokens: 120, chat_template_kwargs: { enable_thinking: false } }),
+      });
+      const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      rewrite = cleanRewrite((json.choices?.[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, ""));
+    } catch {
+      rewrite = null;
+    }
+    ms += Date.now() - t0;
+    const u1 = understand(inputOf(c));
+    const u2 = rewrite ? understand(inputOf(c, rewrite)) : null;
+    const both = pickUnderstood(u1, u2);
+    const s1 = scoreCase(c, asOutput(c, u1) as never);
+    const s2 = u2 ? scoreCase(c, asOutput(c, u2) as never) : { extraction: false, problems: ["no rewrite"] };
+    const s3 = scoreCase(c, asOutput(c, both) as never);
+    rows.push({ id: c.id, area: areaOf(c), message: c.message, rewrite, code: s1.extraction, rewriteOnly: s2.extraction, both: s3.extraction, problems: s3.problems });
+  }
+  for (const r of rows.filter((r) => !r.both)) console.log(`✗ [${r.area}] ${r.id}\n    user:    ${r.message}\n    rewrite: ${r.rewrite}\n    ${r.problems.filter((p) => !/reply|Arabic|English|Franco/.test(p)).join("; ")}`);
+  const a = areaTable(`[${label}/${set}] Code alone`, rows.map((r) => ({ area: r.area, ok: r.code })));
+  const b = areaTable(`[${label}/${set}] Rewrite, then code`, rows.map((r) => ({ area: r.area, ok: r.rewriteOnly })));
+  const d = areaTable(`[${label}/${set}] Code, rewrite only when code found nothing`, rows.map((r) => ({ area: r.area, ok: r.both })));
+  console.log(`[${label}/${set}] Avg ${Math.round(ms / rows.length)} ms per rewrite (runner CPU, not a phone)`);
+  const outDir = join(here, "out");
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, `clarify-${label}-${set}.json`), JSON.stringify({ label, set, version: CLARIFY_VERSION, code: a, rewrite: b, both: d, avgMs: ms / rows.length, rows }, null, 2));
 }
 
 /**

@@ -96,7 +96,7 @@ c("tracker", "ar-create", "عايز أتابع الصلاة", "arabic", actions=
 c("tracker", "en-delete", "delete the steps tracker", "english", actions=[{"kind": "delete_tracker", "name_any": ["خطوات"]}])
 # ---------- split ----------
 c("split", "en", "split 840 between me Mona and Laila", "english", actions=[{"kind": "split_bill", "amount": 840, "people_all": ["منى", "ليلى"]}])
-c("split", "ar", "قسم الـ ٦٠٠ بيني وبين كريم", "arabic", actions=[{"kind": "split_bill", "amount": 600, "people_all": ["كريم"]}])
+c("split", "ar", "قسم الـ ٦٠٠ بيني وبين كريم", "arabic", actions=[{"kind": "split_bill", "amount": 600, "people_all": ["Karim"]}])
 c("split", "fr", "2asem 1000 3alaya w 3ala hassan w karim", "franco", actions=[{"kind": "split_bill", "amount": 1000, "people_all": ["Hassan", "Karim"]}])
 # ---------- today / memory / settings ----------
 c("today", "en-open", "open today", "english", actions=[{"kind": "open_screen", "screen": "today"}])
