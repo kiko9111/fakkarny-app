@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAdd, monthBars, progress, suggestTracker, toggleAskTime, weekBars } from "./logic";
+import { bumpTracker, canAdd, monthBars, progress, suggestTracker, toggleAskTime, weekBars } from "./logic";
 
 describe("tracker logic", () => {
   it("measures progress against the right number", () => {
@@ -37,5 +37,13 @@ describe("tracker builder helpers", () => {
     expect(suggestTracker("I want to start reading every day")).toBe("reading");
     expect(suggestTracker("فكّرني بكرة أكلم ماما")).toBeNull();
     expect(suggestTracker("بشرب قهوة كل يوم")).toBeNull();
+  });
+});
+
+describe("bumpTracker", () => {
+  it("shows a log at once: today, the week's last bar, the month's last bar and the total", () => {
+    const t = { today: 2, total: 10, week: [0, 0, 0, 0, 0, 1, 2], month: [1, 2] };
+    expect(bumpTracker(t, 3)).toEqual({ today: 5, total: 13, week: [0, 0, 0, 0, 0, 1, 5], month: [1, 5] });
+    expect(t.today).toBe(2);
   });
 });

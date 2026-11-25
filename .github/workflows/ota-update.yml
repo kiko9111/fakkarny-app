@@ -1,5 +1,7 @@
 # Over-the-air JavaScript update (EAS Update) to the "preview" channel, which the Android test
-# builds listen on. Runs when a pushed commit message contains "[ota-update]", or by hand from
+# builds listen on, and to the "expo-go" branch, which the iPhone opens in Expo Go (runtime
+# exposdk:58.0.0: the runtime policy is switched to sdkVersion for that publish only, never
+# committed). Runs when a pushed commit message contains "[ota-update]", or by hand from
 # the Actions tab once this file is on the default branch. Needs the repository secret EXPO_TOKEN.
 # Only JavaScript changes travel this way; a new native module still needs a new build.
 name: Over-the-air update
@@ -25,3 +27,11 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           MESSAGE: ${{ github.event.head_commit.message || 'Manual update' }}
         run: npx eas-cli@latest update --branch preview --environment preview --platform android --non-interactive --message "$(echo "$MESSAGE" | head -n 1 | cut -c1-120)"
+      - name: Publish for iPhone (Expo Go)
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          MESSAGE: ${{ github.event.head_commit.message || 'Manual update' }}
+        run: |
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("app.json","utf8"));j.expo.runtimeVersion={policy:"sdkVersion"};fs.writeFileSync("app.json",JSON.stringify(j,null,2))'
+          npx eas-cli@latest update --branch expo-go --environment preview --platform ios --non-interactive --message "$(echo "$MESSAGE" | head -n 1 | cut -c1-120)"

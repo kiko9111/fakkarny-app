@@ -549,7 +549,9 @@ Rules:
   the file. Run it after any change to a wire shape.
 - Over-the-air updates from the cloud: .github/workflows/ota-update.yml publishes to the "preview"
   branch (Android test builds) when a pushed commit message contains "[ota-update]". Use it for
-  JavaScript-only fixes; EAS's free plan Android builds run out monthly.
+  JavaScript-only fixes; EAS's free plan Android builds run out monthly. Since 2026-11-24 it also
+  publishes the iPhone copy (branch "expo-go", Expo Go): before that, iPhone fixes needed a manual
+  publish and the owner's iPhone ran an old bundle for a day of fixes.
 - Alarms: `wantsAlarm` (pipeline/rules.ts) hears "منبه / صحيني / alarm / mnabeh" and the pipeline
   sets alarm on what the turn creates or changes (the model sometimes said "set" with alarm false);
   "بلاش منبه" turns it off. Me has an Alarms list (local SQLite `listAlarms`) with Remove; the Saved
@@ -581,6 +583,11 @@ Rules:
   item set in the last 2 h is shown under the message, else Zaki says it isn't set yet. The
   context always includes the 10 most recently changed open items (MAX_OPEN_ITEMS cut them off).
   Today shows repeating reminders in their own list so they can't hide new plans.
+- Preloading (2026-11-24): `prefetchAll` (apps/mobile/src/lib/prefetch.ts, throttle in
+  prefetch-plan.ts) loads every server-only screen (me, circles + each circle's detail/feed/
+  trackers, tasks, trackers, Daftar, money, splits, memories) through `cachedGet` on app start,
+  on resume and back online (sync/index.ts `refresh`), at most once a minute, so tabs open from a
+  fresh saved copy. Add any new cached screen to it. Tracker logs show at once (`bumpTracker`).
 - Onboarding and every app start send the phone's language to the server (it stayed Arabic for
   English users, so proactive lines, circle posts and pushes came in Arabic).
 

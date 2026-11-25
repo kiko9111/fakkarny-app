@@ -218,9 +218,11 @@ export async function deleteAccount(): Promise<void> {
   await request("/me", { method: "DELETE" });
 }
 
+const parseMemories = (raw: unknown) => ListMemoriesResponse.parse(raw).memories;
 export async function listMemories() {
-  return ListMemoriesResponse.parse(await request("/memories")).memories;
+  return cachedGet("/memories", parseMemories);
 }
+export const peekMemories = () => peek("/memories", parseMemories);
 
 /** Ask the server to re-read the RevenueCat entitlement (right after a purchase or restore). */
 export async function refreshPlan(): Promise<User> {

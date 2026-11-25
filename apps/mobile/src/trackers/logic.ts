@@ -56,3 +56,15 @@ export function suggestTracker(text: string): string | null {
   if (!name || name.length < 2 || /\d{3,}/.test(name)) return null;
   return name;
 }
+
+/**
+ * What a tracker looks like right after logging `amount`, drawn at once while the server
+ * confirms (its reply then replaces this guess; a failure puts the old one back).
+ */
+export function bumpTracker<T extends Pick<Tracker, "today" | "total" | "week" | "month">>(t: T, amount = 1): T {
+  const week = [...t.week];
+  week[week.length - 1] = (week[week.length - 1] ?? 0) + amount;
+  const month = [...t.month];
+  if (month.length) month[month.length - 1] = (month[month.length - 1] ?? 0) + amount;
+  return { ...t, today: t.today + amount, total: t.total + amount, week, month };
+}
