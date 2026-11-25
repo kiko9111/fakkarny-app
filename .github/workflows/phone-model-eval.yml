@@ -1,0 +1,98 @@
+# Scores candidate on-device models for Zaki's phone brain on the chat evals (evals/cases), with the
+# same phone persona, compact context and JSON grammar the Android app uses (npm run eval -- --brain
+# phone). The cloud session can't download models, so this runs on GitHub. Runs when a pushed commit
+# message contains "[phone-eval]", or by hand from the Actions tab. Speeds are this runner's CPU, not a phone.
+name: Phone model eval
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Only cases whose id starts with this (empty = all)"
+        required: false
+        default: ""
+
+jobs:
+  eval:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[phone-eval]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: qwen3.5-0.8b
+            repo: unsloth/Qwen3.5-0.8B-GGUF
+          - label: qwen3.5-2b
+            repo: unsloth/Qwen3.5-2B-GGUF
+          - label: gemma-4-e2b
+            repo: unsloth/gemma-4-E2B-it-GGUF
+          - label: qwen3-1.7b
+            repo: unsloth/Qwen3-1.7B-GGUF
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Generate the Prisma client (types the eval imports)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://x:x@localhost:5432/x
+        run: npx prisma generate
+      - name: Get llama.cpp's server (prebuilt CPU release, else build it)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/ggml-org/llama.cpp/releases/latest --jq '.assets[].name' > assets.txt || true
+          echo "Release assets:"; cat assets.txt
+          name=$(grep -iE 'ubuntu' assets.txt | grep -iE 'x64|x86_64|amd64' | grep -viE 'vulkan|rocm|cuda|sycl|openvino|hip|arm|s390' | head -1 || true)
+          mkdir -p llama && cd llama
+          if [ -n "$name" ]; then
+            tag=$(gh api repos/ggml-org/llama.cpp/releases/latest --jq '.tag_name')
+            gh release download "$tag" -R ggml-org/llama.cpp -p "$name"
+            case "$name" in *.zip) unzip -q "$name" ;; *) tar xzf "$name" ;; esac
+          fi
+          bin=$(find . -name llama-server -type f | head -1)
+          if [ -z "$bin" ]; then
+            echo "No prebuilt server found; building from source"
+            git clone --depth 1 https://github.com/ggml-org/llama.cpp src
+            cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=ON
+            cmake --build build --target llama-server -j 4
+            bin=$(find build -name llama-server -type f | head -1)
+          fi
+          chmod +x "$bin"
+          echo "LLAMA_SERVER=$PWD/$bin" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$PWD/$(dirname "$bin")" >> "$GITHUB_ENV"
+      - name: Download the model (Q4_K_M)
+        run: |
+          file=$(curl -sSL "https://huggingface.co/api/models/${{ matrix.repo }}" | jq -r '[.siblings[].rfilename | select(test("Q4_K_M\\.gguf$"))][0]')
+          if [ -z "$file" ] || [ "$file" = "null" ]; then echo "No Q4_K_M file in ${{ matrix.repo }}"; exit 1; fi
+          echo "Model file: $file"
+          curl -sSL "https://huggingface.co/${{ matrix.repo }}/resolve/main/$file" -o model.gguf
+          ls -lh model.gguf
+      - name: Start llama-server
+        run: |
+          "$LLAMA_SERVER" -m model.gguf -c 6144 -np 1 --port 8080 --jinja > server.log 2>&1 &
+          for i in $(seq 1 120); do curl -sf localhost:8080/health && break; sleep 2; done
+          curl -sf localhost:8080/health
+      - name: Score replies (the code decides the actions) on the chat evals
+        run: |
+          for set in cases holdout3; do
+            npm run eval -w @fakkarni/evals -- --brain phone --set $set --base-url http://127.0.0.1:8080 --label ${{ matrix.label }} ${{ github.event.inputs.only && format('--only {0}', github.event.inputs.only) || '' }} | tee -a eval-${{ matrix.label }}.txt
+          done
+      - name: Summary
+        if: always()
+        run: |
+          echo "### ${{ matrix.label }}" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^\[${{ matrix.label }}" eval-${{ matrix.label }}.txt >> "$GITHUB_STEP_SUMMARY" || echo "no result" >> "$GITHUB_STEP_SUMMARY"
+          tail -5 server.log || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phone-eval-${{ matrix.label }}
+          path: |
+            evals/out/phone-*.json
+            eval-${{ matrix.label }}.txt

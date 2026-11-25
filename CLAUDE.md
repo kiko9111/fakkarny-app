@@ -4,8 +4,10 @@ pg-boss, zod, RevenueCat, vitest. Monorepo: apps/mobile, apps/api, packages/shar
 Full product spec: docs/PRD.pdf (section numbers below refer to it).
 
 Rules:
-- Text input only. No audio anywhere. Images only for receipts and homework pages (owner
-  decision, 2026-11-23; see "Photos" below); no other image processing.
+- Text input, plus on-device voice typing (owner decision, 2026-11-25): the mic writes words into
+  the composer on the phone (whisper.cpp); audio is never saved, never sent, never processed on a
+  server. Images only for receipts and homework pages (owner decision, 2026-11-23; see "Photos"
+  below); no other image or audio processing.
 - The app works offline: save to SQLite first, sync later with client IDs.
 - Reminders are local notifications; briefs and check-ins come from the server as push.
 - The friend never replies with a checklist unless the user asks for their plans.
@@ -590,6 +592,49 @@ Rules:
   fresh saved copy. Add any new cached screen to it. Tracker logs show at once (`bumpTracker`).
 - Onboarding and every app start send the phone's language to the server (it stayed Arabic for
   English users, so proactive lines, circle posts and pushes came in Arabic).
+
+- Phone brain (Android test mode, owner ask 2026-11-25: "fully local to test, keep cloud Zaki"):
+  Zaki's model can run on the phone (llama.rn, llama.cpp). Settings › "Zaki's brain (test)" picks
+  Cloud or On my phone and downloads the model once (src/brain/catalog.ts: Qwen3.5 2B Q4 for phones
+  with ≥5.5 GB RAM, Qwen3.5 0.8B otherwise; files in the app's documents folder). Protocol: POST
+  /messages with `brain: "phone"` → rules may answer at once (201); otherwise 202 `needs_brain`
+  {system, context, history} (persona/phone.ts, `renderPhoneContext`, last 6 messages) → the phone
+  writes the compact PhoneOutput JSON under a JSON-schema grammar (packages/shared/src/phone-brain.ts)
+  → POST again with `phone_output` → apps/api/src/ai/phone.ts turns it into a FriendResponse and the
+  normal pipeline applies it (crisis net, reminder honesty, cards, undo). No allowance used, `ai_call`
+  purpose "phone" with no cost, no cloud summary. If the phone model fails, cloud Zaki answers unless
+  the user turned the fallback off (src/brain/flow.ts, pure + tested). The phone persona copies the
+  WELLBEING section from the main persona word for word (phone.test.ts checks it). Known gap: a
+  tracker step that answers an open reminder is logged on both passes. Offline replies are not done:
+  the message still waits for the network, because the context comes from the server.
+- Code decides, the model chats (owner decision, 2026-11-25: "AI is for chatting only, the tasks are
+  math"). In phone mode the rule engine (packages/shared/src/understand, pure: dates, times, amounts,
+  names, intents in Arabic, Franco and English) decides every action on the server
+  (pipeline/understand-input.ts → `understand`); the 202 hands the phone a reply-only prompt
+  (persona/phone-reply.ts, WELLBEING copied word for word), a DONE / ASK summary and a {reply, crisis}
+  schema. The second pass ignores everything else the model wrote. A failed or over-promising reply
+  is replaced by `templateReply`. Missing time / amount / person → `ask`, nothing saved. Optional hidden
+  "clear form" rewrite by the small model (understand/clarify.ts) is used only when the code found
+  nothing. Score with `npm run eval -- --brain rules --set <cases|holdout|holdout2|holdout3>`; each
+  holdout set was committed before the engine ran on it (unseen scores 88.8%, 89.3%, 80.3% messy; all
+  ~100% after fixes). Write a NEW set before claiming accuracy on unseen wording. The rewrite is scored
+  by .github/workflows/clarify-eval.yml ("[clarify-eval]").
+- Phone model evals: `npm run eval -- --brain phone --base-url <llama-server> --label <name>` scores a
+  GGUF model served by llama.cpp with the phone prompt and grammar. The cloud session can't download
+  models, so .github/workflows/phone-model-eval.yml runs the candidates on GitHub ("[phone-eval]").
+- Voice typing: whisper.rn + modules/zaki-mic (a tiny local Expo module: 16 kHz PCM in memory, 60 s
+  max). Mic button in ChatInput; model download in Settings or on first tap (Whisper small q5, base on
+  phones under 3 GB). All of it is optional native code (src/brain/native.ts): builds before
+  2026-11-25 never show it. Android only.
+- Local-first shared writes (2026-11-25): tracker steps and check-ins tapped offline are kept on the
+  phone (src/sync/writes.ts, localStorage "pending_writes", pure + tested) and replayed oldest-first
+  on every refresh with an x-idempotency-key; the server answers a replayed key from memory
+  (apps/api/src/plugins/idempotency.ts, per install id, 1 day) so nothing is applied twice. The screen
+  keeps its guess (`QueuedOffline`). Tracker logs carry `at` (≤3 days back) so streaks count the tap's
+  day. Route more writes through `writeOrQueue` (api.ts) when their screen can show a guess.
+- Android builds without the EAS quota: .github/workflows/android-local-build.yml runs `eas build
+  --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
+  and attaches the APK to a GitHub pre-release.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

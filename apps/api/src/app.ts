@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
+import { registerIdempotency } from "./plugins/idempotency";
 import Fastify, { type FastifyBaseLogger, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { INSTALL_ID_HEADER } from "@fakkarni/shared";
 import type { PrismaClient } from "./generated/prisma/client";
@@ -96,6 +97,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     });
   }
 
+  // Offline taps replayed from the phone are applied once (plugins/idempotency.ts).
+  registerIdempotency(app);
   app.register(healthRoutes);
   app.register(legalRoutes, deps.legal ?? {});
   if (deps.prisma) {

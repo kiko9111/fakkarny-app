@@ -113,7 +113,11 @@ export type SharedTracker = z.infer<typeof SharedTracker>;
 export const SharedTrackersResponse = z.object({ trackers: z.array(SharedTracker) });
 export type SharedTrackersResponse = z.infer<typeof SharedTrackersResponse>;
 
-export const LogTrackerRequest = z.object({ amount: z.number().positive().max(100_000_000).optional() });
+export const LogTrackerRequest = z.object({
+  amount: z.number().positive().max(100_000_000).optional(),
+  /** When it was logged on the phone, if it waited offline (up to 3 days back; else the server's now). */
+  at: z.iso.datetime({ offset: true }).optional(),
+});
 export type LogTrackerRequest = z.infer<typeof LogTrackerRequest>;
 
 export const TrackerResponse = z.object({ tracker: Tracker });
