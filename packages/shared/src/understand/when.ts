@@ -79,9 +79,9 @@ const PM = "العصر|el ?3asr|3asr|afternoon|المغرب|el ?maghrib|maghrib|
 const NIGHT = "بالليل|بليل|الليل|بالليل|belel|bel ?leil|bel ?lel|belleil|bllel|b ?el ?leil|night|tonight|evening|المسا|بالمسا|bel ?masa|masa2an";
 
 const TODAY = "النهارده|النهارد|النهرده|انهارده|انهرده|النهاردا|enharda|naharda|el ?naharda|elnaharda|ennaharda|enaharda|innaharda|today|tonight|this evening|this morning";
-const TOMORROW = "بكره|بكرا|بكرة|bokra|bukra|bokrah|tomorrow|tmrw|tomorow|tomorro";
+const TOMORROW = "بكره|بكرا|بكرة|bokra|bukra|bokrah|bkra|bokra|tomorrow|tmrw|tomorow|tomorro|2morow|2morrow|2moro";
 const AFTER_TOMORROW = "بعد بكره|بعد بكرا|ba3d bokra|b3d bokra|ba3d bukra|day after tomorrow";
-const YESTERDAY = "امبارح|امبارحه|embare7|mbare7|embar7|yesterday|كنت|kont\\b|was at";
+const YESTERDAY = "last night|last week|last month|امبارح|امبارحه|embare7|mbare7|embar7|yesterday|كنت|kont\\b|was at";
 const VAGUE = "this week|الاسبوع ده|الاسبوع دا|el ?esbo3 da|el ?esbo3 dah|soon|sometime|اخر الاسبوع|end of the week|بعد الصلاه|ba3d el salah|ba3d salat|بعد صلاه";
 
 const re = (s: string, flags = "g") => new RegExp(s, flags);
@@ -127,8 +127,11 @@ export function parseWhen(f: string, now: Now): WhenResult {
     `${B}(?:every|كل|kol|koll)\\s+(?:(\\d+)\\s+)?(hours?|hrs?|ساعه|ساعات|ساعتين|sa3a|sa3at|sa3teen|days?|يوم|ايام|yom|weeks?|اسبوع|esbo3|morning|night|${WD}|حد|احد|اتنين|تلات|اربع)${E}|${B}(daily|hourly|يوميا|weekly)${E}`,
     "iu",
   ).exec(f);
+  let repeatPeriod: "am" | "night" | null = null;
   if (rep) {
     take(rep);
+    if (/^(morning)$/i.test(rep[2] ?? "")) repeatPeriod = "am";
+    if (/^(night)$/i.test(rep[2] ?? "")) repeatPeriod = "night";
     const n = rep[1] ? Number(rep[1]) : 1;
     const unit = (rep[2] ?? rep[3] ?? "").toLowerCase();
     if (/^(hours?|hrs?|ساعه|ساعات|sa3a|sa3at|hourly)$/.test(unit)) out.repeat = 60 * n;
@@ -231,7 +234,7 @@ export function parseWhen(f: string, now: Now): WhenResult {
 
   // --- clock times ---
   const clockRe = re(
-    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:at|الساعه|الساعة|el ?sa3a|elsa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
+    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:at|الساعه|الساعة|el ?sa3a|elsa3a|asa3a|essa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
     "giu",
   );
   const used: [number, number][] = [];
@@ -252,6 +255,7 @@ export function parseWhen(f: string, now: Now): WhenResult {
         end = p.end;
       }
     }
+    if (!period && repeatPeriod) period = repeatPeriod;
     if (m[1]) out.before = true;
     let h = h0 > 12 ? h0 : hourOf(h0, period, nightContext && !period);
     if (mm < 0) {

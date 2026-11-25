@@ -293,9 +293,9 @@ const FOLLOW = "دكتور|الدكتور|دكتوره|كشف|امتحان|ان�
 const IMPORTANT = "دوا|الدوا|دواء|علاج|dawa|pill|pills|medicine|meds|antibiotic|insulin|انسولين|طياره|طيارتي|رحله|flight|tayara|امتحان|امتحاني|exam|emte7an|انترفيو|interview|مقابله|mo2abla|غرامه|gharama|late fee|هيفصل|هيقطع|deadline|urgent|ضروري|مهم";
 const ALARM = "منبه|منبّه|صحيني|صحّيني|alarm|wake me|mnabeh|monabeh|menabeh|sa7eny|sa7eeny|sa7any";
 const DONE_VERB =
-  "خلصت|خلصنا|خلصتها|خلصته|خلاص|عملت|عملتها|كلمت|جبت|جبته|جبتها|بعت|بعته|بعتها|دفعت|دفعتها|اشتريت|روحت|رحت|اخدت|اخدته|خدت|5alast|5alas|5las|5lst|klmt|kalemt|kallemt|gebt|ba3att|ba3at|b3t|dafa3t|eshtarait|ro7t|done|finished|did|called|paid|sent|bought|got|picked up|took|already|completed";
+  "خلصت|خلصنا|خلصتها|خلصته|خلاص|عملت|عملتها|كلمت|جبت|جبته|جبتها|بعت|بعته|بعتها|دفعت|دفعتها|اشتريت|روحت|رحت|اخدت|اخدته|خدت|5alast|5alas|5las|5lst|klmt|kalemt|kallemt|gebt|ba3att|ba3at|b3t|dafa3t|eshtarait|ro7t|done|finished|did|called|paid|sent|bought|got|picked up|picked|took|already|completed";
 const MOVE_VERB = "اتاجل|اتأجل|اتأخر|اجل|اجلت|أجل|خليه|خليها|خلي|غير|غيرت|بدل|انقل|حول|et2agel|et2a5ar|2agel|2agelt|5aleeh|5aleeha|5ali|ghayar|moved|move|postpone|postponed|reschedule|rescheduled|push|pushed|change|changed|instead";
-const STOP_REMIND = "بطل تفكرني|متفكرنيش|بلاش تفكرني|وقف التذكير|كفايه تفكرني|batal tfakarny|batal tfakkarny|matfakarneesh|stop reminding|don't remind|dont remind|no more reminders";
+const STOP_REMIND = "مش عايز تفكرني|مش عايزك تفكرني|متفكرنيش تاني|msh 3ayez tfakarny|msh 3ayzak tfakarny|i don't want reminders|بطل تفكرني|متفكرنيش|بلاش تفكرني|وقف التذكير|كفايه تفكرني|batal tfakarny|batal tfakkarny|matfakarneesh|stop reminding|don't remind|dont remind|no more reminders";
 const CANCEL = "الغي|الغيه|الغيها|ألغي|امسح|امسحه|امسحها|شيل|شيله|شيلها|cancel|delete|remove|forget|olghy|olgheeh|olgheha|elghy|ems7|ems7o|sheel";
 const YES = "اه|ايوه|ايوا|اكيد|تمام|ماشي|اوك|اوكي|حاضر|موافق|ابعت|ابعتها|صح|yes|yeah|yep|sure|ok|okay|aywa|aiwa|ah|tamam|mashy|maashi|akeed|7ader|olgheeh|olgheha|sa7";
 const NO = "لا|لأ|لاء|مش هقدر|مقدرش|مش قادر|بلاش|مش عايز|no|nope|nah|can't|cannot|la2|la|msh ha2dar|mesh ha2dar|ma2darsh|balash";
@@ -309,7 +309,7 @@ const QUESTION = "ايه|إيه|امتي|إمتى|كام|ليه|فين|ازاي|
 const GLUE_VOCAB = new Set(
   [
     ...Object.keys(FRANCO_WORDS),
-    ..."3andy 3andi fakarny fakkarny fkrny bokra enharda naharda ba3d el sa3a elsa3a w nos rob3 lazem me7tag ana yom ma3 meeting gym el sob7 belleil bel leil 3asr dohr kaman sa3teen de2i2a".split(" "),
+    ..."asa3a bkra fakarny 3andy 3andi fakkarny fkrny bokra enharda naharda ba3d el sa3a elsa3a w nos rob3 lazem me7tag ana yom ma3 meeting gym el sob7 belleil bel leil 3asr dohr kaman sa3teen de2i2a".split(" "),
   ].map((w) => w.toLowerCase()),
 );
 function unglue(text: string): string {
@@ -538,7 +538,8 @@ function handleClause(text: string, input: UnderstandInput, out: Understood, cha
     const w = parseWhen(t.text, now);
     const c = w.clocks[0];
     if (c) {
-      const h = sleep && c.h === 12 ? 0 : sleep && c.h < 6 ? c.h : c.h;
+      // "بنام الساعة ١٢ / ١" means midnight / 1 am, not noon / 1 pm.
+      const h = sleep && c.h === 12 ? 0 : sleep && c.h >= 13 && c.h <= 17 && !/pm|العصر|الضهر/i.test(text) ? c.h - 12 : c.h;
       const val = wake && c.h >= 13 && c.h <= 19 ? `${String(c.h - 12).padStart(2, "0")}:${String(c.m).padStart(2, "0")}` : clockStr({ h, m: c.m });
       out.app_actions.push({ kind: "settings", setting: wake ? "wake_time" : "sleep_time", text: val });
       return;
@@ -714,7 +715,7 @@ function daftarIntent(t: Toks, text: string, input: UnderstandInput, script: Scr
   const money = "فلوس|الفلوس|فلوسه|فلوسها|فلوسي|دين|الدين|felous|flos|el felous|money|debt";
 
   // Remind someone of what they owe: "فكر كريم بالفلوس اللي عليه".
-  if (has(t, "فكر|فكري|نبه|remind|fakar|fakkar") && has(t, money + "|اللي عليه|اللي عليها|what he owes|what she owes")) {
+  if (has(t, "فكر|فكري|نبه|remind|fakar|fakkar") && hasP(t, money + "|اللي عليه|اللي عليها|what he owes|what she owes")) {
     const who = findMember(t, input);
     if (who) {
       out.app_actions.push({ kind: "daftar_remind", person: who.m.name });
@@ -794,7 +795,7 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
   const person = (raw: string): string => {
     let p = raw.trim().replace(/^(ان|إن|en|that)\s+/i, "");
     p = p.replace(/^(يا\s+)/, "");
-    if (script === "franco") p = p.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    if (script === "franco") p = p.split(/\s+/).map((w) => FRANCO_WORDS[w.toLowerCase()] ?? w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
     return p;
   };
   const tokensBefore = (idx: number, n = 2) => {
@@ -847,7 +848,7 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
   }
   m = /\b([a-z]+)\s+(?:3aleh|3aleha|3alih|3aleeh)\b/i.exec(text);
   if (m && !/^(elly|ely)$/i.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
-  m = /\b(?:3alaya|3alaia|3alya)\s+\S+\s+(?:l|le|li|lel)\s+([a-z]+)/i.exec(text);
+  m = /\b(?:3alaya|3alaia|3alya)\s+\S+\s+(?:l|le|li|lel)\s+([a-z0-9]+)/i.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
   m = /\b(?:msalef|mestalef|mtsalef|estalaft|metsalef)\s+(?:\S+\s+)?men\s+([a-z]+)/i.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
@@ -864,7 +865,7 @@ function taskIntent(t: Toks, text: string, input: UnderstandInput, script: Scrip
   const now = { local: input.nowLocal };
   // Nudge / cancel an assigned task: "فكر منى باللبن", "الغي طلب اللبن من منى".
   const who = findMember(t, input);
-  if (who && has(t, "فكر|فكري|نبه|nudge|remind|fakar|fakkar") && !has(t, REMIND)) {
+  if (who && has(t, "فكر|فكري|نبه|nudge|remind|fakar|fakkar") && !has(t, REMIND.replace(/\|remind\|/, "|").replace(/\|reminder$/, ""))) {
     out.app_actions.push({ kind: "task_nudge", person: who.m.name });
     return true;
   }
@@ -953,7 +954,7 @@ function trackerOf(input: UnderstandInput, t: Toks): { kind: string; name: strin
   }
   return null;
 }
-const readingWord = (w: string, name: string) => /قراي|قرايه|قراءه/.test(name) && /^(قريت|صفحه|صفحات|pages?|2reet|saf7a|saf7at|read)$/.test(w);
+const readingWord = (w: string, name: string) => /قراي|قرايه|قراءه/.test(name) && /^(قريت|صفحه|صفحات|pages?|2reet|2areet|2aret|saf7a|saf7at|read)$/.test(w);
 const stepsWord = (w: string, name: string) => /خطو/.test(name) && /^(steps?|خطوه|خطوات|walked|مشيت|5atwa|5atwat)$/.test(w);
 
 function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Script, out: Understood, isQuestion: boolean): boolean {
@@ -1030,7 +1031,7 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
     return true;
   }
   // Log: "شربت ٢ كوباية مية", "walked 6500 steps", "قريت ١٢ صفحه", "2reet 15 saf7a".
-  if (tr && has(t, "شربت|اشربت|قريت|مشيت|صليت|اتمرنت|خدت|drank|had|read|walked|did|prayed|took|shrebt|2reet|mesheet|saleet|et2amart|logged|log|سجل|sagel")) {
+  if (tr && has(t, "شربت|اشربت|قريت|مشيت|صليت|اتمرنت|خدت|drank|had|read|walked|did|prayed|took|shrebt|2reet|2areet|2aret|mesheet|saleet|et2amart|logged|log|سجل|sagel")) {
     const n = numbers(t).filter((x) => x.value > 0);
     out.app_actions.push({ kind: "log_tracker", tracker: tr.name, ...(n.length ? { amount: n[0]!.value } : {}) });
     return true;
@@ -1154,7 +1155,9 @@ function updateIntent(t: Toks, text: string, input: UnderstandInput, out: Unders
     return true;
   }
   // Moved: "el dentist et2agel le yom el etnein nafs el ma3ad", "move the dentist to Wednesday", "خلي الدكتور الساعة ٧ بدل ٥".
-  const w = parseWhen(t.text, now);
+  // "بدل بكرة" / "instead of 5" names the old time: read only what comes before it; "to 11" is a time.
+  const moveText = t.text.replace(/\s(?:بدل|بدال|badal|instead of)\s.*$/i, "").replace(/\bto\s+(\d{1,2}(?::\d{2})?)\b(?!\s*(?:people|pounds|egp|%))/i, "at $1");
+  const w = parseWhen(moveText, now);
   if (item && has(t, MOVE_VERB) && (w.date || w.clocks.length)) {
     const cur = item.due_local ?? `${now.local.slice(0, 10)}T09:00`;
     // "الساعة ٧ بدل ٥": the first time is the new one.
@@ -1165,11 +1168,14 @@ function updateIntent(t: Toks, text: string, input: UnderstandInput, out: Unders
     return true;
   }
   // Pushed by a span: "push the oven reminder by an hour", "أخر الدكتور ساعة", "a5ar el meeting nos sa3a".
-  const by = /\b(?:push|delay|move)\b.*?\bby\s+(an?|one|two|half an?|\d+)\s*(hours?|minutes?|mins?)\b/i.exec(text) ?? /(?:اخر|أخر|أخّر|اخّر|a5ar|a5ar)\s+\S+(?:\s+\S+)?\s+(نص|ساعه|ساعتين|ربع|nos|sa3a|sa3teen|rob3)(?:\s*(ساعه|sa3a))?/iu.exec(fold(text));
-  if (item && item.due_local && by) {
+  const by = /\b(?:push|delay|move)\b.*?\bby\s+(an?|one|two|half an?|\d+)\s*(hours?|minutes?|mins?)\b/i.exec(text) ?? /(?:اخر|أخر|أخّر|اخّر|a5ar|a5ar|اجل|أجل|2agel)\S*\s+(?:\S+\s+){0,2}?(نص|ساعه|ساعتين|ربع|nos|sa3a|sa3teen|rob3)(?:\s*(ساعه|sa3a))?(?![\p{L}])/iu.exec(fold(text));
+  const lastZaki = (input.history ?? []).filter((h) => h.role === "assistant").pop()?.text ?? "";
+  const byItem = item ?? (by ? bestItem(open, lastZaki) : undefined);
+  if (byItem && byItem.due_local && by) {
+    const item = byItem;
     const n = by[1]!.toLowerCase();
     const mins = /^(نص|nos|half)/.test(n) ? 30 : /^(ربع|rob3)$/.test(n) ? 15 : /^(ساعتين|sa3teen|two)$/.test(n) ? 120 : /^(ساعه|sa3a|an?|one)$/.test(n) ? 60 : Number(n) * (/^h/i.test(by[2] ?? "h") ? 60 : 1);
-    const when = addMinutes(item.due_local, mins);
+    const when = addMinutes(item.due_local!, mins);
     out.update_items.push({ id: item.id, due_at_local: when, remind_at_local: when });
     return true;
   }
