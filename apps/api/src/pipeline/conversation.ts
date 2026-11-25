@@ -57,7 +57,12 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
   const { model, log } = deps;
   const dailyCap = deps.dailyCap ?? DAILY_MESSAGE_CAP;
 
-  return async ({ prisma, user, message, now, aiAllowance, requireSubscription, brain }) => {
+  return async ({ prisma, user, message, now, aiAllowance, requireSubscription, brain, timing }) => {
+    // Where the wait goes (ms since the start, numbers only): sent back as Server-Timing.
+    const t0 = Date.now();
+    const mark = (k: string) => {
+      if (timing) timing[k] = Date.now() - t0;
+    };
     const script = replyLang(detectScript(message.text));
     const crisisKeyword = looksLikeCrisis(message.text);
     const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
@@ -166,7 +171,9 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // 2. One model call with persona (cached) + context + recent chat.
     // A tracker step logged just above changes the numbers: load them again.
+    mark("rules");
     const ctx = closesReminder ? await loadContext(prisma, user, now) : await ctxEarly;
+    mark("context");
     const history = historyUpTo(ctx.recent, message);
     let replies: string[];
     let actions = EMPTY_ACTIONS;
@@ -253,6 +260,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       }
       cloudInput = modelInput;
     }
+    mark("model");
 
     // 3. Wellbeing safety net: crisis replies always carry helpline info, and never create items.
     if (crisis) {
@@ -341,6 +349,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       applied = await withCards(prisma, applied, await settleCards(prisma, user, closed.map((i) => ({ person: i.debtPerson!, amount: i.debtAmount == null ? null : Number(i.debtAmount) })), script, now).catch(() => []));
 
     await aiEvent;
+    mark("saved");
 
     // 5. Rolling summary in the background; never blocks the reply.
     // (Not for the phone brain: a summary would be a cloud call, against the point of that mode.)

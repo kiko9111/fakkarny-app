@@ -86,3 +86,43 @@ describe.skipIf(!hasTestDb)("messages routes", () => {
     expect(ListMessagesResponse.parse(res.json()).messages).toEqual([]);
   });
 });
+
+describe.skipIf(!hasTestDb)("a retry while the reply is being written", () => {
+  const prisma = testPrisma();
+  const fixedNow = new Date("2026-11-19T10:00:00.000Z");
+  // A slow friend: the phone gives up and sends again before the reply is stored.
+  const app = buildApp(
+    { logger: false },
+    {
+      prisma,
+      now: () => fixedNow,
+      pipeline: async ({ prisma: db, user, message, timing }) => {
+        await new Promise((r) => setTimeout(r, 300));
+        if (timing) timing.model = 300;
+        const reply = await db.message.create({ data: { userId: user.id, role: "friend", kind: "chat", text: "أهلاً", clientId: `${message.clientId}:reply:0`, createdAt: new Date(message.createdAt.getTime() + 1) } });
+        return { replies: [reply], items: [], memories: [] };
+      },
+    },
+  );
+  const headers = { [INSTALL_ID_HEADER]: randomUUID() };
+  beforeEach(() => resetDb(prisma));
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  it("waits for that same reply instead of answering 409, and reports where the time went", async () => {
+    const body = { client_id: "slow-1", text: "alo", created_at: fixedNow.toISOString() };
+    const first = app.inject({ method: "POST", url: "/messages", headers, payload: body });
+    await new Promise((r) => setTimeout(r, 100));
+    const second = await app.inject({ method: "POST", url: "/messages", headers, payload: body });
+    const firstRes = await first;
+    expect(firstRes.statusCode).toBe(201);
+    expect(String(firstRes.headers["server-timing"])).toMatch(/model;dur=300, total;dur=\d+/);
+    expect(second.statusCode).toBe(201);
+    const a = PostMessageResponse.parse(firstRes.json());
+    const b = PostMessageResponse.parse(second.json());
+    expect(b.replies.map((m) => m.id)).toEqual(a.replies.map((m) => m.id));
+    expect(await prisma.message.count({ where: { role: "friend" } })).toBe(1);
+  });
+});

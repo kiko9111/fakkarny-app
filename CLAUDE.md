@@ -657,6 +657,16 @@ Rules:
   (`honestReply`), never the model's "I'll do it". daftar_cancel / daftar_settle with no Daftar entry
   close a matching open debt item (undo `item_status`). Tracker asks wait 10 min after the user's
   last message.
+- Reply speed (2026-11-25, kareem: "Zaki is super slow"): the reply comes back in the POST itself.
+  A retry of a message still being answered now waits for that same answer (`inFlight` map in
+  routes/messages.ts) instead of 409 + up to a minute of phone backoff. Background screen loads
+  (`prefetchAll`) go 2 at a time, pause while a chat message is being sent (`setChatBusy`) and start
+  4 s after a reply: the phone sends ~5 requests per host at once, so 20 loads right after a reply
+  made the next message queue behind them. Every turn reports `Server-Timing` (rules, context,
+  model, saved, total) and writes a `chat_timing` event; the phone sends `app:chat_reply`
+  {total, think, brain}; /admin shows median / p90 per source and model failures by kind; Settings ›
+  Zaki's brain shows the last reply wait. Live baseline 2026-11-25 (fresh account, US runner): rules
+  turn 1.0 s, AI turns 3.0–3.5 s.
 - Android builds without the EAS quota: .github/workflows/android-local-build.yml runs `eas build
   --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
   and attaches the APK to a GitHub pre-release.

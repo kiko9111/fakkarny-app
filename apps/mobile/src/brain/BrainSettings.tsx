@@ -105,6 +105,7 @@ export function BrainSection() {
   const ram = ramGb(Device.totalMemory);
   const model = CHAT_MODELS.find((m) => m.id === modelId) ?? selectedModel();
   const lastMs = Number(prefs.get("brain_last_ms") ?? 0);
+  const lastWait = Number(prefs.get("reply_last_ms") ?? 0);
 
   const pickMode = (v: "cloud" | "phone") => {
     setMode(v);
@@ -128,6 +129,11 @@ export function BrainSection() {
         <Button label={t.brain.cloud} size="sm" kind={mode === "cloud" ? "filled" : "outline"} icon="cloud-outline" onPress={() => pickMode("cloud")} />
         <Button label={t.brain.phone} size="sm" kind={mode === "phone" ? "filled" : "outline"} icon="phone-portrait-outline" onPress={() => pickMode("phone")} />
       </View>
+      {lastWait > 0 ? (
+        <Text variant="caption" color={palette.inkSoft}>
+          {fill(t.brain.lastWait, { s: (lastWait / 1000).toFixed(1) })}
+        </Text>
+      ) : null}
       {mode === "phone" ? (
         <>
           <Text variant="bodyStrong">{t.brain.model}</Text>
