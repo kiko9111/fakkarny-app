@@ -80,6 +80,24 @@ describe("understand", () => {
     expect(name("اعمل دايرة للعيلة")).toBe("العيلة");
     expect(name("اعمل جروب لشلة الكورة")).toBe("شلة الكورة");
   });
+  it("reads holdout5 misses: thousands, borrowed-from-me, custom sections and trackers", () => {
+    const app = {
+      circles: [{ name: "صحاب الكلية", kind: "friends", members: ["Youssef", "Mariam"] }],
+      sections: [{ name: "فواتير", kind: "expense" as const }, { name: "شغل حر", kind: "income" as const }],
+      trackers: [{ kind: "custom", name: "المشي", goal: 30 }, { kind: "custom", name: "الصلاة", goal: 5 }, { kind: "water", goal: 8 }],
+    };
+    expect(u("spent 1,250 on the plumber", { app }).app_actions[0]).toMatchObject({ kind: "log_money", amount: 1250 });
+    expect(u("مريم مستلفة مني ١٠٠٠", { app }).create_items[0]?.debt).toMatchObject({ amount: 1000, direction: "owed_to_me" });
+    expect(u("انا مديون ليوسف ب ٦٠٠", { app }).create_items[0]?.debt).toMatchObject({ amount: 600, direction: "i_owe" });
+    expect(u("دفعت فاتورة الكهربا ٦٥٠", { app }).app_actions[0]).toMatchObject({ section: "فواتير", amount: 650 });
+    expect(u("got paid 4000 for the freelance job", { app }).app_actions[0]).toMatchObject({ section: "شغل حر", money_kind: "income" });
+    expect(u("walked 20 minutes", { app }).app_actions[0]).toMatchObject({ kind: "log_tracker", tracker: "المشي", amount: 20 });
+    expect(u("صليت الضهر", { app }).app_actions[0]).toMatchObject({ kind: "log_tracker", tracker: "الصلاة" });
+    expect(u("shrebt kobayten maya", { app }).app_actions[0]).toMatchObject({ kind: "log_tracker", amount: 2 });
+    expect(u("fakkarny ba3d rob3 sa3a at2aked men el forn").create_items[0]?.due_at_local).toBe("2026-11-19T10:15");
+    expect(u("fakkarny 3al 7 ashoof el match").create_items[0]?.due_at_local).toBe("2026-11-19T19:00");
+    expect(u("5alast el ghasil", { openItems: [{ id: "g", type: "reminder", title: "أنشر الغسيل" }] }).update_items).toEqual([{ id: "g", status: "done" }]);
+  });
   it("flags crisis and does nothing else", () => {
     expect(u("مبقتش عايز أعيش")).toMatchObject({ crisis: true, create_items: [] });
   });

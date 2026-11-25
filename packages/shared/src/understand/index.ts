@@ -72,7 +72,8 @@ interface Toks {
 }
 
 function tokenize(msg: string): Toks {
-  const padded = msg.replace(/([,،!?؟;()"“”«»])/g, " $1 ").replace(/(\D)\.(\s|$)/g, "$1 $2").replace(/[ـ]/g, "");
+  // "1,250" / "١،٥٠٠" are one number: join thousands before commas become their own tokens.
+  const padded = msg.replace(/([0-9٠-٩])[٬,،]([0-9٠-٩]{3})(?![0-9٠-٩])/g, "$1$2").replace(/([,،!?؟;()"“”«»])/g, " $1 ").replace(/(\D)\.(\s|$)/g, "$1 $2").replace(/[ـ]/g, "");
   const orig = padded.split(/\s+/).filter(Boolean);
   const f = orig.map(fold);
   const starts: number[] = [];
@@ -234,7 +235,7 @@ function findCircle(t: Toks, input: UnderstandInput): { name: string; kind?: str
   let best: { name: string; kind?: string; i: number; score: number } | null = null;
   for (const c of circles) {
     const words = c.name.split(/\s+/).map(stem).filter((w) => w.length >= 2);
-    const EN: Record<string, string[]> = { جيم: ["gym"], بيت: ["beit", "bet", "home", "house", "family"], شغل: ["work", "job", "shoghl", "sho8l", "office"], عيله: ["family", "3eila", "3ela", "3eela"], شله: ["gang", "shella"], جامعه: ["uni", "university", "college", "gam3a"], نادي: ["club", "nady", "nadi"] };
+    const EN: Record<string, string[]> = { جيم: ["gym"], بيت: ["beit", "bet", "home", "house", "family"], شغل: ["work", "job", "shoghl", "sho8l", "office"], عيله: ["family", "3eila", "3ela", "3eela", "3ayla", "3eyla"], صحاب: ["sa7ab", "s7ab", "friends", "as7ab"], كليه: ["kolleya", "kolya", "kollya", "college", "uni"], شله: ["gang", "shella"], جامعه: ["uni", "university", "college", "gam3a"], نادي: ["club", "nady", "nadi"] };
     const en = words.flatMap((w) => EN[w] ?? [w]);
     for (let i = 0; i < t.orig.length; i++) {
       const raw = t.orig[i]!.replace(/^(lel|lil|le|l)(?=\p{L}{2,})/u, "");
@@ -411,6 +412,10 @@ const CRISIS = [
   /\b(kill myself|killing myself|suicid\w*|end my life|want to die|wanna die|hurt myself|self[- ]harm|no reason to live)\b/i,
   /(انتحر|انتحار|اقتل نفسي|عايز اموت|عايزه اموت|عاوز اموت|نفسي اموت|انهي حياتي|اذي نفسي|مش عايز اعيش|مش عايزه اعيش|مبقتش عايز اعيش|مبقتش عايزه اعيش)/,
   /\b(ant[ae]?7ar|a2tel nafsy|a2tel nafsi|3ayez amoot|3ayza amoot|nefsy amoot|nefsi amoot|mesh 3ayez a3eesh|msh 3ayez a3ish|msh 3ayez a3eesh)\b/i,
+  // Same additions as the server's net (apps/api/src/pipeline/rules.ts, QA run 2026-11-25).
+  /\b(?:(?:do ?n[o']?t|dont|don't) want to (?:be alive|exist)|(?:do ?n[o']?t|dont|don't) want to (?:live|wake up)(?: anymore| any more| ever again)?(?=\s*(?:[.!,?…]|$))|(?:do ?n[o']?t|dont|don't) want to (?:live|wake up) (?:anymore|any more|ever again)|wish i (?:was|were) dead|better off dead|end it all|hurting myself|harm myself|cut myself|take my (?:own )?life|not worth living)\b/i,
+  /(مش عاوز(?:ه|ة)? اعيش|نفسي اخلص من حياتي|اخلص من حياتي|اخلص من نفسي|اموت نفسي|ياريتني اموت|يا ريتني اموت|ياريتني ميت|اقطع نفسي|مش عايز(?:ه|ة)? اصحى تاني)/,
+  /\b(a5las men 7ayati|a5les men 7ayati|a5las men nafsy|amawet nafsy|amowet nafsy|yaretny amoot|ya retny amoot|msh 3ayz a3eesh|mesh 3ayza a3eesh|msh 3ayza a3eesh)\b/i,
 ];
 export function isCrisis(text: string): boolean {
   const f = fold(text);
@@ -556,7 +561,15 @@ function bestItem(open: UnderstandItem[], text: string): UnderstandItem | undefi
       tie = false;
     } else if (score === bestScore && score > 0) tie = true;
   }
-  return bestScore > 0 && !tie ? best : undefined;
+  if (bestScore > 0) return tie ? undefined : best;
+  // Across scripts: "5alast el ghasil" for «أنشر الغسيل», "el forn" for «الفرن» (three consonants or more).
+  const latin = tokenize(text).orig.filter((w) => /^[a-z0-9]+$/i.test(w) && w.length >= 4 && !STOP.has(fold(w)));
+  if (!latin.length) return undefined;
+  const hits = open.filter((o) => o.title.split(/\s+/).some((tw) => {
+    const k = soundKey(stem(tw));
+    return /[؀-ۿ]/.test(tw) && k.length >= 3 && latin.some((w) => soundKey(w) === k);
+  }));
+  return hits.length === 1 ? hits[0] : undefined;
 }
 
 // ======================================================================================
@@ -916,8 +929,14 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
   // "ليه عندي ٣٠٠ لحسن" / "حسن ليه عندي ٣٠٠": money of theirs the user holds.
   m = /(?:^|\s)(?:ليه|ليها)\s+عندي\s+\S+(?:\s+\S+)?\s+(?:لـ|ل)\s*(\S+)/u.exec(text) ?? /(\S+)\s+(?:ليه|ليها)\s+عندي(?![\p{L}])/u.exec(text);
   if (m && !/^(انا|هو|هي)$/.test(m[1]!)) return { person: person(m[1]!.replace(/^ل(?=\p{L}{3,})/u, "")), amount: amountOf(), direction: "i_owe" };
-  m = /(?:مستلف|مستلفه|استلفت|اتسلفت)\s+(?:\S+\s+)?من\s+(\S+)/u.exec(text);
+  // "مريم مستلفة مني ١٠٠٠" / "يوسف مديون ليا ب ٥٠٠": they owe the user.
+  m = /(\S+)\s+(?:مستلف|مستلفه|مستلفة|واخد|واخده|واخدة|مديون|مديونه|مديونة)\s+(?:\S+\s+)?(?:مني|منى|ليا|لي)(?![\p{L}])/u.exec(text);
+  if (m && !/^(انا|أنا|انت|إنت)$/.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
+  m = /(?:مستلف|مستلفه|مستلفة|استلفت|اتسلفت)\s+(?:\S+\s+)?من\s+(\S+)/u.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
+  // "انا مديون ليوسف ب ٦٠٠": the user owes them.
+  m = /(?:مديون|مديونه|مديونة|مدين)\s+(?:لـ\s*|ل)(\S{2,})/u.exec(text);
+  if (m && !/^(ي|يا)$/.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
 
   // Franco
   i = idxOf(/\b(5ad|5adet|5adt|akhad|estalaf|estalafet|esstalaf)\b/i);
@@ -932,6 +951,10 @@ function parseDebt(t: Toks, text: string, script: Script): Debt | null {
   m = /\b([a-z]+)\s+(?:3aleh|3aleha|3alih|3aleeh)\b/i.exec(text);
   if (m && !/^(elly|ely)$/i.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
   m = /\b(?:3alaya|3alaia|3alya)\s+\S+\s+(?:l|le|li|lel)\s+([a-z0-9]+)/i.exec(text);
+  if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
+  m = /\b([a-z]+)\s+(?:mestalef|mestalfa|msalef|wa5ed|wa5da|madyoon|madyoona|madyon)\s+(?:\S+\s+)?(?:meny|menny|meni|liya|leya)\b/i.exec(text);
+  if (m && !/^(ana|enta|enty)$/i.test(m[1]!)) return { person: person(m[1]!), amount: amountOf(), direction: "owed_to_me" };
+  m = /\b(?:madyoon|madyoona|madyon)\s+(?:l|le|li|lel)\s*([a-z]{2,})/i.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
   m = /\b(?:msalef|mestalef|mtsalef|estalaft|metsalef)\s+(?:\S+\s+)?men\s+([a-z]+)/i.exec(text);
   if (m) return { person: person(m[1]!), amount: amountOf(), direction: "i_owe" };
@@ -1030,7 +1053,7 @@ function trackerOf(input: UnderstandInput, t: Toks): { kind: string; name: strin
       for (const o of t.orig) {
         const w = stem(o);
         const wf = stem(FRANCO_WORDS[w] ?? w);
-        if (w === n || wf === n || (root.length >= 3 && (w.startsWith(root) || wf.startsWith(root))) || readingWord(w, n) || stepsWord(w, n) || sportWord(w, n)) return { kind: tr.kind, name: tr.name };
+        if (w === n || wf === n || (root.length >= 3 && (w.startsWith(root) || wf.startsWith(root))) || readingWord(w, n) || stepsWord(w, n) || sportWord(w, n) || walkWord(w, n) || prayWord(w, n)) return { kind: tr.kind, name: tr.name };
       }
     }
   }
@@ -1042,6 +1065,8 @@ function trackerOf(input: UnderstandInput, t: Toks): { kind: string; name: strin
 }
 const readingWord = (w: string, name: string) => /قراي|قرايه|قراءه/.test(name) && /^(قريت|صفحه|صفحات|pages?|2reet|2areet|2aret|saf7a|saf7at|read)$/.test(w);
 const sportWord = (w: string, name: string) => /رياض/.test(name) && /^(workout|worked|exercise|exercised|trained|training|riyada|reyada|ryada|tamreen|tmreen|et2amart|اتمرنت|تمرين|تمرنت|لعبت)$/.test(w);
+const walkWord = (w: string, name: string) => /مشي|مشى|walk/.test(name) && /^(walk|walked|walking|walks|مشيت|اتمشيت|mashet|mesheet|et2mshet|etmashet|ettmashet)$/.test(w);
+const prayWord = (w: string, name: string) => /صلا|صلو|pray/.test(name) && /^(صليت|صلي|صلاه|الضهر|العصر|المغرب|العشا|الفجر|prayed|pray|prayer|salet|salleit|salleet|sallet)$/.test(w);
 const stepsWord = (w: string, name: string) => /خطو/.test(name) && /^(steps?|خطوه|خطوات|walked|مشيت|5atwa|5atwat)$/.test(w);
 
 function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Script, out: Understood, isQuestion: boolean): boolean {
@@ -1123,7 +1148,9 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
   // Log: "شربت ٢ كوباية مية", "walked 6500 steps", "قريت ١٢ صفحه", "2reet 15 saf7a".
   if (tr && has(t, "شربت|اشربت|قريت|مشيت|صليت|اتمرنت|خدت|drank|had|read|walked|did|prayed|took|shrebt|2reet|2areet|2aret|mesheet|saleet|et2amart|logged|log|سجل|sagel")) {
     const n = numbers(t).filter((x) => x.value > 0);
-    out.app_actions.push({ kind: "log_tracker", tracker: tr.name, ...(n.length ? { amount: n[0]!.value } : {}) });
+    // "كوبايتين", "kobayten", "صفحتين": two, said as a dual.
+    const dual = has(t, "كوبايتين|كبايتين|صفحتين|مرتين|kobayten|kobaytein|kobaiten|kbayten|saf7ten|saf7tein|marten|marteen|marrten");
+    out.app_actions.push({ kind: "log_tracker", tracker: tr.name, ...(n.length ? { amount: n[0]!.value } : dual ? { amount: 2 } : {}) });
     return true;
   }
   return false;
@@ -1133,12 +1160,24 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
 // Money
 // ======================================================================================
 
+// Category words → the section names people give that category (the first one they have wins).
 const SECTION_HINTS: [string, string[]][] = [
-  ["أكل|اكل|الاكل|عالاكل|akl|food|lunch|dinner|breakfast|groceries|ghada|3asha|fetar|grocer|supermarket|سوبر ماركت|السوبر|مطعم|restaurant|غدا|عشا|فطار|coffee|قهوه", ["أكل", "food"]],
-  ["عربيه|العربيه|3arabeya|3arabiya|car|بنزين|benzeen|gas|fuel|ميكانيكي", ["العربية", "car"]],
-  ["اوبر|uber|careem|كريم باص|تاكسي|taxi|مواصلات|metro|مترو|bus|اتوبيس|mowaslat|ميكروباص|توكتوك|tuktuk|microbus", ["مواصلات", "transport"]],
-  ["مرتب|المرتب|مرتبي|salary|paycheck|pay|morattab|mortab|el morattab|ma3ash|معاش", ["مرتب", "salary", "المرتب"]],
-  ["طلبات البيت|البيت|house|home|beit|el beit|groceries", ["البيت", "home", "house"]],
+  ["أكل|اكل|الاكل|عالاكل|akl|food|lunch|dinner|breakfast|groceries|ghada|3asha|fetar|grocer|supermarket|سوبر ماركت|سوبرماركت|السوبر|مطعم|restaurant|غدا|عشا|فطار|coffee|قهوه|خضار|خضره|فاكهه|لحمه|فراخ|سمك|عيش|بقاله|khodar|fera5|la7ma|vegetables|fruit|meat|chicken|bread",
+    ["أكل", "food", "سوبرماركت", "سوبر ماركت", "supermarket", "بقالة", "groceries", "طلبات", "مطبخ"]],
+  ["عربيه|العربيه|3arabeya|3arabiya|car|بنزين|benzeen|benzine|gas|fuel|ميكانيكي|mechanic|غسيل العربيه",
+    ["العربية", "car", "بنزين", "benzine", "gas", "fuel"]],
+  ["اوبر|uber|careem|كريم باص|تاكسي|taxi|مواصلات|metro|مترو|bus|اتوبيس|mowaslat|ميكروباص|توكتوك|tuktuk|microbus",
+    ["مواصلات", "transport", "transportation"]],
+  ["فاتوره|فواتير|كهربا|الكهربا|كهرباء|انترنت|النت|غاز|تليفون|موبايل|رصيد|bill|bills|electricity|internet|wifi|phone|fatora|fawater|kahraba|net",
+    ["فواتير", "bills", "فاتورة", "utilities"]],
+  ["مدرسه|المدرسه|مدارس|كتب|مصاريف|school|books|tuition|madrasa|كورس|دروس|درس|course|lessons",
+    ["مدارس", "school", "تعليم", "education", "دراسة", "المدرسة"]],
+  ["مرتب|المرتب|مرتبي|salary|paycheck|pay|morattab|mortab|el morattab|ma3ash|معاش",
+    ["مرتب", "salary", "المرتب"]],
+  ["فريلانس|الفريلانس|freelance|شغل حر|مشروع|client|عميل|side job|gig",
+    ["شغل حر", "freelance", "شغل اضافي", "دخل اضافي", "side income"]],
+  ["طلبات البيت|البيت|house|home|beit|el beit|groceries",
+    ["البيت", "home", "house"]],
 ];
 
 function sectionFor(t: Toks, input: UnderstandInput, kind: "expense" | "income"): string | undefined {

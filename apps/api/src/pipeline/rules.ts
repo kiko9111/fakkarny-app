@@ -120,6 +120,10 @@ export function fastReply(text: string, langHint: ReplyLang, pick: (n: number) =
 /** Crisis keywords (Arabic script, Franco, English). A safety net; the model also flags crisis. */
 const CRISIS_PATTERNS: RegExp[] = [
   /\b(kill myself|killing myself|suicid\w*|end my life|want to die|wanna die|hurt myself|self[- ]harm|no reason to live)\b/i,
+  // Missed in the QA run (2026-11-25): ways of saying it without "die" or "suicide".
+  /\b(?:(?:do ?n[o']?t|dont|don't) want to (?:be alive|exist)|(?:do ?n[o']?t|dont|don't) want to (?:live|wake up)(?: anymore| any more| ever again)?(?=\s*(?:[.!,?…]|$))|(?:do ?n[o']?t|dont|don't) want to (?:live|wake up) (?:anymore|any more|ever again)|wish i (?:was|were) dead|better off dead|end it all|hurting myself|harm myself|cut myself|take my (?:own )?life|not worth living)\b/i,
+  /(مش عايز(?:ه|ة)? اعيش|مش عاوز(?:ه|ة)? اعيش|نفسي اخلص من حياتي|اخلص من حياتي|اخلص من نفسي|اموت نفسي|ياريتني اموت|يا ريتني اموت|ياريتني ميت|اقطع نفسي|مش عايز(?:ه|ة)? اصحى تاني)/,
+  /\b(a5las men 7ayati|a5les men 7ayati|a5las men nafsy|amawet nafsy|amowet nafsy|yaretny amoot|ya retny amoot|msh 3ayz a3eesh|mesh 3ayza a3eesh|msh 3ayza a3eesh)\b/i,
   /(انتحر|انتحار|اقتل نفسي|أقتل نفسي|عايز اموت|عايزة اموت|عاوز اموت|نفسي اموت|أنهي حياتي|انهي حياتي|اأذي نفسي|أذي نفسي|مش عايز اعيش|مش عايزة اعيش)/,
   /\b(ant[ae]?7ar|a2tel nafsy|a2tel nafsi|3ayez amoot|3ayza amoot|nefsy amoot|mesh 3ayez a3eesh|msh 3ayez a3ish)\b/i,
 ];

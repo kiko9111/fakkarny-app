@@ -59,10 +59,12 @@ describe("fastReply", () => {
 });
 
 describe("looksLikeCrisis", () => {
-  it.each(["I want to kill myself", "عايز اموت", "عايز أموت", "أنا تعبت ومش عايز أعيش خلاص", "3ayez amoot", "thinking about suicide"])("flags %s", (t) =>
+  it.each(["I want to kill myself", "عايز اموت", "عايز أموت", "أنا تعبت ومش عايز أعيش خلاص", "3ayez amoot", "thinking about suicide",
+    // Missed before the QA run (2026-11-25).
+    "I don't want to be alive anymore", "i dont want to live anymore", "I wish I was dead", "i'm better off dead", "I'm thinking of hurting myself", "nefsy a5las men 7ayati", "عايزة اموت نفسي"])("flags %s", (t) =>
     expect(looksLikeCrisis(t)).toBe(true),
   );
-  it.each(["this traffic is killing me", "I'm dying to see the match", "الدنيا زحمة موت"])("does not flag %s", (t) =>
+  it.each(["this traffic is killing me", "I'm dying to see the match", "الدنيا زحمة موت", "I don't want to live in Cairo anymore", "don't want to wake up early tomorrow", "هموت من الضحك"])("does not flag %s", (t) =>
     expect(looksLikeCrisis(t)).toBe(false),
   );
 });

@@ -238,7 +238,7 @@ export function parseWhen(f: string, now: Now): WhenResult {
 
   // --- clock times ---
   const clockRe = re(
-    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:و|w ?)?(?:at|الساعه|الساعة|el ?sa3a|elsa3a|asa3a|essa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
+    `(?:${B}(before|قبل|abl)\\s+)?(?:(?<=(?:before|قبل|abl)\\s+)|${B}(?:و|w ?)?(?:at(?=\\s)|الساعه|الساعة|el ?sa3a|elsa3a|asa3a|essa3a|sa3a|saa|الساعه)\\s*)(\\d{1,2})(?!\\d)(?:[:.](\\d{2}))?(\\s*(?:و ?نص|w ?nos|wnos|and a half|w ?rob3|وربع|الا ربع|ela rob3|illa rob3))?|${B}(\\d{1,2}):(\\d{2})|${B}(\\d{1,2})\\s*(am|pm|a\\.m\\.|p\\.m\\.)${E}|${B}(\\d{1,2})(?=\\s*(?:${AM}|${NOON}|${PM}|${NIGHT})${E})`,
     "giu",
   );
   const used: [number, number][] = [];
@@ -318,7 +318,9 @@ export function parseWhen(f: string, now: Now): WhenResult {
 // A bare hour, as people type it: "bokra 9", "صحيني بكرة ٦ ونص", "فكرني ٢ أخد عمر", "5 ela rob3".
 // Only right after a day word or a remind / alarm verb, or with a half / quarter after it, and
 // never before a unit ("3 kobayat", "٥ جنيه", "10 pages").
-const BARE_BEFORE = `${TOMORROW}|${AFTER_TOMORROW}|${TODAY}|${WD}|فكرني|فكريني|ذكرني|نبهني|صحيني|منبه|fakarny|fakkarny|fkrny|fakarni|fakrny|sa7eeny|sa7eny|sa7any|mnabeh|monabeh|remind me|wake me|alarm`;
+const BARE_REMIND = "فكرني|فكريني|ذكرني|نبهني|صحيني|fakarny|fakkarny|fkrny|fakarni|fakrny|sa7eeny|sa7eny|remind me|wake me";
+// "فكرني على ٧" / "fakkarny 3al 7": "on" before the hour, only right after a remind verb (else "قسم على 3" would be a time).
+const BARE_BEFORE = `(?:${BARE_REMIND})\\s+(?:على|علي|ع|3al|3ala|3la)|${TOMORROW}|${AFTER_TOMORROW}|${TODAY}|${WD}|فكرني|فكريني|ذكرني|نبهني|صحيني|منبه|fakarny|fakkarny|fkrny|fakarni|fakrny|sa7eeny|sa7eny|sa7any|mnabeh|monabeh|remind me|wake me|alarm`;
 const BARE_UNIT = "جنيه|ج|جنية|ريال|دولار|pounds?|egp|le|\\$|كوبايه|كوبايات|كوباية|kobaya|kobayat|glass|glasses|cups?|صفحه|صفحات|saf7a|saf7at|pages?|مرات|marat|times|ايام|يوم|days?|اسابيع|weeks?|شهور|months?|ساعه|ساعات|sa3a|sa3at|hours?|دقيقه|دقايق|d2aye2|da2aye2|minutes?|mins?|كيلو|kilo|kg|km|افراد|اشخاص|people|persons|عيال|wlad|ولاد|حاجات|حاجه|items?|%";
 function bareHour(f: string, out: WhenResult, nightContext: boolean) {
   const r = re(

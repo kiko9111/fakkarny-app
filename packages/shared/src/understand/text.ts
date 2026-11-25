@@ -12,7 +12,7 @@ export const asciiDigits = (s: string) =>
 export function fold(s: string): string {
   return asciiDigits(s)
     // "١٬٢٠٠" / "1,200": thousands separators go, so the number reads as one.
-    .replace(/(\d)[٬,](\d{3})(?!\d)/g, "$1$2")
+    .replace(/(\d)[٬,،](\d{3})(?!\d)/g, "$1$2")
     .toLowerCase()
     .replace(/[ً-ْٰـ]/g, "")
     .replace(/[أإآٱ]/g, "ا")
