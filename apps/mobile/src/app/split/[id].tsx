@@ -30,13 +30,32 @@ export default function SplitScreen() {
   }, [id]);
   useLive(load);
 
-  if (!data) return <View style={styles.center}>{failed ? <EmptyState title={t.split.offline} /> : <ActivityIndicator color={palette.primary} />}</View>;
+  if (!data)
+    return (
+      <View style={styles.center}>
+        {failed ? (
+          <>
+            <EmptyState title={t.split.offline} />
+            <Button label={t.book.retry} kind="tonal" onPress={load} />
+          </>
+        ) : (
+          <ActivityIndicator color={palette.primary} />
+        )}
+      </View>
+    );
   const { split, share_text } = data;
   const resend = () => void Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
-  const togglePaid = (index: number, paid: boolean) =>
+  // Shows at once; put back if the server says no.
+  const togglePaid = (index: number, paid: boolean) => {
+    const before = data;
+    setData({ ...data, split: { ...split, people: split.people.map((p, i) => (i === index ? { ...p, paid } : p)) } });
     void markSplitPaid(split.id, index, paid)
       .then(setData)
-      .catch(() => notify(t.split.offline, "error"));
+      .catch(() => {
+        setData(before);
+        notify(t.split.offline, "error");
+      });
+  };
   const entries = daftarFromSplit(split, t.split.daftarNote);
   // Put what is still owed into the Daftar (once per split on this phone), so it stays tracked.
   const toDaftar = async () => {
@@ -57,7 +76,7 @@ export default function SplitScreen() {
   const owed = split.people.reduce((sum, p, i) => (i === split.paid_by || p.paid ? sum : sum + p.share), 0);
 
   return (
-    <Screen refreshing={false} onRefresh={load} contentStyle={styles.content}>
+    <Screen onRefresh={load} contentStyle={styles.content}>
       <Stack.Screen options={{ title: split.title || t.split.title }} />
       <Card style={styles.total}>
         <Text variant="small" color={palette.inkSoft}>

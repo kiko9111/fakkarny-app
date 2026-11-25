@@ -13,7 +13,6 @@ import { Button, IconTile, ListRow, Note, palette, Screen, SectionHeader, space,
 export default function CirclesScreen() {
   const [circles, setCircles] = useState<Circle[] | null>(() => peekCircles());
   const [failed, setFailed] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,11 +39,7 @@ export default function CirclesScreen() {
   const newCircle = () => router.push("/circle/new");
   return (
     <Screen
-      refreshing={refreshing}
-      onRefresh={() => {
-        setRefreshing(true);
-        void load().finally(() => setRefreshing(false));
-      }}
+      onRefresh={load}
     >
       <Text variant="small" color={palette.inkSoft}>
         {t.ui.peopleLine}

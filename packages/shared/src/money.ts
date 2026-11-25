@@ -67,6 +67,8 @@ export const SectionDetail = z.object({
 export type SectionDetail = z.infer<typeof SectionDetail>;
 
 export const CreateSectionRequest = z.object({
+  /** Made on the phone, so the section shows at once and a retried create is not a second one. */
+  id: z.uuid().optional(),
   name: z.string().trim().min(1).max(40),
   kind: MoneyKind.default("expense"),
   budget: z.number().positive().max(100_000_000).nullable().optional(),
@@ -81,6 +83,8 @@ export const UpdateSectionRequest = z.object({
 export type UpdateSectionRequest = z.infer<typeof UpdateSectionRequest>;
 
 export const AddMoneyEntryRequest = z.object({
+  /** Made on the phone, so the entry shows at once and a retried add is not counted twice. */
+  id: z.uuid().optional(),
   amount: z.number().positive().max(100_000_000),
   note: z.string().trim().max(80).nullable().optional(),
   /** Shared books: who shares this one (user ids, payer included or not). Default: every member. */
@@ -88,9 +92,25 @@ export const AddMoneyEntryRequest = z.object({
 });
 export type AddMoneyEntryRequest = z.infer<typeof AddMoneyEntryRequest>;
 
-export const SectionResponse = z.object({ section: MoneySection });
+export const SectionResponse = z.object({ section: MoneySection, entry: MoneyEntry.optional() });
 export type SectionResponse = z.infer<typeof SectionResponse>;
 
 /** Zaki's end-of-month "gift": a few warm template lines about the month that ended. */
 export const MonthGift = z.object({ month: Month, lines: z.array(z.string()), expense: z.number(), income: z.number() });
 export type MonthGift = z.infer<typeof MonthGift>;
+
+/**
+ * Two sections are the same when their names match ignoring case, extra spaces, Arabic
+ * diacritics and letter variants (أ/إ/آ = ا, ة = ه, ى = ي): "salary" = "Salary ". The server
+ * returns the existing section instead of making a second one, and merges old duplicates.
+ */
+export function sectionKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ");
+}

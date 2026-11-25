@@ -17,7 +17,6 @@ export default function TrackersScreen() {
   const [ramadan, setRamadan] = useState<"available" | "added" | "off">("off");
   const [why, setWhy] = useState(t.trackers.offline);
   const [state, setState] = useState<"loading" | "ready" | "offline">(saved ? "ready" : "loading");
-  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,11 +39,7 @@ export default function TrackersScreen() {
   return (
     <Screen
       keyboard
-      refreshing={refreshing}
-      onRefresh={() => {
-        setRefreshing(true);
-        void load().finally(() => setRefreshing(false));
-      }}
+      onRefresh={load}
     >
       {ramadan === "available" ? (
         <Card onPress={() => void addRamadanPack().then(load).catch(() => notify(t.trackers.failed, "error"))} tone={palette.friendsSoft}>

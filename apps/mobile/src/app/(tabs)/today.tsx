@@ -25,7 +25,7 @@ const greeting = () => {
  * track, and a quiet door to Session. The friend never sends this as a list unprompted.
  */
 export default function TodayScreen() {
-  const { items, refreshing, refresh, complete } = useItems(listUpcoming);
+  const { items, refresh, complete } = useItems(listUpcoming);
   const [name, setName] = useState<string | null>(null);
   const [asked, setAsked] = useState<CircleTask[]>(() => (peekTasks() ?? []).filter((task) => task.status === "pending" && task.role === "assignee"));
   const [trackers, setTrackers] = useState<Tracker[] | null>(() => peekTrackers()?.trackers ?? null);
@@ -48,7 +48,7 @@ export default function TodayScreen() {
   useLive(loadOnline);
   const reload = () => {
     loadOnline();
-    void refresh();
+    return refresh();
   };
 
   const { soon, repeating, more } = comingUp(items);
@@ -57,7 +57,7 @@ export default function TodayScreen() {
   const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <Screen onRefresh={reload} refreshing={refreshing}>
+    <Screen onRefresh={reload}>
       <View style={styles.hero}>
         <ZakiAvatar size={52} glow />
         <View style={styles.flex}>

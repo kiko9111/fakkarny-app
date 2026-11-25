@@ -12,7 +12,7 @@ import { EmptyState, Screen, SectionHeader } from "@/ui";
 
 /** FR-12 / F8: every plan, for users who want to look. The friend never sends this as a list unprompted. */
 export default function UpcomingScreen() {
-  const { items, refreshing, refresh, complete } = useItems(listUpcoming);
+  const { items, refresh, complete } = useItems(listUpcoming);
   const groups = groupUpcoming(items, new Date());
   // Requests from circle members that wait for a yes or no. Online only; quiet when offline.
   const [asked, setAsked] = useState<CircleTask[]>([]);
@@ -24,11 +24,11 @@ export default function UpcomingScreen() {
   useLive(loadAsked);
   const reload = () => {
     loadAsked();
-    void refresh();
+    return refresh();
   };
 
   return (
-    <Screen onRefresh={reload} refreshing={refreshing}>
+    <Screen onRefresh={reload}>
       {asked.length ? <SectionHeader title={t.tasks.toAnswer} /> : null}
       {asked.map((task) => (
         <TaskCard key={task.id} task={task} showCircle onChanged={reload} />
