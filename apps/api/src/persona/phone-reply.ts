@@ -148,43 +148,9 @@ export function describeUnderstood(u: Understood, nowLocal: string, titles: Reco
   return lines.length ? `DONE:\n${lines.map((l) => `- ${l}`).join("\n")}` : "DONE: nothing (just chat; don't say you saved anything)";
 }
 
-// Modern Standard words a small model slips into "Egyptian" replies (the persona forbids them).
-const MSA = /(^|[\s،.!؟])(هل|تريد|تريدين|سوف|لقد|ماذا|لماذا|الآن|لا يهم|شيء|يمكنني|أستطيع|معك|إليك|أنت بخير)(?=$|[\s،.!؟])/;
-
-/**
- * The phone model's reply bubbles that are fit to send: JSON or notes that leaked into the text are
- * cut off, and a bubble in the wrong script, with Modern Standard words, Franco or junk is dropped.
- * Empty result = the code writes the reply (templateReply). Pure; the evals use the same check.
- */
-export function cleanPhoneReply(reply: string[], lang: ReplyLang): string[] {
-  const out: string[] = [];
-  for (const raw of reply) {
-    const text = raw
-      .replace(/\s*\|?\s*["“”]?\s*crisis["“”]?\s*:[\s\S]*$/i, "")
-      .replace(/\s*\((note|wait|the user|i need|translation)[\s\S]*$/i, "")
-      .replace(/[\s{}"“”|\[\]]+$/, "")
-      .trim();
-    if (text.length < 2 || text.length > 220) continue;
-    const arabic = /[\u0600-\u06FF]/.test(text);
-    if (lang === "english" ? arabic : !arabic || /[A-Za-z]{2,}/.test(text) || MSA.test(text)) continue;
-    if (/[{}|]/.test(text) || out.includes(text) || loops(text)) continue;
-    out.push(text);
-  }
-  return out.slice(0, 2);
-}
-
-/** A small model stuck in a loop ("بكرة؟ بكرة؟ بكرة؟ …"): any word of 3+ letters three or more times. */
-function loops(text: string): boolean {
-  const seen = new Map<string, number>();
-  for (const w of text.split(/\s+/)) {
-    const k = w.replace(/[؟?!.,،😊]/g, "");
-    if (k.length < 3) continue;
-    const n = (seen.get(k) ?? 0) + 1;
-    if (n >= 3) return true;
-    seen.set(k, n);
-  }
-  return false;
-}
+// The reply check lives in packages/shared (phone-brain.ts) so the phone runs the same one and
+// falls back to cloud Zaki itself instead of sending a reply the server would replace.
+export { cleanPhoneReply } from "@fakkarni/shared";
 
 /**
  * A plain reply in code, from what the engine did: used when the phone model fails or its reply

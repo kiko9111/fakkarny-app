@@ -25,7 +25,7 @@ export function normalize(text: string): string {
 // Questions, plans, reminders and "not yet" are never a log entry.
 // Glued negation too: "مشربتش", "ماصليتش", "ma shrebtsh", "mashrebtesh".
 const NEGATED = /(?:^|\s)(?:ما ?|م)\S{2,}ش(?:\s|$)|\bma ?\S{3,}(?:tsh|tesh|sh)\b/;
-const NOT_A_LOG = /[?؟]|فكرني|فكريني|remind|بكره|tomorrow|هشرب|هروح|هصلي|هاخد|هذاكر|هدفع|will |going to|gonna|عايز|عاوز|محتاج|لازم|need to|want to|should|مش |ما |لسه|نسيت|\bnot\b|n't|never|forgot|لو |\bif\b/;
+const NOT_A_LOG = /[?؟]|\b(?:fakarny|fakkarny|fakrny|fkrny|hashrab|7ashrab|msh|mesh|mish|lessa|lsa|nseet|naseet|3ayez|3ayza|lazem|law|bokra|bokrah)\b|فكرني|فكريني|remind|بكره|tomorrow|هشرب|هروح|هصلي|هاخد|هذاكر|هدفع|will |going to|gonna|عايز|عاوز|محتاج|لازم|need to|want to|should|مش |ما |لسه|نسيت|\bnot\b|n't|never|forgot|لو |\bif\b/;
 const DEBT_WORDS = /سلف|استلف|عليا|ليا |عليه|\bowe|\blent\b|borrow|رجع|\bback\b/;
 
 const firstNumber = (t: string): number | null => {
@@ -41,13 +41,13 @@ const smallCount = (t: string, two: RegExp, max: number): number => {
 
 const MATCHERS: Record<Exclude<TrackerKind, "custom">, (t: string) => number | null> = {
   // The subject word itself is required: "شربت كوباية شاي" / "had a cup of coffee" is not water.
-  water: (t) => (/(شربت|drank|had ).*(ميه|مايه|مياه|water)/.test(t) ? smallCount(t, /كوبايتين|كوبين|two|ازازتين/, 20) : null),
-  prayer: (t) => (/(^|\s)(صليت|prayed)/.test(t) ? Math.max(1, PRAYERS.filter((p) => p.test(t)).length) : null),
-  gym: (t) => (/(روحت|رحت|خلصت|لعبت|went|did|finished|hit).*(جيم|تمرين|gym|workout)|اتمرنت|worked out/.test(t) ? 1 : null),
+  water: (t) => (/(شربت|drank|had |\b(?:shrbt|sharbt|shribt|sherbt|shrebt|sharabt|shrabt)\b).*(ميه|مايه|مياه|water|\b(?:maya|mayya|mya|mayyah|maia|mayah)\b)/.test(t) ? smallCount(t, /كوبايتين|كوبين|two|ازازتين/, 20) : null),
+  prayer: (t) => (/(^|\s)(صليت|prayed|salet|sallet|saleet|salleit)(\s|$)/.test(t) ? Math.max(1, PRAYERS.filter((p) => p.test(t)).length) : null),
+  gym: (t) => (/(روحت|رحت|خلصت|لعبت|went|did|finished|hit|ro7t|ru7t|5alast|khalast|le3bt).*(جيم|تمرين|gym|workout|tamreen)|اتمرنت|worked out|et2amart|ettamart/.test(t) ? 1 : null),
   // "read 30 pages of my novel" is not Quran: pages count only with the Quran or the daily wird named.
   quran: (t) => (/(قريت|قرات|read).*(قران|quran|الورد|وردي|wird)/.test(t) ? smallCount(t, /صفحتين|two pages/, 604) : null),
-  medicine: (t) => (/(خدت|اخدت|took).*(دوا|علاج|برشام|حبايه|medicine|meds|pill)/.test(t) ? 1 : null),
-  study: (t) => (/(^|\s)(ذاكرت|studied)/.test(t) ? smallCount(t, /ساعتين|two hours/, 16) : null),
+  medicine: (t) => (/(خدت|اخدت|took|5adt|khadt|a5adt).*(دوا|علاج|برشام|حبايه|medicine|meds|pill|dawa|dowa|3elag|bersham)/.test(t) ? 1 : null),
+  study: (t) => (/(^|\s)(ذاكرت|studied|zakert|zakart)/.test(t) ? smallCount(t, /ساعتين|two hours/, 16) : null),
   spending: (t) => (/(صرفت|دفعت|spent|paid)\s/.test(t) && !DEBT_WORDS.test(t) ? positive(firstNumber(t)) : null),
   fasting: (t) => (/(^|\s)(صمت|صايم النهارده|صايمه النهارده|fasted|i fasted)(\s|$)/.test(t) ? 1 : null),
   charity: (t) => (/(اتصدقت|تصدقت|طلعت صدقه|donated|gave charity|gave sadaqa)\s/.test(t) && !DEBT_WORDS.test(t) ? positive(firstNumber(t)) : null),
