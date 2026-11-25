@@ -167,10 +167,23 @@ export function cleanPhoneReply(reply: string[], lang: ReplyLang): string[] {
     if (text.length < 2 || text.length > 220) continue;
     const arabic = /[\u0600-\u06FF]/.test(text);
     if (lang === "english" ? arabic : !arabic || /[A-Za-z]{2,}/.test(text) || MSA.test(text)) continue;
-    if (/[{}|]/.test(text) || out.includes(text)) continue;
+    if (/[{}|]/.test(text) || out.includes(text) || loops(text)) continue;
     out.push(text);
   }
   return out.slice(0, 2);
+}
+
+/** A small model stuck in a loop ("بكرة؟ بكرة؟ بكرة؟ …"): any word of 3+ letters three or more times. */
+function loops(text: string): boolean {
+  const seen = new Map<string, number>();
+  for (const w of text.split(/\s+/)) {
+    const k = w.replace(/[؟?!.,،😊]/g, "");
+    if (k.length < 3) continue;
+    const n = (seen.get(k) ?? 0) + 1;
+    if (n >= 3) return true;
+    seen.set(k, n);
+  }
+  return false;
 }
 
 /**

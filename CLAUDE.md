@@ -595,8 +595,10 @@ Rules:
 
 - Phone brain (Android test mode, owner ask 2026-11-25: "fully local to test, keep cloud Zaki"):
   Zaki's model can run on the phone (llama.rn, llama.cpp). Settings › "Zaki's brain (test)" picks
-  Cloud or On my phone and downloads the model once (src/brain/catalog.ts: Qwen3.5 2B Q4 for phones
-  with ≥5.5 GB RAM, Qwen3.5 0.8B otherwise; files in the app's documents folder). Protocol: POST
+  Cloud or On my phone and downloads the model once (src/brain/catalog.ts: Qwen3.5 0.8B Q4 first on
+  every phone, 2B a choice; files in the app's documents folder). Phone eval 2026-11-25 (reply
+  grammar forbids the wrong script, `cleanPhoneReply` drops Modern Standard / leaked JSON / looping
+  bubbles): 0.8B style 91.8% cases, 98.6% holdout3, 3.3 s; 2B 92.4% / 100%, 5.9 s (runner CPU). Protocol: POST
   /messages with `brain: "phone"` → rules may answer at once (201); otherwise 202 `needs_brain`
   {system, context, history} (persona/phone.ts, `renderPhoneContext`, last 6 messages) → the phone
   writes the compact PhoneOutput JSON under a JSON-schema grammar (packages/shared/src/phone-brain.ts)
