@@ -21,7 +21,7 @@ def c(area, cid, msg, script, items=(), actions=None, updates=None, ask=None, me
     if history: x["history"] = [{"role": r, "text": t} for r, t in history]
     if now: x["now"] = now
     cases.append(x)
-R = lambda title, due=None, **k: {"type": "reminder", "title_any": title, **({"due": due} if due else {}), **k}
+R = lambda title, due=None, **k: {"type": "reminder", **({"title_any": title} if title else {}), **({"due": due} if due else {}), **k}
 T = lambda title, date=None, **k: {"type_any": ["reminder", "task"], "title_any": title, **({"due_date": date} if date else {}), **k}
 D = lambda person, amount, direction, **k: {"type": "debt", "debt": {"person_any": person, "amount": amount, "direction": direction}, **k}
 

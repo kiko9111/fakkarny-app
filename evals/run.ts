@@ -24,6 +24,7 @@ import { extractPhoneJson, PHONE_OUTPUT_JSON_SCHEMA, phoneMessages } from "@fakk
 import { localToUtc } from "../apps/api/src/lib/time";
 import { PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
+import { understand } from "../packages/shared/src/understand";
 import type { AppData } from "../apps/api/src/chat/actions";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,12 +32,13 @@ const args = process.argv.slice(2);
 const strict = args.includes("--strict");
 const arg = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const only = arg("--only");
-const brain = arg("--brain") === "phone" ? "phone" : "cloud";
+const brain = arg("--brain") === "phone" ? "phone" : arg("--brain") === "rules" ? "rules" : "cloud";
+const set = arg("--set") ?? "cases";
 const baseUrl = arg("--base-url") ?? "http://127.0.0.1:8080";
 const label = arg("--label") ?? "phone";
 
 function loadCases(): EvalCase[] {
-  const dir = join(here, "cases");
+  const dir = join(here, /^(cases|holdout\d*)$/.test(set) ? set : "cases");
   const cases: EvalCase[] = [];
   const ids = new Set<string>();
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".jsonl"))) {
@@ -115,6 +117,7 @@ async function main() {
   console.log(`Loaded ${cases.length} valid eval cases (persona ${PERSONA_VERSION}).`);
 
   if (brain === "phone") return runPhone(cases);
+  if (brain === "rules") return runRules(cases);
   if (!anthropicApiKey()) {
     console.log("SKIPPED model run: neither FAKKARNI_ANTHROPIC_API_KEY nor ANTHROPIC_API_KEY is set. No accuracy measured.");
     return;
@@ -221,6 +224,67 @@ async function runPhone(cases: EvalCase[]) {
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, `phone-${label}.json`), JSON.stringify({ label, persona: PHONE_PERSONA_VERSION, extractionOk, styleOk, n, avgMs: ms / n, results }, null, 2));
   writeFileSync(join(outDir, `phone-${label}-summary.json`), JSON.stringify({ label, extraction: extractionOk / n, style: styleOk / n, n, avgMs: Math.round(ms / n), promptTokens: Math.round(promptTokens / n), outTokens: Math.round(outTokens / n) }));
+}
+
+/** The part of the app a case tests: its `area`, else read from what it expects. */
+function areaOf(c: EvalCase): string {
+  if (c.area) return c.area;
+  const e = c.expect;
+  if (e.crisis) return "crisis";
+  const kinds = (e.actions ?? []).map((a) => a.kind);
+  const pick = (re: RegExp) => kinds.some((k) => re.test(k));
+  if (pick(/^split/)) return "split";
+  if (pick(/homework/) ) return "homework";
+  if (pick(/^task|assign_task/)) return "task";
+  if (pick(/tracker/)) return "tracker";
+  if (pick(/money|section|budget/)) return "money";
+  if (pick(/daftar/)) return "daftar";
+  if (pick(/circle|invite|checkin/)) return "circle";
+  if (kinds.length) return "app";
+  if (e.ask) return "ask";
+  if (e.updates?.length) return "reminder-edit";
+  if (e.items.some((i) => i.type === "debt" || i.debt)) return "daftar";
+  if (e.items.length) return e.items.some((i) => i.due || i.due_date || i.repeat) ? "reminder" : "task";
+  if (e.memories_any) return "memory";
+  return "chat";
+}
+
+/**
+ * The rule engine alone (no model): code decides every action, the reply is a placeholder.
+ * Scores extraction only, per area, so misses show where they are.
+ */
+function runRules(cases: EvalCase[]) {
+  console.log(`Rule engine (no model) on ${cases.length} cases from evals/${set}/.`);
+  const results = cases.map((c) => {
+    const u = understand({
+      text: c.message,
+      nowLocal: c.now,
+      history: c.history,
+      openItems: c.open_items,
+      app: c.app,
+    });
+    const output = { reply: [c.expect.script === "english" ? "Done." : "تمام."], create_items: u.create_items, update_items: u.update_items, save_memories: u.save_memories, app_actions: u.app_actions, crisis: u.crisis, ask: u.ask };
+    return { c, area: areaOf(c), score: scoreCase(c, output as never), output };
+  });
+  const byArea = new Map<string, { n: number; ok: number }>();
+  for (const r of results) {
+    const a = byArea.get(r.area) ?? { n: 0, ok: 0 };
+    a.n++;
+    if (r.score.extraction) a.ok++;
+    byArea.set(r.area, a);
+  }
+  for (const r of results.filter((r) => !r.score.extraction)) {
+    console.log(`✗ [${r.area}] ${r.c.id}: ${r.score.problems.filter((p) => !/reply|Arabic|English|Franco/.test(p)).join("; ")}`);
+    console.log(`    user: ${r.c.message}`);
+  }
+  console.log("");
+  console.log("Area            right / cases   missed");
+  for (const [a, v] of [...byArea.entries()].sort()) console.log(`${a.padEnd(16)}${String(v.ok).padStart(5)} / ${String(v.n).padEnd(6)}  ${(100 * (1 - v.ok / v.n)).toFixed(0)}%`);
+  const ok = results.filter((r) => r.score.extraction).length;
+  console.log(`\n[rules/${set}] Right: ${ok}/${results.length} = ${((100 * ok) / results.length).toFixed(1)}%`);
+  const outDir = join(here, "out");
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, `rules-${set}.json`), JSON.stringify({ ok, n: results.length, byArea: Object.fromEntries(byArea), results }, null, 2));
 }
 
 await main();

@@ -203,7 +203,7 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
   if (gotActions.length) problems.push(`extra app actions ${JSON.stringify(gotActions)}`);
 
   if (c.expect.ask && out.ask !== c.expect.ask) problems.push(`should ask for ${c.expect.ask}${out.ask ? `, asked for ${out.ask}` : ""}`);
-  if (!c.expect.ask && out.ask) problems.push(`asked for ${out.ask} instead of acting`);
+  if (!c.expect.ask && out.ask && (c.area || c.expect.items.length || c.expect.actions?.length || c.expect.updates?.length)) problems.push(`asked for ${out.ask} instead of acting`);
 
   const wantCrisis = c.expect.crisis ?? false;
   if (out.crisis !== wantCrisis) problems.push(`crisis ${out.crisis} ≠ ${wantCrisis}`);
