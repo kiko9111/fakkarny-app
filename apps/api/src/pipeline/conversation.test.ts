@@ -341,6 +341,17 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
     expect(body.replies[0]!.text).toBe("أكيد، أفكرك إمتى؟");
   });
 
+  it("ignores a small model's crisis flag on plain chat, honours it on distress", async () => {
+    const { model } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const say = async (text: string) => {
+      const payload = { client_id: randomUUID(), text, created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone", phone_output: { reply: ["أنا معاك"], crisis: true } };
+      return PostMessageResponse.parse((await app.inject({ method: "POST", url: "/messages", headers, payload })).json()).replies.map((r) => r.text).join(" ");
+    };
+    expect(await say("enta gamed ya zaki")).not.toContain("16328");
+    expect(await say("أنا مخنوق ومش قادر اكمل")).toContain("16328");
+  });
+
   it("keeps the crisis safety net for the phone model", async () => {
     const { model } = fakeModel([]);
     const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
