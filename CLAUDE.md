@@ -607,6 +607,18 @@ Rules:
   WELLBEING section from the main persona word for word (phone.test.ts checks it). Known gap: a
   tracker step that answers an open reminder is logged on both passes. Offline replies are not done:
   the message still waits for the network, because the context comes from the server.
+- Code decides, the model chats (owner decision, 2026-11-25: "AI is for chatting only, the tasks are
+  math"). In phone mode the rule engine (packages/shared/src/understand, pure: dates, times, amounts,
+  names, intents in Arabic, Franco and English) decides every action on the server
+  (pipeline/understand-input.ts → `understand`); the 202 hands the phone a reply-only prompt
+  (persona/phone-reply.ts, WELLBEING copied word for word), a DONE / ASK summary and a {reply, crisis}
+  schema. The second pass ignores everything else the model wrote. A failed or over-promising reply
+  is replaced by `templateReply`. Missing time / amount / person → `ask`, nothing saved. Optional hidden
+  "clear form" rewrite by the small model (understand/clarify.ts) is used only when the code found
+  nothing. Score with `npm run eval -- --brain rules --set <cases|holdout|holdout2|holdout3>`; each
+  holdout set was committed before the engine ran on it (unseen scores 88.8%, 89.3%, 80.3% messy; all
+  ~100% after fixes). Write a NEW set before claiming accuracy on unseen wording. The rewrite is scored
+  by .github/workflows/clarify-eval.yml ("[clarify-eval]").
 - Phone model evals: `npm run eval -- --brain phone --base-url <llama-server> --label <name>` scores a
   GGUF model served by llama.cpp with the phone prompt and grammar. The cloud session can't download
   models, so .github/workflows/phone-model-eval.yml runs the candidates on GitHub ("[phone-eval]").
