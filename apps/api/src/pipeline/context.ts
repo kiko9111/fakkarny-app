@@ -248,3 +248,37 @@ export function renderContext(ctx: ConversationContext): string {
   }
   return lines.join("\n");
 }
+
+/** How much of the chat and the user's data a phone model sees (it reads slowly: keep it short). */
+export const PHONE_RECENT_MESSAGES = 6;
+export const PHONE_MAX_MEMORIES = 8;
+export const PHONE_MAX_OPEN_ITEMS = 12;
+
+/**
+ * The context for the on-device model (Android test mode): the same facts the cloud gets, cut to
+ * what a 1–2B model can read in a few seconds. Names in the app, no numbers or summaries.
+ */
+export function renderPhoneContext(ctx: ConversationContext): string {
+  const { user, now } = ctx;
+  const tz = user.timezone;
+  const lines: string[] = [];
+  lines.push(`NOW: ${describeNow(now, tz)}`);
+  lines.push(`UPCOMING DAYS: ${describeUpcomingDays(now, tz, 8)}`);
+  const script = replyScript(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic");
+  if (script) lines.push(`REPLY SCRIPT: ${script.split(" (")[0]}`);
+  lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories, user.gender).split(" (")[0]}`);
+  if (user.name) lines.push(`USER NAME: ${user.name}`);
+  lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
+  const memories = ctx.memories.slice(0, PHONE_MAX_MEMORIES);
+  if (memories.length) lines.push(`MEMORIES: ${memories.map((m) => `${m.subject}: ${m.content}`).join(" · ")}`);
+  // The most recently touched items first: that is what the user talks about next.
+  const items = [...ctx.openItems].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, PHONE_MAX_OPEN_ITEMS);
+  lines.push("OPEN ITEMS (ids for updates):");
+  lines.push(items.length ? items.map((i) => describeItem(i, tz)).join("\n") : "- (none)");
+  const app = ctx.app;
+  if (app) {
+    const names = (xs: string[]) => (xs.length ? xs.map((x) => `«${x}»`).join(", ") : "none");
+    lines.push(`IN THE APP: circles ${app.circles.length ? app.circles.map((c) => `«${c.name}» with ${c.members.filter((m) => m.userId !== user.id).map((m) => m.name ?? "?").join(", ") || "nobody yet"}`).join("; ") : "none"}. Money sections ${names(app.sections.map((s) => s.name))}. Trackers ${names(app.trackers.map((t) => (t.kind === "custom" ? t.name ?? "custom" : t.kind)))}.`);
+  }
+  return lines.join("\n");
+}

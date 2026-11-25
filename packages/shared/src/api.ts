@@ -24,6 +24,16 @@ export const PostMessageRequest = z.object({
   created_at: z.iso.datetime({ offset: true }),
   /** The user's IANA time zone, so relative dates resolve correctly. */
   timezone: z.string().min(1).max(64).optional(),
+  /**
+   * "phone": Zaki's model runs on the phone (Android test mode). Without phone_output the
+   * server answers 202 with what the phone's model needs (NeedsBrainResponse); the phone then
+   * sends the same message again with phone_output, and the server checks and applies it.
+   */
+  brain: z.enum(["cloud", "phone"]).optional(),
+  /** The phone model's answer (PhoneOutput, validated on the server). */
+  phone_output: z.unknown().optional(),
+  /** Which phone model wrote it, e.g. "qwen3.5-2b-q4" (for the quality event; no content). */
+  phone_model: z.string().max(64).optional(),
 });
 export type PostMessageRequest = z.infer<typeof PostMessageRequest>;
 

@@ -1,3 +1,4 @@
+import type { PhoneBrainRequest } from "@fakkarni/shared";
 import type { Item, Memory, Message, PrismaClient, User } from "../generated/prisma/client";
 
 export interface PipelineInput {
@@ -11,6 +12,11 @@ export interface PipelineInput {
   aiAllowance?: number | null;
   /** Paid extras are enforced (REQUIRE_SUBSCRIPTION=1); passed on to circle actions. */
   requireSubscription?: boolean;
+  /**
+   * Zaki's model runs on the phone (Android test mode). Without output the pipeline stops where
+   * it would call the model and returns needsBrain; with output it uses the phone's answer.
+   */
+  brain?: { output?: unknown; model?: string };
 }
 
 export interface PipelineResult {
@@ -21,6 +27,8 @@ export interface PipelineResult {
   notices?: { userId: string; text: string }[];
   /** Today's AI allowance after this message, when one applies. */
   aiAllowance?: { limit: number | null; used: number };
+  /** The phone's model has to write the reply: nothing was stored for this turn yet. */
+  needsBrain?: PhoneBrainRequest;
 }
 
 /** Runs after a user message is stored: decides the friend's reply and what to remember. */

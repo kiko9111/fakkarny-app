@@ -267,3 +267,56 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     await app.close();
   });
 });
+
+describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
+  const prisma = testPrisma();
+  const now = new Date("2026-11-19T10:00:00.000Z");
+  const headers = { [INSTALL_ID_HEADER]: randomUUID() };
+  beforeEach(() => resetDb(prisma));
+  afterAll(() => prisma.$disconnect());
+
+  it("asks the phone for its answer, then applies it with no cloud call and no allowance used", async () => {
+    const { model, calls } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }), requireSubscription: true });
+    const clientId = randomUUID();
+    const payload = { client_id: clientId, text: "fakarny bokra el sa3a 6 el dentist", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
+    const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    expect(first.statusCode).toBe(202);
+    const need = first.json().needs_brain;
+    expect(need.context).toContain("UPCOMING DAYS");
+    expect(need.history.at(-1)).toEqual({ role: "user", text: payload.text });
+    expect(need.system).toContain("# WELLBEING");
+
+    const output = { reply: ["تمام، هفكرك بكرة الساعة ٥"], items: [{ type: "reminder", title: "الدكتور", when: "2026-11-20T18:00", remind: "2026-11-20T17:00" }], crisis: false };
+    const second = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: output, phone_model: "test" } });
+    expect(second.statusCode).toBe(201);
+    const body = PostMessageResponse.parse(second.json());
+    expect(body.replies.map((r) => r.text)).toEqual(output.reply);
+    expect(body.items[0]).toMatchObject({ title: "الدكتور", remind_at: "2026-11-20T15:00:00.000Z" });
+    expect(calls).toHaveLength(0);
+    const ev = await prisma.event.findFirst({ where: { name: "ai_call" } });
+    expect(ev?.propsJson).toMatchObject({ purpose: "phone", valid: true });
+
+    // A retry returns what was stored.
+    const again = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: output } });
+    expect(PostMessageResponse.parse(again.json()).duplicate).toBe(true);
+  });
+
+  it("never lets the phone model claim an unset reminder", async () => {
+    const { model } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const payload = { client_id: randomUUID(), text: "remind me to call mom at 6", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone", phone_output: { reply: ["Done, I'll remind you at 6!"], crisis: false } };
+    const res = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    const body = PostMessageResponse.parse(res.json());
+    expect(body.replies[0]!.text).not.toContain("I'll remind you at 6");
+  });
+
+  it("keeps the crisis safety net for the phone model", async () => {
+    const { model } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const payload = { client_id: randomUUID(), text: "I want to die", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone", phone_output: { reply: ["I'm here with you."], crisis: false } };
+    const res = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    const body = PostMessageResponse.parse(res.json());
+    expect(body.replies.map((r) => r.text).join(" ")).toContain("16328");
+  });
+});

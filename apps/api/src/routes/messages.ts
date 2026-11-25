@@ -4,6 +4,7 @@ import {
   ListMessagesQuery,
   PostMessageRequest,
   type ListMessagesResponse,
+  type NeedsBrainResponse,
   type PostMessageResponse,
 } from "@fakkarni/shared";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
@@ -78,7 +79,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
         // again shortly. Not being worked on means the work died (a server restart mid-reply),
         // and the message would never get an answer, so answer it now.
         if (inFlight.has(flightKey(user.id, existing.clientId))) return reply.code(409).send({ error: "duplicate_in_flight" });
-        return reply.code(201).send(await answer(existing));
+        return send(await answer(existing));
       }
       const res: PostMessageResponse = {
         message: toWireMessage(existing, readsNewKinds(req)),
@@ -110,9 +111,13 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       throw err;
     }
 
-    return reply.code(201).send(await answer(message));
+    return send(await answer(message));
 
-    async function answer(message: Message): Promise<PostMessageResponse> {
+    function send(res: PostMessageResponse | NeedsBrainResponse) {
+      return reply.code("needs_brain" in res ? 202 : 201).send(res);
+    }
+
+    async function answer(message: Message): Promise<PostMessageResponse | NeedsBrainResponse> {
     const key = flightKey(user.id, message.clientId);
     inFlight.add(key);
     try {
@@ -127,7 +132,13 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     // Chat is never locked: free users get a daily AI allowance, then a warm Pro nudge.
     let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
-    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false });
+    const brain = body.data!.brain === "phone" ? { output: body.data!.phone_output, model: body.data!.phone_model } : undefined;
+    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false, brain });
+    // Phone brain, first pass: the phone's model writes the reply, then the phone sends it back.
+    if (result.needsBrain) {
+      await touched;
+      return { needs_brain: result.needsBrain } satisfies NeedsBrainResponse;
+    }
     if (result.notices?.length) void pushNotices(prisma, opts.push, result.notices, app.log);
     await Promise.all([touched, countIntent(prisma, user.id, message.id, result).catch(() => {})]);
     const res: PostMessageResponse = {

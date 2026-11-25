@@ -5,7 +5,9 @@ import { addUsage, costUsd, FRIEND_MODEL, type ChatTurn, type FriendModel, type 
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../persona/prompt";
 import { localToUtc, toLocalIso } from "../lib/time";
 import { applyActions } from "./apply";
-import { loadContext, mustReplyInArabic, renderContext, userTexts } from "./context";
+import { loadContext, mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, renderPhoneContext, userTexts } from "./context";
+import { createPhoneAnswerModel } from "../ai/phone";
+import { PHONE_PERSONA_VERSION, PHONE_PROMPT } from "../persona/phone";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
 import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
@@ -54,7 +56,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
   const { model, log } = deps;
   const dailyCap = deps.dailyCap ?? DAILY_MESSAGE_CAP;
 
-  return async ({ prisma, user, message, now, aiAllowance, requireSubscription }) => {
+  return async ({ prisma, user, message, now, aiAllowance, requireSubscription, brain }) => {
     const script = replyLang(detectScript(message.text));
     const crisisKeyword = looksLikeCrisis(message.text);
     const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
@@ -135,7 +137,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never
     // blocked (the model must see it, to answer with care and flag a crisis), and reminder
     // work (asking for one, Done / Later) stays free up to a daily guard.
-    const limit = aiAllowance ?? null;
+    // The phone's own model costs nothing: no allowance in that mode (pricing undecided, test mode).
+    const limit = brain ? null : aiAllowance ?? null;
     let used = 0;
     let freeCall: "distress" | "reminder" | null = null;
     if (limit !== null) {
@@ -168,11 +171,27 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let actions = EMPTY_ACTIONS;
     let crisis = crisisKeyword;
     let usage: Usage | null = null;
-    const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: toLocalIso(now, user.timezone).slice(0, 10) };
+    let modelOk = false;
+    const nowLocal = toLocalIso(now, user.timezone).slice(0, 16);
+    if (brain && brain.output === undefined) {
+      // Phone brain, first pass: hand the phone what its model needs. Nothing is stored; the
+      // phone sends the same message again with its model's answer.
+      return {
+        replies: [],
+        items: [],
+        memories: [],
+        needsBrain: { system: PHONE_PROMPT, context: renderPhoneContext(ctx), history: history.slice(-PHONE_RECENT_MESSAGES), persona: PHONE_PERSONA_VERSION },
+      };
+    }
+    const turnModel = brain ? createPhoneAnswerModel(brain.output) : model;
+    const modelInput = brain
+      ? { system: PHONE_PROMPT, context: renderPhoneContext(ctx), history: history.slice(-PHONE_RECENT_MESSAGES), todayLocal: nowLocal.slice(0, 10), nowLocal }
+      : { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
     try {
-      const result = await model.respond(modelInput);
+      const result = await turnModel.respond(modelInput);
       usage = result.usage;
       if (result.ok) {
+        modelOk = true;
         replies = result.output.reply;
         actions = result.output;
         crisis ||= result.output.crisis;
@@ -210,7 +229,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let shown: Awaited<ReturnType<typeof recentlySetItem>> = null;
     if (!crisis && usage && promisesReminder(replies) && !setsReminder(actions)) {
       await event(prisma, user.id, "reminder_claim_unset", {});
-      const retry = await model.respond({ ...modelInput, context: `${modelInput.context}\n\n${UNSET_CHECK}` }).catch(() => null);
+      const retry = await turnModel.respond({ ...modelInput, context: `${modelInput.context}\n\n${UNSET_CHECK}` }).catch(() => null);
       if (retry) usage = addUsage(usage, retry.usage);
       if (retry?.ok && !retry.output.crisis && (setsReminder(retry.output) || !promisesReminder(retry.output.reply))) {
         replies = retry.output.reply;
@@ -225,7 +244,19 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 4. Apply actions + store replies, then the app actions (money, trackers, circles) as cards.
     // The cost event is written alongside, not after.
     const appActions = crisis ? [] : actions.app_actions ?? [];
-    const aiEvent = usage
+    const aiEvent = brain
+      ? event(prisma, user.id, "ai_call", {
+          // On the phone: no cost, never counted against the allowance. Counts only, no content.
+          purpose: "phone",
+          model: (brain.model ?? "phone").slice(0, 64),
+          persona: PHONE_PERSONA_VERSION,
+          valid: modelOk,
+          items_created: actions.create_items.length,
+          items_updated: actions.update_items.length,
+          memories_saved: actions.save_memories.length,
+          app_actions: appActions.length,
+        })
+      : usage
       ? event(prisma, user.id, "ai_call", {
           // Calls let through past the allowance don't count against it.
           purpose: freeCall ? "chat_free" : "chat",
@@ -255,9 +286,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     await aiEvent;
 
     // 5. Rolling summary in the background; never blocks the reply.
-    void summarizeIfNeeded(prisma, model, user).catch((err) => log?.warn({ err: errorSummary(err) }, "summary failed"));
+    // (Not for the phone brain: a summary would be a cloud call, against the point of that mode.)
+    if (!brain) void summarizeIfNeeded(prisma, model, user).catch((err) => log?.warn({ err: errorSummary(err) }, "summary failed"));
 
-    return { ...applied, aiAllowance: { limit, used: used + (usage && !freeCall ? 1 : 0) } };
+    return { ...applied, aiAllowance: { limit, used: used + (usage && !freeCall && !brain ? 1 : 0) } };
   };
 }
 

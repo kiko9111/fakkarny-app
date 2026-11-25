@@ -47,6 +47,8 @@ export interface FriendModelInput {
   requireArabic?: boolean;
   /** Today's local date ("YYYY-MM-DD"): a new reminder or task dated before it gets one retry. */
   todayLocal?: string;
+  /** Local wall-clock now ("YYYY-MM-DDTHH:mm"), for "+60"-style times from the phone model. */
+  nowLocal?: string;
 }
 
 /** The model's validated answer. app_actions may be left out (scripted test models). */
