@@ -226,9 +226,11 @@ export function parseStatusClientId(clientId: string | null): { kind: "item" | "
 const YES = new Set([
   "اه", "آه", "أه", "ايوه", "أيوه", "ايوة", "أيوة", "اكيد", "أكيد", "يب", "تمام", "خلصت", "خلصتها", "خلصته", "عملت", "عملتها", "عملته", "تم", "خلاص",
   "رجعهم", "رجعلي", "رجعها", "دفع", "دفعت", "سددت", "شربت", "صليت", "اتمرنت", "خدته", "خدت", "قريت", "ذاكرت", "صايم", "الحمد", "لله", "الحمدلله", "والله",
+  "ah", "ahh", "aah", "aywa", "aiwa", "aywah", "tamam", "akeed", "5alas", "khalas", "5alast", "khalast", "3amalt", "3malt", "shrbt", "shrebt",
+  "sharabt", "salet", "saleet", "5adt", "khadt", "zakert", "el7amdulela", "elhamdulillah", "alhamdulillah", "ya", "zaki", "shokran", "mersi",
   "يا", "زكي", "شكرا", "yes", "yeah", "yep", "yup", "ya", "done", "did", "it", "i", "sure", "of", "course", "already", "all", "good", "paid", "zaki", "thanks",
 ]);
-const ANSWER_WORDS = new Set([...YES].filter((w) => !["يا", "زكي", "شكرا", "الحمد", "لله", "والله", "it", "i", "of", "all", "zaki", "thanks"].includes(w)));
+const ANSWER_WORDS = new Set([...YES].filter((w) => !["يا", "زكي", "شكرا", "الحمد", "لله", "والله", "it", "i", "of", "all", "zaki", "thanks", "shokran", "mersi"].includes(w)));
 
 /** "اه" / "خلصت ✅" / "yes done": a short, plain yes with no "not", "still", or anything else in it. */
 export function isPlainYes(text: string): boolean {

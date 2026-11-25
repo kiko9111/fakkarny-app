@@ -318,38 +318,44 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
   beforeEach(() => resetDb(prisma));
   afterAll(() => prisma.$disconnect());
 
-  it("decides in code, asks the phone only for the reply, with no cloud call and no allowance used", async () => {
+  it("decides in code and answers at once when the code did the work: no phone model, no cloud call, no allowance", async () => {
     const { model, calls } = fakeModel([]);
     const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }), billing: { requireSubscription: true } });
-    const clientId = randomUUID();
-    const payload = { client_id: clientId, text: "fakarny bokra el sa3a 6 el dentist", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
+    const payload = { client_id: randomUUID(), text: "fakarny bokra el sa3a 6 el dentist", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
+    // The on-phone model took 20-40 s on a Pixel 8: a turn the code fully decided skips it.
+    const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    expect(first.statusCode).toBe(201);
+    const body = PostMessageResponse.parse(first.json());
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ title: "دكتور السنان", due_at: "2026-11-20T16:00:00.000Z" });
+    expect(body.replies[0]!.text).toContain("دكتور السنان");
+    expect(calls).toHaveLength(0);
+    expect(body.ai_allowance?.limit ?? null).toBeNull();
+    const ev = await prisma.event.findFirst({ where: { name: "ai_call" } });
+    expect(ev?.propsJson).toMatchObject({ purpose: "phone", code_reply: "done" });
+
+    // An older phone that thought anyway: its words are ignored, the stored answer comes back.
+    const again = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: { reply: ["حاجة غلط"], crisis: false } } });
+    expect(PostMessageResponse.parse(again.json()).duplicate).toBe(true);
+  });
+
+  it("asks the phone's model only for small talk, and ignores anything but its reply", async () => {
+    const { model, calls } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const payload = { client_id: randomUUID(), text: "3amel eh ya zaki", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
     const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
     expect(first.statusCode).toBe(202);
     const need = first.json().needs_brain;
-    // The code already read the message: the phone's model is told what was done.
-    expect(need.context).toContain("DONE:");
-    expect(need.context).toContain("tomorrow at 6pm");
     expect(need.schema).toMatchObject({ required: ["reply", "crisis"] });
     expect(need.history.at(-1)).toEqual({ role: "user", text: payload.text });
     expect(need.system).toContain("# WELLBEING");
-
-    // Anything but the reply is ignored: the model can't add or change a reminder.
-    const output = { reply: ["تمام، هفكرك بكرة الساعة ٦"], items: [{ type: "reminder", title: "حاجة غلط", when: "2026-11-21T09:00" }], crisis: false };
+    const output = { reply: ["الحمد لله تمام، وانت عامل ايه؟"], items: [{ type: "reminder", title: "حاجة غلط", when: "2026-11-21T09:00" }], crisis: false };
     const second = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: output, phone_model: "test" } });
     expect(second.statusCode).toBe(201);
     const body = PostMessageResponse.parse(second.json());
     expect(body.replies.map((r) => r.text)).toEqual(output.reply);
-    expect(body.items).toHaveLength(1);
-    expect(body.items[0]).toMatchObject({ title: "دكتور السنان", due_at: "2026-11-20T16:00:00.000Z" });
+    expect(body.items).toHaveLength(0);
     expect(calls).toHaveLength(0);
-    // On the phone: free, no allowance (pricing undecided).
-    expect(body.ai_allowance?.limit ?? null).toBeNull();
-    const ev = await prisma.event.findFirst({ where: { name: "ai_call" } });
-    expect(ev?.propsJson).toMatchObject({ purpose: "phone", valid: true });
-
-    // A retry returns what was stored.
-    const again = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: output } });
-    expect(PostMessageResponse.parse(again.json()).duplicate).toBe(true);
   });
 
   it("never lets the phone model claim an unset reminder", async () => {
@@ -376,12 +382,11 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
     const { model } = fakeModel([]);
     const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
     const payload = { client_id: randomUUID(), text: "فكرني أكلم خالد", created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" };
-    const first = await app.inject({ method: "POST", url: "/messages", headers, payload });
-    expect(first.json().needs_brain.context).toContain("ASK: what time");
-    const res = await app.inject({ method: "POST", url: "/messages", headers, payload: { ...payload, phone_output: { reply: ["أكيد، أفكرك إمتى؟"], crisis: false } } });
+    const res = await app.inject({ method: "POST", url: "/messages", headers, payload });
+    expect(res.statusCode).toBe(201);
     const body = PostMessageResponse.parse(res.json());
     expect(body.items).toHaveLength(0);
-    expect(body.replies[0]!.text).toBe("أكيد، أفكرك إمتى؟");
+    expect(body.replies[0]!.text).toMatch(/إمتى/);
   });
 
   it("ignores a small model's crisis flag on plain chat, honours it on distress", async () => {
@@ -402,5 +407,75 @@ describe.skipIf(!hasTestDb)("conversation pipeline: phone brain", () => {
     const res = await app.inject({ method: "POST", url: "/messages", headers, payload });
     const body = PostMessageResponse.parse(res.json());
     expect(body.replies.map((r) => r.text).join(" ")).toContain("16328");
+  });
+});
+
+// kareem's Pixel 8, 2026-11-25 (phone brain): every one of these got "I'm here 💛 Tell me more?"
+// in English, or sat on "Sending…" while the phone's model ran.
+describe.skipIf(!hasTestDb)("phone brain: kareem's chat of 2026-11-25", () => {
+  const prisma = testPrisma();
+  const now = new Date("2026-11-25T15:51:00.000Z"); // Wednesday 17:51 Cairo
+  const installId = randomUUID();
+  const headers = { [INSTALL_ID_HEADER]: installId };
+  beforeEach(() => resetDb(prisma));
+  afterAll(() => prisma.$disconnect());
+
+  async function setup() {
+    const { model, calls } = fakeModel([]);
+    const app = buildApp({ logger: false }, { prisma, now: () => now, pipeline: createConversationPipeline({ model }) });
+    const user = await prisma.user.create({ data: { authId: `install:${installId}`, timezone: "Africa/Cairo", language: "en" } });
+    const salary = await prisma.moneySection.create({ data: { ownerId: user.id, name: "moratab", kind: "income" } });
+    for (let i = 0; i < 4; i++) await prisma.moneyEntry.create({ data: { sectionId: salary.id, userId: user.id, amount: 29000, at: new Date(now.getTime() - i * 3600_000) } });
+    const tracker = await prisma.tracker.create({ data: { userId: user.id, kind: "water", goal: 8 } });
+    await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "Dentist", dueAt: new Date("2026-11-27T16:00:00.000Z"), remindAt: new Date("2026-11-27T15:00:00.000Z") } });
+    await prisma.item.create({ data: { userId: user.id, type: "reminder", title: "Prayer", remindAt: new Date("2026-11-25T16:30:00.000Z"), repeatEveryMinutes: 1440 } });
+    const say = async (text: string) => {
+      const res = await app.inject({ method: "POST", url: "/messages", headers, payload: { client_id: randomUUID(), text, created_at: now.toISOString(), timezone: "Africa/Cairo", brain: "phone" } });
+      const out = { status: res.statusCode, text: res.statusCode === 201 ? PostMessageResponse.parse(res.json()).replies.map((r) => r.text).join("\n") : "" };
+      if (process.env.SHOW_REPLIES) console.log(JSON.stringify(text), "→", out.status, out.text);
+      return out;
+    };
+    return { app, user, tracker, calls, say };
+  }
+
+  it("answers 'how much did I log?' with the month's numbers, in Arabic for Franco, at once", async () => {
+    const { say, calls } = await setup();
+    const r = await say("sagelt kam ?");
+    expect(r.status).toBe(201);
+    expect(r.text).toContain("116,000");
+    expect(r.text).toMatch(/[؀-ۿ]/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("lists this week's plans for 'What do I have this week?'", async () => {
+    const { say } = await setup();
+    const r = await say("What do I have this week?");
+    expect(r.status).toBe(201);
+    expect(r.text).toContain("Dentist");
+    expect(r.text).toContain("Friday 18:00");
+    expect(r.text).toContain("Repeating: Prayer");
+    expect(r.text).not.toContain("Tell me more");
+  });
+
+  it("logs water from Franco, also as the answer to Zaki's check-in", async () => {
+    const { user, tracker, say } = await setup();
+    await prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text: "شربت مية ولا لسه؟", clientId: `status:tracker:${tracker.id}:x`, createdAt: new Date(now.getTime() - 60_000) } });
+    const r = await say("shrbt maya ahh");
+    expect(r.status).toBe(201);
+    expect(await prisma.trackerEntry.count()).toBe(1);
+    expect(r.text).toMatch(/[؀-ۿ]/);
+  });
+
+  it("takes a Franco 'ahh' as yes to the check-in", async () => {
+    const { user, tracker, say } = await setup();
+    await prisma.message.create({ data: { userId: user.id, role: "friend", kind: "followup", text: "شربت مية ولا لسه؟", clientId: `status:tracker:${tracker.id}:x`, createdAt: new Date(now.getTime() - 60_000) } });
+    const r = await say("ahh");
+    expect(r.status).toBe(201);
+    expect(await prisma.trackerEntry.count()).toBe(1);
+  });
+
+  it("still leaves small talk to the phone's model", async () => {
+    const { say } = await setup();
+    expect((await say("3amel eh ya zaki")).status).toBe(202);
   });
 });

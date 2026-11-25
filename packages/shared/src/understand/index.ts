@@ -1146,7 +1146,7 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
     return true;
   }
   // Log: "شربت ٢ كوباية مية", "walked 6500 steps", "قريت ١٢ صفحه", "2reet 15 saf7a".
-  if (tr && has(t, "شربت|اشربت|قريت|مشيت|صليت|اتمرنت|خدت|drank|had|read|walked|did|prayed|took|shrebt|2reet|2areet|2aret|mesheet|saleet|et2amart|logged|log|سجل|sagel")) {
+  if (tr && has(t, "شربت|اشربت|قريت|مشيت|صليت|اتمرنت|خدت|drank|had|read|walked|did|prayed|took|shrebt|shrbt|sharbt|sharabt|shribt|sherbt|salet|sallet|5adt|khadt|2reet|2areet|2aret|mesheet|saleet|et2amart|logged|log|سجل|sagel")) {
     const n = numbers(t).filter((x) => x.value > 0);
     // "كوبايتين", "kobayten", "صفحتين": two, said as a dual.
     const dual = has(t, "كوبايتين|كبايتين|صفحتين|مرتين|kobayten|kobaytein|kobaiten|kbayten|saf7ten|saf7tein|marten|marteen|marrten");
