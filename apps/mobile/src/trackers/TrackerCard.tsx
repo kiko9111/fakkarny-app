@@ -6,6 +6,7 @@ import { parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
 import { deleteTracker, logTracker, undoTracker, updateTracker } from "@/lib/api";
 import { ask, Badge, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
+import { QueuedOffline } from "@/sync/writes";
 import { askTimeLabel, bumpTracker, formatNumber, monthBars, progress, weekBars } from "./logic";
 
 export const TRACKER_ICON: Record<TrackerKind, IconName> = {
@@ -43,7 +44,12 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
     try {
       onChanged(await fn());
       setAmountText("");
-    } catch {
+    } catch (err) {
+      // No connection: the step is kept on the phone and sent later, so the guess stays.
+      if (guess && err instanceof QueuedOffline) {
+        notify(t.trackers.savedOffline, "info");
+        return;
+      }
       if (guess) onChanged(tr);
       notify(t.trackers.failed, "error");
     } finally {

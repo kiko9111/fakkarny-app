@@ -614,6 +614,12 @@ Rules:
   max). Mic button in ChatInput; model download in Settings or on first tap (Whisper small q5, base on
   phones under 3 GB). All of it is optional native code (src/brain/native.ts): builds before
   2026-11-25 never show it. Android only.
+- Local-first shared writes (2026-11-25): tracker steps and check-ins tapped offline are kept on the
+  phone (src/sync/writes.ts, localStorage "pending_writes", pure + tested) and replayed oldest-first
+  on every refresh with an x-idempotency-key; the server answers a replayed key from memory
+  (apps/api/src/plugins/idempotency.ts, per install id, 1 day) so nothing is applied twice. The screen
+  keeps its guess (`QueuedOffline`). Tracker logs carry `at` (≤3 days back) so streaks count the tap's
+  day. Route more writes through `writeOrQueue` (api.ts) when their screen can show a guess.
 - Android builds without the EAS quota: .github/workflows/android-local-build.yml runs `eas build
   --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
   and attaches the APK to a GitHub pre-release.

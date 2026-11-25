@@ -1,7 +1,7 @@
 import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
-import { getMe, listMessagesAfter, patchMe, postMessageRaw } from "@/lib/api";
+import { getMe, listMessagesAfter, patchMe, postMessageRaw, writeOutbox } from "@/lib/api";
 import { PostMessageResponse } from "@fakkarni/shared";
 import { sendWithBrain } from "@/brain/flow";
 import { phoneBrainReady, thinkOnPhone, warmBrain } from "@/brain/engine";
@@ -94,6 +94,8 @@ export function startSync() {
   );
   const refresh = () => {
     void syncQueue.wake();
+    // Shared-data taps made offline (tracker steps, check-ins) go out first, then screens reload.
+    void writeOutbox.flush().catch(() => {});
     void pullMessages();
     // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
     void listScheduled().then(scheduleItems).catch(() => {});

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { QueuedOffline } from "@/sync/writes";
 import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
@@ -97,8 +98,10 @@ export default function CircleScreen() {
       setCircle(await checkIn(id, kind));
       notify(t.family.checkedIn);
       void load();
-    } catch {
-      notify(t.circles.failed, "error");
+    } catch (err) {
+      // Offline: kept on the phone, sent to the family when the network is back.
+      if (err instanceof QueuedOffline) notify(t.trackers.savedOffline, "info");
+      else notify(t.circles.failed, "error");
     }
   };
   const askOne = async (userId: string) => {

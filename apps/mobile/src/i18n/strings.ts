@@ -472,6 +472,7 @@ const arEG = {
     photoGone: "الصورة دي اتمسحت",
   },
   trackers: {
+    savedOffline: "اتسجلت على الموبايل، وهتتبعت أول ما النت يرجع.",
     empty: "اختار حاجة واحدة تهمّك، وزكي يتابعها معاك من غير ما تكتب حاجة بإيدك.",
     offline: "محتاجين نت عشان نفتح المتابعة.",
     add: "ضيف متابعة",
@@ -1212,6 +1213,7 @@ const en: DeepStringShape<Strings> = {
     photoGone: "This photo was deleted",
   },
   trackers: {
+    savedOffline: "Saved on your phone; it goes out as soon as you're back online.",
     empty: "Pick one thing that matters to you, and Zaki follows it with you without any manual logging.",
     offline: "Trackers need a connection.",
     add: "Add a tracker",

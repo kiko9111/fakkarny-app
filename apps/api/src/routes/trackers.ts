@@ -107,10 +107,12 @@ export const trackerRoutes: FastifyPluginAsync<TrackerRoutesOptions> = async (ap
     if (!tracker) return reply.code(404).send({ error: "not_found" });
     const amount = body.success ? body.data.amount ?? TRACKER_TEMPLATES[TrackerKind.catch("custom").parse(tracker.kind)].step : 0;
     if (!body.success || amount <= 0) return reply.code(400).send({ error: "invalid_body" });
-    const at = now();
+    // A step logged offline keeps the time it was tapped (up to 3 days back), so streaks stay right.
+    const tapped = body.data.at ? new Date(body.data.at) : null;
+    const at = tapped && tapped <= now() && now().getTime() - tapped.getTime() < 3 * 86_400_000 ? tapped : now();
     await logEntry(prisma, tracker, amount, "tap", at, req.user.timezone);
     await prisma.event.create({ data: { userId: req.user.id, name: "tracker_logged", propsJson: { kind: tracker.kind, via: "tap" } } });
-    return { tracker: await toWireTracker(prisma, tracker, req.user.timezone, at) } satisfies TrackerResponse;
+    return { tracker: await toWireTracker(prisma, tracker, req.user.timezone, now()) } satisfies TrackerResponse;
   });
 
   /** Undo a slip of the thumb: removes the newest entry. */

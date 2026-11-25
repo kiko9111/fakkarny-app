@@ -74,6 +74,8 @@ import {
 } from "@fakkarni/shared";
 import { getInstallId } from "@/db/kv";
 import { HttpError } from "@/sync/queue";
+import { createWriteOutbox, isOffline, QueuedOffline, type PendingWrite } from "@/sync/writes";
+import { randomUUID } from "expo-crypto";
 import { resolveApiUrl } from "./api-url";
 import { accessToken } from "./supabase";
 import { isDemo } from "./demo";
@@ -138,6 +140,39 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = TIMEOUT
     return res.status === 204 ? null : await res.json();
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Shared-data taps made offline wait here (localStorage) and go out on the next refresh, once each. */
+const WRITES_KEY = "pending_writes";
+export const writeOutbox = createWriteOutbox({
+  store: {
+    load: () => {
+      try {
+        return JSON.parse(localStorage.getItem(WRITES_KEY) ?? "[]") as PendingWrite[];
+      } catch {
+        return [];
+      }
+    },
+    save: (w) => localStorage.setItem(WRITES_KEY, JSON.stringify(w)),
+  },
+  send: async (w) => {
+    await request(w.path, { method: w.method, ...(w.body === undefined ? {} : { body: JSON.stringify(w.body) }), headers: { "x-idempotency-key": w.id } });
+  },
+});
+
+/**
+ * A write to shared data that may wait on the phone: tried now (with its key); with no
+ * connection it is kept and QueuedOffline is thrown, so the screen keeps what it showed.
+ */
+async function writeOrQueue(method: PendingWrite["method"], path: string, body?: unknown): Promise<unknown> {
+  const w: PendingWrite = { id: randomUUID(), method, path, body, at: new Date().toISOString() };
+  try {
+    return await request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }), headers: { "x-idempotency-key": w.id } });
+  } catch (err) {
+    if (!isOffline(err) || isDemo) throw err;
+    writeOutbox.enqueue(w);
+    throw new QueuedOffline();
   }
 }
 
@@ -256,7 +291,7 @@ export async function setFamilyRole(circleId: string, userId: string, role: Fami
 
 /** One-tap check-in, shared with the circle. */
 export async function checkIn(circleId: string, kind: CheckinKind): Promise<CircleDetail> {
-  return CircleResponse.parse(await request(`/circles/${circleId}/checkins`, { method: "POST", body: JSON.stringify({ kind }) })).circle;
+  return CircleResponse.parse(await writeOrQueue("POST", `/circles/${circleId}/checkins`, { kind })).circle;
 }
 
 /** Zaki asks a member to check in. Throws HttpError 409 when asked too recently. */
@@ -425,7 +460,9 @@ export async function getCircleTrackers(circleId: string): Promise<SharedTracker
 export const peekCircleTrackers = (circleId: string) => peek(`/circles/${circleId}/trackers`, parseShared);
 
 export async function logTracker(id: string, amount?: number): Promise<Tracker> {
-  return TrackerResponse.parse(await request(`/trackers/${id}/entries`, { method: "POST", body: JSON.stringify(amount === undefined ? {} : { amount }) })).tracker;
+  // Carries the tap's time, so a step that waited offline counts for the day it was logged.
+  const at = new Date().toISOString();
+  return TrackerResponse.parse(await writeOrQueue("POST", `/trackers/${id}/entries`, amount === undefined ? { at } : { amount, at })).tracker;
 }
 
 export async function undoTracker(id: string): Promise<Tracker> {
