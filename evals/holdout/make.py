@@ -6,7 +6,7 @@ APP = {"circles": [{"name": "البيت", "kind": "family", "members": ["منى"
                    {"name": "شلة الجيم", "kind": "friends", "members": ["Hassan", "Karim"]}],
        "sections": [{"name": "أكل", "kind": "expense", "budget": 3000}, {"name": "العربية", "kind": "expense"},
                     {"name": "مواصلات", "kind": "expense"}, {"name": "مرتب", "kind": "income"}],
-       "trackers": [{"kind": "water", "goal": 8}, {"kind": "custom", "name": "القراية", "goal": 20}, {"kind": "steps", "goal": 8000}]}
+       "trackers": [{"kind": "water", "goal": 8}, {"kind": "custom", "name": "القراية", "goal": 20}, {"kind": "custom", "name": "الخطوات", "goal": 8000}]}
 ID = lambda n: f"{n:08x}-0000-4000-8000-000000000000"[:8] + "-0000-4000-8000-" + f"{n:012d}"
 cases = []
 def c(area, cid, msg, script, items=(), actions=None, updates=None, ask=None, mem=None, open_items=(), history=(), now=None, crisis=None):
@@ -112,10 +112,10 @@ c("homework", "redo", "لا خليه يعيده تاني", "arabic", actions=[{"
 c("homework", "redo-fr", "la2 5aleeha t3eedo", "franco", actions=[{"kind": "homework_review", "person_any": ["ليلى"], "answer": "no"}], history=[("assistant", "ليلى سلّمت واجب «العربي صفحة ٢٠» ✅")])
 # ---------- trackers ----------
 c("tracker", "create-water-en", "track my water, goal 10 glasses", "english", actions=[{"kind": "update_tracker", "amount": 10}])
-c("tracker", "create-sleep", "عايز أتابع نومي", "arabic", actions=[{"kind": "create_tracker", "tracker_kind": "sleep"}])
+c("tracker", "create-sleep", "عايز أتابع نومي", "arabic", actions=[{"kind": "create_tracker", "name_any": ["نوم", "النوم"]}])
 c("tracker", "create-custom-fr", "3ayez atabe3 el gym 3 marat fel esbo3", "franco", actions=[{"kind": "create_tracker", "name_any": ["جيم", "gym"]}])
 c("tracker", "log-water", "شربت ٢ كوباية مية", "arabic", actions=[{"kind": "log_tracker", "amount": 2, "name_any": ["water", "مية", "ميه"]}])
-c("tracker", "log-steps-en", "walked 6500 steps today", "english", actions=[{"kind": "log_tracker", "amount": 6500, "name_any": ["steps", "خطوات"]}])
+c("tracker", "log-steps-en", "walked 6500 steps today", "english", actions=[{"kind": "log_tracker", "amount": 6500, "name_any": ["خطوات"]}])
 c("tracker", "log-reading-fr", "2reet 15 saf7a", "franco", actions=[{"kind": "log_tracker", "amount": 15, "name_any": ["قراية"]}])
 c("tracker", "goal", "خلي هدف القراية ٣٠ صفحة", "arabic", actions=[{"kind": "update_tracker", "amount": 30, "name_any": ["قراية"]}])
 c("tracker", "ask-times-en", "ask me about water at 9, 1 and 5", "english", actions=[{"kind": "update_tracker", "ask_times": ["09:00", "13:00", "17:00"]}])
