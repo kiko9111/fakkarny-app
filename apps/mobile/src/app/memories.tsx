@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
+import { useLive } from "@/lib/live";
 import { StyleSheet } from "react-native";
-import { useFocusEffect } from "expo-router";
 import type { Memory } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { deleteMemory, listMemories, peekMemories } from "@/lib/api";
@@ -26,11 +26,7 @@ export default function MemoriesScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useLive(load);
 
   const remove = (m: Memory) =>
     confirm(m.subject, t.memories.remove, () =>

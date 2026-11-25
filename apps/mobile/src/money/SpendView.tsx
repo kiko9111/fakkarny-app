@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLive } from "@/lib/live";
 import { StyleSheet, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import type { MoneyOverview, MoneySection } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
@@ -26,11 +27,12 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
       setOffline(true);
     }
   }, []);
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load, reloadKey]),
-  );
+  useLive(load);
+  // Pull-to-refresh on the Daftar tab bumps reloadKey.
+  const firstKey = useRef(reloadKey);
+  useEffect(() => {
+    if (reloadKey !== firstKey.current) void load();
+  }, [reloadKey, load]);
 
   if (!data) return offline ? <Note icon="cloud-offline-outline">{t.book.offline}</Note> : null;
   const { own, shared } = groupSections(data.sections);

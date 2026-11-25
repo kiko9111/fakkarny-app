@@ -65,21 +65,21 @@ function DownloadRow({ model }: { model: PhoneModel | VoiceModel }) {
   }
   return (
     <View style={styles.row}>
-      {st.status === "failed" ? (
-        <Text variant="small" color={palette.danger} style={styles.flex}>
-          {t.brain.failed}
+      {st.status === "paused" ? (
+        <Text variant="small" color={palette.inkSoft} style={styles.flex}>
+          {fill(t.brain.paused, { pct: Math.round(st.fraction * 100) })}
         </Text>
       ) : (
         <View style={styles.flex} />
       )}
       <Button
-        label={fill(t.brain.download, { size: sizeLabel(model.bytes) })}
+        label={st.status === "paused" ? t.brain.resume : fill(t.brain.download, { size: sizeLabel(model.bytes) })}
         size="sm"
         kind="tonal"
         icon="cloud-download-outline"
         onPress={() =>
           void onWifiOrAsk(model.bytes, () => {
-            startDownload(model.id, model.url)
+            startDownload(model.id, model.url, model.bytes)
               .then(() => warmBrain())
               .catch(() => {});
           })

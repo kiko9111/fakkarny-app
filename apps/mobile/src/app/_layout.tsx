@@ -10,6 +10,7 @@ import { routePattern } from "@/lib/analytics-queue";
 import { isDemo } from "@/lib/demo";
 import { initSentry } from "@/lib/sentry";
 import { startSync } from "@/sync";
+import { startUpdates } from "@/lib/updates";
 import { Backdrop, FeedbackHost, fonts, GlassHeader, glassBar, palette, Text, withGround } from "@/ui";
 import { appFonts } from "@/ui/fonts";
 
@@ -32,6 +33,7 @@ export default function RootLayout() {
   const [fontsReady, fontError] = useFonts(appFonts);
   useEffect(() => {
     startSync();
+    if (Platform.OS !== "web" && !isDemo) startUpdates();
   }, []);
   // Analytics: which screens people use (the route pattern only, never ids or content).
   const pathname = usePathname();

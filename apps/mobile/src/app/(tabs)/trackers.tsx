@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { router, useFocusEffect } from "expo-router";
+import { useLive } from "@/lib/live";
+import { router } from "expo-router";
 import type { Tracker } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { failText } from "@/lib/errors";
@@ -30,11 +31,7 @@ export default function TrackersScreen() {
       setState((s) => (s === "ready" ? s : "offline"));
     }
   }, []);
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useLive(load);
 
   const replace = (next: Tracker) => setTrackers((all) => all.map((x) => (x.id === next.id ? next : x)));
   const own = trackers.filter((x) => !x.pack).length;

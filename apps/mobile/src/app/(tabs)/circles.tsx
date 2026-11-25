@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import { useLive } from "@/lib/live";
 import { StyleSheet, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import type { Circle } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
@@ -24,11 +25,7 @@ export default function CirclesScreen() {
   }, []);
 
   // Reload whenever the tab comes back into view (after creating, joining or leaving).
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useLive(load);
 
   const row = (c: Circle) => (
     <ListRow

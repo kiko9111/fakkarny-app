@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import { useLive } from "@/lib/live";
 import { ActivityIndicator, Linking, Pressable, Share, StyleSheet, View } from "react-native";
-import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { SplitResponse } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
@@ -27,7 +28,7 @@ export default function SplitScreen() {
       })
       .catch(() => setFailed(true));
   }, [id]);
-  useFocusEffect(load);
+  useLive(load);
 
   if (!data) return <View style={styles.center}>{failed ? <EmptyState title={t.split.offline} /> : <ActivityIndicator color={palette.primary} />}</View>;
   const { split, share_text } = data;

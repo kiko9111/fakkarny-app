@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import { useLive } from "@/lib/live";
 import { StyleSheet, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { daftarTotals, type DaftarEntry, type Item } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { DaftarCard } from "@/daftar/DaftarCard";
@@ -35,11 +36,7 @@ export default function MoneyScreen() {
       setOffline(failText(err, t.daftar.offline));
     }
   }, []);
-  useFocusEffect(
-    useCallback(() => {
-      void loadShared();
-    }, [loadShared]),
-  );
+  useLive(loadShared);
 
   const share = (i: Item) =>
     router.push({ pathname: "/daftar/new", params: { name: i.debt_person ?? "", amount: String(i.debt_amount ?? ""), direction: i.debt_direction ?? "owed_to_me", itemId: i.id } });

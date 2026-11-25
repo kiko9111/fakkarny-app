@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useFocusEffect } from "expo-router";
+import { useLive } from "@/lib/live";
 import type { CircleTask } from "@fakkarni/shared";
 import { PlanRow } from "@/components/PlanRow";
 import { listUpcoming } from "@/db/items";
@@ -21,7 +21,7 @@ export default function UpcomingScreen() {
       .then((all) => setAsked(all.filter((task) => task.status === "pending" && task.role === "assignee")))
       .catch(() => {});
   }, []);
-  useFocusEffect(loadAsked);
+  useLive(loadAsked);
   const reload = () => {
     loadAsked();
     void refresh();

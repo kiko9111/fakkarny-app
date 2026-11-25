@@ -7,6 +7,7 @@ import { actOnChatAction } from "@/lib/api";
 import { featureOfRoute } from "@/lib/unlock";
 import { unlock } from "@/lib/unlock-store";
 import { messagesChanged } from "@/sync";
+import { dataChanged } from "@/lib/live";
 import { t } from "@/i18n";
 import { notify } from "@/ui/feedback";
 import { Button, Icon, palette, radius, space, Text, type IconName } from "@/ui";
@@ -48,6 +49,7 @@ export const ActionCards = memo(function ActionCards({ serverId, actions }: { se
       const updated = await actOnChatAction(serverId, card.id, confirm);
       await setActions(serverId, updated.actions);
       messagesChanged.emit();
+      dataChanged.emit();
     } catch {
       notify(t.chat.actionOffline, "error");
     } finally {

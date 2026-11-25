@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
+import { useLive } from "@/lib/live";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { SectionDetail } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { formatMoney, parseAmount } from "@/daftar/logic";
@@ -31,11 +32,7 @@ export default function SectionScreen() {
       setFailed(true);
     }
   }, [id]);
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useLive(load);
 
   const amount = parseAmount(amountText);
   const add = async () => {
