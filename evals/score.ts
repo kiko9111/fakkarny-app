@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { FriendResponse as FullResponse } from "@fakkarni/shared";
 /** What the model returns; app_actions may be missing (older fakes, tests). */
-type FriendResponse = Omit<FullResponse, "app_actions"> & { app_actions?: FullResponse["app_actions"] };
+type FriendResponse = Omit<FullResponse, "app_actions"> & { app_actions?: FullResponse["app_actions"]; ask?: string | null };
 
 /** One eval case (one line of evals/cases/*.jsonl). */
 const ItemType = z.enum(["task", "reminder", "note", "list_item", "debt"]);
@@ -58,8 +58,13 @@ export const CaseApp = z.object({
   trackers: z.array(z.object({ kind: z.string(), name: z.string().optional(), goal: z.number().optional() })).default([]),
 });
 
+/** A question Zaki must ask instead of acting, because something is missing (or it must confirm a delete). */
+export const AskSlot = z.enum(["time", "amount", "person", "confirm", "what"]);
+
 export const EvalCase = z.object({
   id: z.string(),
+  /** The part of the app this case tests (per-area miss rates). Derived from the id when absent. */
+  area: z.string().optional(),
   tz: z.string().default("Africa/Cairo"),
   /** Local "now" in tz. Default: Thursday 2026-11-19 10:00. */
   now: LocalMinute.default("2026-11-19T10:00"),
@@ -81,6 +86,8 @@ export const EvalCase = z.object({
   app: CaseApp.optional(),
   message: z.string(),
   expect: z.object({
+    /** Zaki must ask this (and not act yet). Absent = it must not ask a follow-up question. */
+    ask: AskSlot.optional(),
     /** Expected app_actions. Absent = the model must not act in the app for this message. */
     actions: z.array(ExpectedAction).optional(),
     /** How the USER writes. The friend answers arabic and franco in Arabic letters, english in English. */
@@ -194,6 +201,9 @@ export function scoreCase(c: EvalCase, out: FriendResponse): CaseScore {
     else gotActions.splice(i, 1);
   }
   if (gotActions.length) problems.push(`extra app actions ${JSON.stringify(gotActions)}`);
+
+  if (c.expect.ask && out.ask !== c.expect.ask) problems.push(`should ask for ${c.expect.ask}${out.ask ? `, asked for ${out.ask}` : ""}`);
+  if (!c.expect.ask && out.ask) problems.push(`asked for ${out.ask} instead of acting`);
 
   const wantCrisis = c.expect.crisis ?? false;
   if (out.crisis !== wantCrisis) problems.push(`crisis ${out.crisis} ≠ ${wantCrisis}`);
