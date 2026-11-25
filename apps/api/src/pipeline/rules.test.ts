@@ -31,6 +31,14 @@ describe("detectScript", () => {
     ["upload the mp3 to s3 for me", "english"],
     ["pick up the kids at 3:30 today", "english"],
     ["hey! how are you?", "english"],
+    // Answered in English before (QA run, 2026-11-25).
+    ["olghy dein abdelkareem", "franco"],
+    ["la2", "franco"],
+    ["salaft ahmed 300", "franco"],
+    ["shrebt maya", "franco"],
+    ["sgl 250 akl", "franco"],
+    ["2ol l shelet el gym eny wselt", "franco"],
+    ["the men are here", "english"],
   ])("%s → %s", (text, script) => expect(detectScript(text)).toBe(script));
 });
 

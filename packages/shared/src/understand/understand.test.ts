@@ -63,6 +63,23 @@ describe("understand", () => {
     const openItems = [{ id: "d", type: "debt" as const, title: "سامي عليه ٢٠٠", debt_person: "سامي", debt_amount: 200, debt_direction: "owed_to_me" as const }];
     expect(u("sami raga3ly el felous", { app, openItems }).update_items).toEqual([{ id: "d", status: "done" }]);
   });
+  it("answers Zaki's questions however the phone model worded them (QA run)", () => {
+    const openItems = [
+      { id: "a", type: "reminder" as const, title: "a5od الدوا", due_local: "2026-11-20T16:45" },
+      { id: "b", type: "task" as const, title: "اكلم السباك" },
+    ];
+    // Cancel asked first; the model said "تمام، قولّي بس التفاصيل؟" instead of "ألغي «…»؟".
+    const yes = u("ايوه", { openItems, history: [{ role: "user", text: "الغي ميعاد الدوا" }, { role: "assistant", text: "تمام، قولّي بس التفاصيل؟" }] });
+    expect(yes.update_items).toEqual([{ id: "a", status: "cancelled" }]);
+    // A task request, in the app's own wording.
+    const ok = u("ماشي هجيبه", { history: [{ role: "assistant", text: "طلب من Mona في «البيت»: تجيب عيش. براحتك 🌟" }] });
+    expect(ok.app_actions).toEqual([{ kind: "task_answer", person: "Mona", answer: "yes" }]);
+  });
+  it("names a circle without the ل of \"for\"", () => {
+    const name = (t: string) => (u(t).app_actions[0] as { name?: string } | undefined)?.name;
+    expect(name("اعمل دايرة للعيلة")).toBe("العيلة");
+    expect(name("اعمل جروب لشلة الكورة")).toBe("شلة الكورة");
+  });
   it("flags crisis and does nothing else", () => {
     expect(u("مبقتش عايز أعيش")).toMatchObject({ crisis: true, create_items: [] });
   });

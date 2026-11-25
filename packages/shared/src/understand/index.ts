@@ -456,8 +456,9 @@ function answerToLastTurn(input: UnderstandInput, text: string, lastAssistant: s
   const open = input.openItems ?? [];
 
   // A task someone asked of the user: "منى طلبت منك: «تجيب العيش»" → yes / no.
-  const asked = /^(.+?)\s+(?:طلب|طلبت|asked you|asked)(?![\p{L}])/u.exec(lastAssistant);
-  if (asked && /«/.test(lastAssistant) && (isYes || isNo || has(t, "هجيبه|هجيبها|هعمله|هعملها|حاضر|on it"))) {
+  // The app's own line is "طلب من منى في «البيت»: …" / "Mona is asking you for something in «…»".
+  const asked = /^(?:طلب من|request from)\s+(.+?)\s+(?:في|in)\s+«/u.exec(lastAssistant) ?? /^(.+?)\s+(?:طلب|طلبت|asked you|asked|is asking you)(?![\p{L}])/u.exec(lastAssistant);
+  if (asked && /«/.test(lastAssistant) && (isYes || isNo || has(t, "هجيبه|هجيبها|هعمله|هعملها|حاضر|on it|hagebo|hagebha|ha3melo|ha3melha|7ader|i'll do it|will do"))) {
     out.app_actions.push({ kind: "task_answer", person: asked[1]!.trim(), answer: isNo ? "no" : "yes" });
     return true;
   }
@@ -474,6 +475,15 @@ function answerToLastTurn(input: UnderstandInput, text: string, lastAssistant: s
   // "ألغي «فرح»؟" → yes cancels it.
   if (isYes && /(الغي|ألغي|cancel|امسح|delete)/i.test(lastAssistant) && /[؟?]/.test(lastAssistant)) {
     const item = bestItem(open, lastAssistant) ?? (open.length === 1 ? open[0] : undefined);
+    if (item) {
+      out.update_items.push({ id: item.id, status: "cancelled" });
+      return true;
+    }
+  }
+  // The same, when the small model worded its question its own way ("أكيد؟", "sure?"): the user's
+  // last message asked to cancel a known item, so a plain yes confirms it.
+  if (isYes && lastUser && /[؟?]/.test(lastAssistant) && has(tokenize(lastUser), CANCEL)) {
+    const item = bestItem(open, lastUser);
     if (item) {
       out.update_items.push({ id: item.id, status: "cancelled" });
       return true;
@@ -670,10 +680,17 @@ function handleClause(text: string, input: UnderstandInput, out: Understood, cha
     const m = R(`(?:${circleWord})\\s+(?:جديده\\s+|new\\s+)?(?:for|ل|لل|lel|le|l|li)?\\s*(.+)$`).exec(t.text);
     let name = m ? m[1]! : "";
     if (m) {
-      const startTok = t.starts.findIndex((s) => s >= m.index + m[0].length - m[1]!.length);
-      name = t.orig.slice(startTok).join(" ");
+      // The name may start inside a token ("لشلة الكورة": ل then the name): cut that token there.
+      const p = m.index + m[0].length - m[1]!.length;
+      let tok = t.starts.length - 1;
+      while (tok > 0 && t.starts[tok]! > p) tok--;
+      const cut = p - t.starts[tok]!;
+      let first = cut > 0 && t.orig[tok]!.length === t.f[tok]!.length ? t.orig[tok]!.slice(cut) : t.orig[tok]!;
+      if (cut > 0 && cut <= 2 && t.orig[tok]!.startsWith("لل")) first = `ال${t.orig[tok]!.slice(2)}`;
+      name = [first, ...t.orig.slice(tok + 1)].join(" ").replace(/^(اسمها|اسمه|called|named|esmaha|esmo|esmha)\s+/i, "");
     }
-    name = name.replace(/^(for|my|the|ل|لل|lel|le|l)\s+/i, "").replace(/^ل(?=\p{L}{3,})/u, "").replace(/^(my|the)\s+/i, "");
+    // "للعيلة" is ل + العيلة: keep the article ("العيلة", not "لعيلة").
+    name = name.replace(/^(for|my|the|ل|لل|lel|le|l)\s+/i, "").replace(/^لل(?=\p{L}{2,})/u, "ال").replace(/^ل(?!ل)(?=\p{L}{3,})/u, "").replace(/^(my|the)\s+/i, "");
     if (script === "franco") name = name.split(/\s+/).map((w) => FRANCO_WORDS[w.replace(/^(el|l|lel)/, "")] ?? FRANCO_WORDS[w] ?? w).join(" ");
     if (!name.trim()) {
       out.ask = "what";
@@ -1017,7 +1034,7 @@ function trackerOf(input: UnderstandInput, t: Toks): { kind: string; name: strin
       }
     }
   }
-  for (const tw of TRACKER_WORDS) if (has(t, tw.words)) {
+  for (const tw of TRACKER_WORDS) if (hasP(t, tw.words)) {
     const tr = trackers.find((x) => x.kind === tw.kind);
     if (tr) return { kind: tr.kind, name: tr.name ?? tw.ar };
   }
@@ -1080,7 +1097,7 @@ function trackerIntent(t: Toks, text: string, input: UnderstandInput, script: Sc
         return true;
       }
     }
-    const known = TRACKER_WORDS.find((x) => has(t, x.words));
+    const known = TRACKER_WORDS.find((x) => hasP(t, x.words));
     let goal: number | undefined;
     const half = has(t, "نص ساعه|nos sa3a|half an hour");
     if (half) goal = 30;

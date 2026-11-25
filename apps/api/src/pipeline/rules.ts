@@ -21,6 +21,12 @@ const FRANCO_WORDS = new Set([
   "fakkarny", "fakarni", "akalem", "bas", "bass", "awi", "awy", "gedan", "kwayes", "kowayes", "tab", "tayeb", "delwa2ty", "shokran",
   "ma3lesh", "5alas", "khalas", "mafeesh", "mafish", "feen", "fein", "emta", "leeh", "3ashan", "bta3", "bta3ty", "bta3y", "elly",
   "habibi", "sa7by", "mama", "baba", "ya", "yom", "sa3a", "gai", "gaya", "ray7", "ray7a", "kaman", "tany", "tani", "kol", "7aga",
+  // Seen answered in English in the QA run (2026-11-25): verbs and words of everyday requests.
+  "la2", "laa2", "olghy", "olghi", "elghy", "dein", "deen", "salaft", "sallaft", "sraft", "saraft", "shrebt", "sharabt", "gebt", "edeet",
+  "adeet", "felous", "felouso", "felousha", "flos", "fulus", "fakrny", "fkrny", "sa7eeny", "sa7eny", "e3mel", "e3mely", "2ol", "2oly",
+  "5aly", "5ali", "sagel", "sagely", "dafa3t", "msh", "mashy", "mashi", "akeed", "7ader", "lessa", "ba2a", "3ayez", "3ayza", "me7tag",
+  "sgl", "akl", "ektebly", "ektebli", "kalemny", "kalemni", "klmny", "wselt", "weselt", "eny", "enny", "mrati", "merati", "meraty",
+  "esmaha", "esmo", "shelet", "shela", "eb2a", "e3mly", "enak", "enek", "hena", "henak", "felbeit", "elbeit", "beit", "beet",
 ]);
 // Too common in English to count for much on their own.
 const WEAK_FRANCO_WORDS = new Set(["el", "w", "fe", "fi", "da", "di", "ma3", "men", "law", "wala", "aw", "abl", "ba3d", "kan", "la"]);

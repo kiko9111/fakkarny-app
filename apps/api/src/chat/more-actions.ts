@@ -585,3 +585,21 @@ export async function runMorePending(prisma: PrismaClient, user: User, c: Stored
       return null;
   }
 }
+
+/**
+ * A private debt item the user just closed in chat ("حسن رجعلي الفلوس") that also sits in the
+ * shared Daftar with that person: offer to settle the shared entry too (a waiting card, since the
+ * other person is told). Nothing when there is no single matching open entry.
+ */
+export async function settleCards(prisma: PrismaClient, user: User, debts: { person: string; amount: number | null }[], lang: ReplyLang, now: Date): Promise<StoredCard[]> {
+  const out: StoredCard[] = [];
+  const ctx = { prisma, user, lang, now, data: { circles: [] }, requireSubscription: false } as unknown as Ctx;
+  for (const d of debts.slice(0, 2)) {
+    const a = { kind: "daftar_settle", person: d.person } as AppAction;
+    const e = (d.amount ? await findEntry(ctx, { ...a, amount: d.amount } as AppAction) : null) ?? (await findEntry(ctx, a));
+    if (!e || !canSettle(e.status)) continue;
+    const name = e.creatorId === user.id ? e.other?.name ?? e.otherName : e.creator.name ?? "?";
+    out.push(card(lang, "daftar_settle", "pending", LABEL.daftarSettleAsk(lang, name, Number(e.amount)), `/daftar/${e.code}`, { kind: "daftar_settle", entryId: e.id }));
+  }
+  return out;
+}

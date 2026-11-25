@@ -83,7 +83,7 @@ export const FRANCO_WORDS: Record<string, string> = {
   gebna: "جبنة", laban: "لبن", akalem: "أكلم", akalm: "أكلم", aklem: "أكلم", adfa3: "أدفع", ashrab: "أشرب", a2fel: "أقفل",
   agaded: "أجدد", a7gez: "أحجز", ab3at: "أبعت", ageb: "أجيب", ageblaha: "أجيبلها", agebloh: "أجيبله", ageblo: "أجيبله", ma3: "مع",
   kashf: "الكشف", dars: "درس", training: "تمرين", "3agala": "العجلة", mashy: "المشي", "mashi": "المشي", nom: "النوم", "2oran": "القرآن",
-  quran: "القرآن", akl: "أكل", benzeen: "بنزين", madares: "مدارس", "3eela": "العيلة", "3ela": "العيلة", beit: "البيت", bet: "البيت",
+  quran: "القرآن", akl: "أكل", benzeen: "بنزين", madares: "مدارس", "3eela": "العيلة", "3ela": "العيلة", "3eila": "العيلة", "3eyla": "العيلة", "3ayla": "العيلة", beit: "البيت", bet: "البيت",
   shoghl: "الشغل", "sho8l": "الشغل", ahwa: "قهوة", "2ahwa": "قهوة", "3omra": "عمرة", hagz: "حجز", "3ezooma": "عزومة", fara7: "فرح",
   khaled: "خالد", "5aled": "خالد", mona: "منى", laila: "ليلى", layla: "ليلى", leila: "ليلى", hassan: "حسن", "7assan": "حسن", karim: "كريم",
   kareem: "كريم", ahmed: "أحمد", a7med: "أحمد", mohamed: "محمد", mhmd: "محمد", mo7amed: "محمد", ma7moud: "محمود", mahmoud: "محمود",
