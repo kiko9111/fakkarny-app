@@ -24,6 +24,8 @@ function item(over: Partial<Item> & { id: string }): Item {
     debt_direction: null,
     follow_up_at: null,
     repeat_every_minutes: null,
+    place: null,
+    place_on: null,
     source_message_id: null,
     updated_at: iso(0),
     created_at: iso(0),

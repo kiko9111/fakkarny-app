@@ -105,6 +105,15 @@ export function describeApp(app: AppData | undefined, userId: string, tz = "Afri
         : "none yet"
     }`,
   );
+  if (app.lists) {
+    lines.push(
+      `- HOUSEHOLD LISTS: ${
+        app.lists.length
+          ? app.lists.map((l) => `«${l.name}» (${l.place}${l.circle ? `, shared with «${l.circle.name}»` : ", private"}; ${l.items.length ? `open: ${l.items.map((i) => i.title).join(", ")}` : "empty"})`).join(" · ")
+          : "none yet (things to buy go on a new household grocery list)"
+      }`,
+    );
+  }
   if (app.numbers) lines.push(...describeNumbers(app, userId, tz));
   return lines;
 }
@@ -174,6 +183,7 @@ function describeItem(i: Item, tz: string): string {
   if (i.remindAt) bits.push(`remind ${local(i.remindAt, tz)}`);
   if (i.repeatEveryMinutes) bits.push(`repeats every ${i.repeatEveryMinutes} min`);
   if (i.important) bits.push("important");
+  if (i.place) bits.push(`${i.placeOn === "leave" ? "on leaving" : "at"} place ${JSON.stringify(i.place)}`);
   if (i.type === "debt" && i.debtPerson) {
     bits.push(`${i.debtDirection === "i_owe" ? "user owes" : "owes user"}: ${i.debtPerson} ${i.debtAmount?.toString() ?? "?"}`);
   }

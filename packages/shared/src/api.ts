@@ -103,6 +103,9 @@ export const PatchItemRequest = z
     remind_at: z.iso.datetime({ offset: true }).nullable().optional(),
     /** Ring as an alarm (the phone's "alarms" channel). Set from the Saved screen. */
     alarm: z.boolean().optional(),
+    /** Fire at a place (its words); null takes the place off. */
+    place: z.string().trim().min(1).max(60).nullable().optional(),
+    place_on: z.enum(["arrive", "leave"]).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type PatchItemRequest = z.infer<typeof PatchItemRequest>;
@@ -176,5 +179,7 @@ export const ExportResponse = z.object({
   photos: z.array(z.object({ task: z.string().nullable(), mime: z.string(), data: z.string(), created_at: z.string() })).default([]),
   /** Pocket-money records the user is part of, as child or parent (homework rewards and what was handed over). */
   pocket_money: z.array(z.object({ role: z.enum(["child", "parent"]), kind: z.string(), amount: z.number(), title: z.string().nullable(), at: z.string() })).default([]),
+  /** Household list things the user added or ticked off, with their list's name. */
+  list_items: z.array(z.object({ list: z.string(), title: z.string(), qty: z.string().nullable(), added: z.boolean(), done_at: z.string().nullable(), created_at: z.string() })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

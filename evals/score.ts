@@ -19,6 +19,11 @@ export const ExpectedItem = z.object({
   alarm: z.boolean().optional(),
   /** Minutes between occurrences of a repeating reminder. */
   repeat: z.number().optional(),
+  /** A place reminder: any of these in the place words, and arriving or leaving. */
+  place_any: z.array(z.string()).optional(),
+  place_on: z.enum(["arrive", "leave"]).optional(),
+  /** True when the item must have no time (a place reminder the user gave no time for). */
+  no_time: z.boolean().optional(),
   /** True when the item must carry a follow-up time ("how did it go?"). */
   follow_up: z.boolean().optional(),
   debt: z
@@ -124,6 +129,9 @@ function matchItem(exp: z.infer<typeof ExpectedItem>, got: FriendResponse["creat
   if (exp.alarm !== undefined && Boolean(got.alarm) !== exp.alarm) return false;
   if (exp.repeat !== undefined && got.repeat_every_minutes !== exp.repeat) return false;
   if (exp.follow_up && !got.follow_up_at_local) return false;
+  if (exp.place_any && !(got.place && anyIn(got.place, exp.place_any))) return false;
+  if (exp.place_on && (got.place_on ?? (got.place ? "arrive" : undefined)) !== exp.place_on) return false;
+  if (exp.no_time && (got.due_at_local || got.remind_at_local)) return false;
   if (exp.debt) {
     if (!got.debt) return false;
     if (!anyIn(`${got.debt.person} ${got.title}`, exp.debt.person_any)) return false;

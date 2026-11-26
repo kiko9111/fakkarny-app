@@ -24,6 +24,8 @@ import { helplineMessage, looksDistressed, looksLikeCrisis, promisesReminder } f
 import { localToUtc } from "../apps/api/src/lib/time";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
+import { withPlace } from "../apps/api/src/pipeline/place";
+import { parsePlaceTrigger } from "@fakkarni/shared";
 import { understand, type Understood } from "../packages/shared/src/understand";
 import { CLARIFY_VERSION, clarifyMessages, cleanRewrite, pickUnderstood } from "../packages/shared/src/understand/clarify";
 import type { AppData } from "../apps/api/src/chat/actions";
@@ -136,7 +138,10 @@ async function main() {
       const score: CaseScore = { id: c.id, extraction: false, style: false, problems: [`no output (${res.reason})`] };
       return { c, score, reply: [] as string[], output: null };
     }
-    return { c, score: scoreCase(c, res.output), reply: res.output.reply, output: res.output };
+    // The pipeline puts the place on a place reminder in code (pipeline/place.ts): score what the user gets.
+    const trigger = parsePlaceTrigger(c.message);
+    const output = trigger && !res.output.crisis ? withPlace(res.output, trigger, c.message) : res.output;
+    return { c, score: scoreCase(c, output), reply: output.reply, output };
   });
 
   const n = results.length;

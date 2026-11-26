@@ -15,6 +15,7 @@ import { summarizeIfNeeded } from "./summarize";
 import { inBackground } from "../lib/background";
 import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
+import { addToList, listFastPath } from "../lists/chat";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
@@ -22,6 +23,8 @@ import { settleCards } from "../chat/more-actions";
 import { CANCELLED_REPLY, CONFIRMED_REPLY, HOME_REPLY, homeCheckin, isCancel, isConfirm, isUndo, LABEL, storedCards, type StoredCard } from "../chat/cards";
 import { UNDO_WINDOW_MS, undoCard } from "../chat/undo";
 import type { Message } from "../generated/prisma/client";
+import { parsePlaceTrigger } from "@fakkarni/shared";
+import { withPlace } from "./place";
 
 const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "save_memories"> & { app_actions?: FriendResponse["app_actions"] } = {
   create_items: [],
@@ -143,6 +146,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       counted(prisma, user.id, "reply_fast_path", { money: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now }), money.cards ?? []);
       return { ...result, notices: [...(result.notices ?? []), ...money.notices.filter((n) => n.userId !== user.id)] };
+    }
+
+    // 1a''. Household lists by rules: "ضيف بيض للقايمة", "القايمة فيها ايه", "نازل السوبر ماركت". No AI call.
+    const listed = crisisKeyword ? null : await listFastPath(prisma, user, message.text, script, now).catch(() => null);
+    if (listed) {
+      counted(prisma, user.id, "reply_fast_path", { list: true });
+      const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [listed.text], response: EMPTY_ACTIONS, now }), listed.cards);
+      return { ...result, notices: [...(result.notices ?? []), ...listed.notices.filter((n) => n.userId !== user.id)] };
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never
@@ -319,6 +330,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       else if (actions.update_items.length) actions = { ...actions, update_items: actions.update_items.map((u) => ({ ...u, alarm })) };
     }
 
+    // 3b'. A place reminder ("when I'm at the supermarket"): the place goes on what the turn
+    // creates. The model is not asked for it (the output schema has no room to spare); code reads it.
+    const trigger = crisis ? null : parsePlaceTrigger(message.text);
+    if (trigger) actions = withPlace(actions, trigger, message.text);
+
     // 3c. Zaki never says a reminder or alarm is set unless this turn set one. A reply that
     // promises one with nothing behind it gets one retry with the mistake spelled out; then an
     // item set in the last two hours counts (the user just confirmed it), else an honest reply.
@@ -342,6 +358,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // 4. Apply actions + store replies, then the app actions (money, trackers, circles) as cards.
     // The cost event is written alongside, not after.
+    // Things to buy go on the household list everyone in the circle sees, not into the user's
+    // own plans (2026-11-26). The model's list items and the rule engine's land there the same way.
+    const listThings = crisis || actions.app_actions?.some((a) => a.kind === "list_add") ? [] : actions.create_items.filter((i) => i.type === "list_item").map((i) => i.title);
+    if (!crisis && actions.create_items.some((i) => i.type === "list_item")) actions = { ...actions, create_items: actions.create_items.filter((i) => i.type !== "list_item") };
     const appActions = crisis ? [] : actions.app_actions ?? [];
     const aiEvent = brain
       ? event(prisma, user.id, "ai_call", {
@@ -388,6 +408,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       applied = await withCards(prisma, applied, ran.cards);
       applied = { ...applied, notices: [...(applied.notices ?? []), ...ran.notices] };
     }
+    if (listThings.length) {
+      const out = await addToList(prisma, user, script, listThings.map((title) => ({ title, qty: null })), null, now).catch(() => null);
+      if (out) applied = { ...(await withCards(prisma, applied, [out.card])), notices: [...(applied.notices ?? []), ...out.notices.filter((n) => n.userId !== user.id)] };
+    }
     // A debt with someone in their circles: offer the shared Daftar too (unless the model already did).
     const debts = crisis ? [] : actions.create_items.flatMap((i) => (i.type === "debt" && i.debt && !appActions.some((a) => a.kind === "daftar_add") ? [i.debt] : []));
     if (debts.length) applied = await withCards(prisma, applied, await debtCards(prisma, user, debts, script).catch(() => []));
@@ -415,8 +439,8 @@ const UNSET_CHECK =
 /** The turn sets a time for something: a timed reminder or task, a moved one, or a tracker with ask times. */
 function setsReminder(a: Pick<FriendResponse, "create_items" | "update_items"> & { app_actions?: FriendResponse["app_actions"] }): boolean {
   return (
-    a.create_items.some((i) => (i.type === "reminder" || i.type === "task") && Boolean(i.remind_at_local || i.due_at_local || i.repeat_every_minutes)) ||
-    a.update_items.some((u) => Boolean(u.remind_at_local || u.due_at_local || u.repeat_every_minutes || u.alarm === true)) ||
+    a.create_items.some((i) => (i.type === "reminder" || i.type === "task") && Boolean(i.remind_at_local || i.due_at_local || i.repeat_every_minutes || i.place)) ||
+    a.update_items.some((u) => Boolean(u.remind_at_local || u.due_at_local || u.repeat_every_minutes || u.alarm === true || u.place)) ||
     (a.app_actions ?? []).some((x) => x.kind === "create_tracker" || x.kind === "update_tracker")
   );
 }

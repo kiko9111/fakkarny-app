@@ -21,6 +21,8 @@ export interface AppData {
   circles: { id: string; name: string; kind: string; createdAt: Date; members: { userId: string; name: string | null }[] }[];
   sections: SectionWithCircle[];
   trackers: (Tracker & { circle: { name: string } | null })[];
+  /** Household lists with their open things (absent in evals and older callers). */
+  lists?: { id: string; name: string; place: string; circle: { name: string } | null; items: { title: string }[] }[];
   /** The numbers (loaded for the model's context; absent in evals and name-only loads). */
   numbers?: AppNumbers;
 }
@@ -85,7 +87,7 @@ export async function loadAppNumbers(prisma: PrismaClient, user: Pick<User, "id"
 }
 
 export async function loadAppData(prisma: PrismaClient, userId: string): Promise<AppData> {
-  const [circles, sections, trackers] = await Promise.all([
+  const [circles, sections, trackers, lists] = await Promise.all([
     prisma.circle.findMany({
       where: { members: { some: { userId } } },
       include: { members: { include: { user: { select: { name: true } } }, orderBy: { joinedAt: "asc" } } },
@@ -94,8 +96,15 @@ export async function loadAppData(prisma: PrismaClient, userId: string): Promise
     }),
     prisma.moneySection.findMany({ where: visibleTo(userId), include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 60 }),
     prisma.tracker.findMany({ where: { userId }, include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 40 }),
+    prisma.houseList.findMany({
+      where: { OR: [{ circleId: null, ownerId: userId }, { circle: { members: { some: { userId } } } }] },
+      select: { id: true, name: true, place: true, circle: { select: { name: true } }, items: { where: { doneAt: null }, select: { title: true }, orderBy: { createdAt: "asc" }, take: 12 } },
+      orderBy: { updatedAt: "desc" },
+      take: 10,
+    }),
   ]);
   return {
+    lists,
     circles: circles.map((c) => ({ id: c.id, name: c.name, kind: c.kind, createdAt: c.createdAt, members: c.members.map((m) => ({ userId: m.userId, name: m.user.name })) })),
     sections,
     trackers,

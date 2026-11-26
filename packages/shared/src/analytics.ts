@@ -33,6 +33,9 @@ export const APP_EVENTS = [
   "homework_plan_sent", // a week's homework from one message: props.count, props.rewards (count)
   "homework_practice_sent", // practice questions sent to the child as homework
   "pocket_paid", // a parent marked pocket money as handed over
+  "list_item_added", // a thing added to a household list from its screen
+  "list_item_done", // a thing ticked off on a household list
+  "list_trip", // "I'm going shopping" tapped
   "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);

@@ -320,6 +320,7 @@ export default function SettingsScreen() {
 
       <Group title={t.ui.yourData}>
         <LinkRow first icon="bulb-outline" label={t.settings.memories} onPress={() => router.push("/memories")} />
+        <LinkRow icon="location-outline" label={t.places.row} onPress={() => router.push("/places")} />
         <LinkRow icon="download-outline" label={t.settings.export} onPress={() => void doExport()} />
         <LinkRow icon="trash-outline" label={t.settings.delete} danger onPress={doDelete} />
       </Group>

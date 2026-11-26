@@ -16,6 +16,7 @@ import { trackerLabel } from "../trackers/labels";
 import { newInviteCode } from "../circles/rules";
 import { card, findTracker, kindOf, pickCircle, type Ctx, type One } from "./actions";
 import { foldName, LABEL, matchByName, type PendingPayload, type StoredCard } from "./cards";
+import { confirmTrip, runListAction } from "../lists/chat";
 
 /**
  * The app actions added on 2026-11-23 ("Zaki can do everything in the app from the chat"):
@@ -266,6 +267,10 @@ export async function runMore(ctx: Ctx, a: AppAction): Promise<One> {
     }
 
     // ---------------------------------------------------------------- memories, settings, places
+    case "list_add":
+    case "list_done":
+    case "list_trip":
+      return runListAction(ctx, a);
     case "forget":
       return forget(ctx, a);
     case "settings":
@@ -293,6 +298,7 @@ const SCREENS: Record<NonNullable<AppAction["screen"]>, [string, Record<ReplyLan
   paywall: ["/paywall", { arabic: "زكي برو", english: "Zaki Pro" }],
   split: ["/split/new", { arabic: "تقسيم الحساب", english: "Split the bill" }],
   session: ["/session", { arabic: "مساحة تفكير", english: "a space to reflect" }],
+  lists: ["/list", { arabic: "قوايم البيت", english: "your lists" }],
 };
 
 function checkinWords(lang: ReplyLang, kind: CheckinKind, note: string | null): string {
@@ -608,6 +614,8 @@ export async function runMorePending(prisma: PrismaClient, user: User, c: Stored
       await removeMember(prisma, p.circleId, user.id, now);
       return done(LABEL.left(lang, circle.name), "/circles");
     }
+    case "list_trip":
+      return confirmTrip(prisma, user, c, p.listId, now);
     case "iftar": {
       const made = await inviteToIftar(prisma, p.circleId, user, p.on, p.note, now);
       if (!made) return fail(LABEL.notFound(lang, "circle"));

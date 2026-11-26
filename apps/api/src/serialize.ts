@@ -52,6 +52,8 @@ export function toWireItem(i: Item): WireItem {
     follow_up_at: isoOrNull(i.followUpAt),
     repeat_every_minutes: i.repeatEveryMinutes,
     alarm: i.alarm,
+    place: i.place,
+    place_on: i.placeOn === "leave" ? "leave" : i.placeOn === "arrive" ? "arrive" : null,
     source_message_id: i.sourceMessageId,
     updated_at: iso(i.updatedAt),
     created_at: iso(i.createdAt),

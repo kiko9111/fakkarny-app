@@ -114,6 +114,7 @@ const privacyEn: LegalPage = {
         "- Share pictures: when you tap share, we draw a picture with your streak number or the split's title and total, and your invite link. Anyone with its link can open it.",
         "- Contacts: only if you tap \"Pick from contacts\". Your phone asks for permission then, and Zaki reads only the name of the one contact you pick, to fill in the field. Your contact list is never uploaded.",
         "- Requests in circles: the task you ask a circle member to do, its date, and their answer. Only the two of you see a request until it is accepted; after that the circle sees it, and Zaki posts a short line there under its own name.",
+        "- Household lists: the lists you make or are in (name, kind of shop), the things on them, who added and who ticked off each one, and when someone says they are going shopping. A circle's list is seen by everyone in that circle; a private list only by you. Ticked things stay visible for a day.",
         "- Trackers: what you choose to follow (water, prayers, spending and so on, or anything you name), each entry, whether you tap it or tell Zaki in chat, and the times you pick for Zaki to ask about it. Only you see your trackers, unless you share one with a circle: then its members see its name, today's progress and your streak. Money trackers are never shared.",
         "- Spending and income: the sections you create, their monthly budgets, and each amount and note you add, in the app or by telling Zaki in chat. Only you see your own sections. A section you share with a circle is a shared book: its members see every amount, note and who added it, and who owes whom. Zaki only keeps the record: it never holds or moves money.",
         "- Circle feed: your reactions and the short comments you write on what happens in a circle, and what you ask Zaki there. The members of that circle see them. When you ask Zaki to remind everyone, your words go to each member's chat.",
@@ -125,7 +126,7 @@ const privacyEn: LegalPage = {
         "- Subscription status from Apple or Google. We never see your card details.",
         "- Technical records: error reports and counts of events such as replies and their cost, which screens you open and which buttons you tap, and what kind of thing a chat message did (for example \"a reminder was saved\"). These never contain the text of your messages, names or amounts.",
         "- Invite links: your personal invite link shows your first name to whoever opens it. When a friend joins through it, we record that you invited them.",
-        "The app takes text, plus photos only for receipts and homework as described above. It never uses your microphone or location, and it opens the camera, your photos or your contacts only when you tap to use them.",
+        "The app takes text, plus photos only for receipts and homework as described above. Voice typing turns your voice into words on your phone: the audio is never saved or sent. If you save places for place reminders (\"remind me when I'm at the supermarket\"), your phone uses its location to notice when you arrive at or leave one of them, also while the app is closed if you allow it. Your saved places and your location stay on your phone and are never sent to us or to anyone; only the words of the reminder (for example \"the supermarket\") are stored with it, and an \"arrived\" check-in goes to your circle only when you tap it. The app opens the camera, your photos or your contacts only when you tap to use them.",
       ],
     },
     {
@@ -273,6 +274,7 @@ const privacyAr: LegalPage = {
         "- صور المشاركة: لما تدوس شارك، بنعمل صورة فيها عدد أيامك ورا بعض أو اسم الحساب وإجماليه، ولينك الدعوة بتاعك. أي حد معاه لينكها يقدر يفتحها.",
         "- الأسماء اللي على موبايلك: بس لو دوست «اختار من الأسماء». ساعتها موبايلك بيطلب الإذن، وزكي بياخد اسم الشخص اللي اخترته بس عشان يكتبه في الخانة. قايمة الأسماء بتاعتك عمرها ما بتترفع.",
         "- الطلبات في الدواير: الحاجة اللي بتطلبها من حد في الدايرة، وميعادها، ورده. الطلب بيفضل بينكم انتو الاتنين لحد ما يتوافق عليه؛ بعدها الدايرة بتشوفه، وزكي بيكتب سطر قصير هناك باسمه.",
+        "- قوايم البيت: القوايم اللي بتعملها أو موجود فيها (الاسم ونوع المحل)، والحاجات اللي عليها، ومين ضاف ومين شطب كل حاجة، ولما حد يقول إنه نازل يشتري. قايمة الدايرة بيشوفها كل اللي في الدايرة، والقايمة الخاصة إنت بس. الحاجات المشطوبة بتفضل باينة يوم واحد.",
         "- المتابعة: الحاجات اللي بتختار تتابعها (المية، الصلاة، المصاريف وغيرها، أو أي حاجة تسمّيها) وكل تسجيل فيها، سواء بدوسة أو لما تقول لزكي في الدردشة، والمواعيد اللي بتختارها عشان زكي يسألك. إنت بس اللي بتشوف متابعاتك، إلا لو شاركت واحدة مع دايرة: ساعتها أفرادها بيشوفوا اسمها وتقدّم النهارده والأيام ورا بعض. متابعات الفلوس عمرها ما بتتشارك.",
         "- المصاريف والدخل: الأقسام اللي بتعملها، وميزانية كل شهر، وكل مبلغ وملاحظة بتضيفها، من التطبيق أو لما تقول لزكي في الدردشة. إنت بس اللي بتشوف أقسامك. القسم اللي بتشاركه مع دايرة بيبقى دفتر مشترك: أفرادها بيشوفوا كل مبلغ وملاحظة ومين ضافها ومين على مين. زكي بيسجّل بس: مش بيمسك فلوس ولا بيحوّلها.",
         "- اللي بيحصل في الدايرة: تفاعلاتك والتعليقات القصيرة اللي بتكتبها على اللي بيحصل في الدايرة، واللي بتطلبه من زكي هناك. أفراد الدايرة دي بيشوفوهم. ولما تطلب من زكي يفكّر الكل، كلامك بيروح للشات بتاع كل فرد.",
@@ -284,7 +286,7 @@ const privacyAr: LegalPage = {
         "- حالة الاشتراك من Apple أو Google. عمرنا ما بنشوف بيانات الكارت.",
         "- سجلات تقنية: تقارير الأخطاء وأعداد أحداث زي الردود وتكلفتها، والشاشات اللي بتفتحها والزراير اللي بتدوس عليها، ونوع اللي عملته رسالة في الشات (مثلاً «اتحفظ تذكير»). السجلات دي عمرها ما بتحتوي على نص رسائلك ولا أسامي ولا مبالغ.",
         "- لينكات الدعوة: لينك الدعوة الشخصي بتاعك بيوري اسمك الأول لأي حد يفتحه. ولما صاحب يدخل منه، بنسجّل إنك انت اللي دعيته.",
-        "التطبيق بياخد كتابة، وصور للفواتير والواجب بس زي ما اتشرح فوق. عمره ما بيستخدم المايك ولا الموقع، ومبيفتحش الكاميرا ولا الصور ولا جهات الاتصال غير لما تدوس عشان تستخدمها.",
+        "التطبيق بياخد كتابة، وصور للفواتير والواجب بس زي ما اتشرح فوق. الكتابة بالصوت بتحوّل صوتك لكلام على موبايلك، والصوت عمره ما بيتحفظ ولا بيتبعت. لو حفظت أماكن للتذكير بالمكان («فكرني لما أوصل السوبر ماركت»)، موبايلك بيستخدم موقعه عشان يعرف إنك وصلت مكان منهم أو خرجت منه، وكمان والتطبيق مقفول لو سمحت بكده. أماكنك المحفوظة وموقعك بيفضلوا على موبايلك ومبيتبعتوش لينا ولا لأي حد؛ اللي بيتحفظ مع التذكير هو كلامه بس (زي «السوبر ماركت»)، و«وصلت» بتتبعت لدايرتك بس لما تدوس. ومبيفتحش الكاميرا ولا الصور ولا جهات الاتصال غير لما تدوس عشان تستخدمها.",
       ],
     },
     {

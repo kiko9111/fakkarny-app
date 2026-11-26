@@ -1,5 +1,10 @@
 import Constants from "expo-constants";
 import {
+  HouseList,
+  HouseListResponse,
+  type CreateListRequest,
+  type AddListItemsRequest,
+  type UpdateListRequest,
   PocketMoneyResponse,
   HomeworkBatchResponse,
   HomeworkHelpResponse,
@@ -475,9 +480,25 @@ export async function setFamilyRole(circleId: string, userId: string, role: Fami
   return savedCircle(await request(`/circles/${circleId}/members/${userId}`, { method: "PATCH", body: JSON.stringify({ family_role: role }) }));
 }
 
-/** One-tap check-in, shared with the circle. */
-export async function checkIn(circleId: string, kind: CheckinKind): Promise<CircleDetail> {
-  return savedCircle(await writeOrQueue("POST", `/circles/${circleId}/checkins`, { kind }));
+/** One-tap check-in, shared with the circle. `note`: a few words ("المدرسة" for "arrived at school"), never a location. */
+export async function checkIn(circleId: string, kind: CheckinKind, note?: string): Promise<CircleDetail> {
+  return savedCircle(await writeOrQueue("POST", `/circles/${circleId}/checkins`, note ? { kind, note: note.slice(0, 80) } : { kind }));
+}
+
+/**
+ * The household lists a shop of this kind shows when the phone arrives there (place reminders):
+ * read from the saved copy of GET /lists, loosely, so the phone works before and after the lists
+ * feature reaches it. Empty when there is no saved copy.
+ */
+export function peekShopLists(kind: string): { id: string; name: string; open_count: number }[] {
+  const parsed = peek("/lists", (raw) => {
+    const lists = (raw as { lists?: unknown } | null)?.lists;
+    return Array.isArray(lists) ? lists : [];
+  });
+  return (parsed ?? []).flatMap((l) => {
+    const o = l as { id?: unknown; name?: unknown; place?: unknown; open_count?: unknown };
+    return typeof o.id === "string" && typeof o.name === "string" && o.place === kind && typeof o.open_count === "number" ? [{ id: o.id, name: o.name, open_count: o.open_count }] : [];
+  });
 }
 /** A circle as a write answered it: also the saved copy the circle screen opens from. */
 function savedCircle(raw: unknown): CircleDetail {
@@ -878,6 +899,46 @@ export async function deleteSplit(id: string): Promise<void> {
   await request(`/splits/${id}`, { method: "DELETE" });
 }
 
+// Shared household lists (2026-11-26). Adds and ticks carry phone-made ids or are idempotent, so
+// they go through writeOrQueue: offline they wait on the phone and the screen keeps its guess.
+const parseLists = (raw: unknown): HouseList[] => eachValid(HouseList.safeParse, (raw as { lists?: unknown } | null)?.lists);
+export async function listLists(): Promise<HouseList[]> {
+  return cachedGet("/lists", parseLists);
+}
+export const peekLists = (): HouseList[] | null => peek("/lists", parseLists);
+/** A list as the server (or a guess) has it, into the saved copy of every list. */
+export function savedList(list: HouseList): HouseList {
+  saved("/lists", parseLists, (old) => ({ lists: old.some((l) => l.id === list.id) ? old.map((l) => (l.id === list.id ? list : l)) : [list, ...old] }));
+  return list;
+}
+const listAnswer = (raw: unknown): HouseList => savedList(HouseListResponse.parse(raw).list);
+export async function createList(body: CreateListRequest): Promise<HouseList> {
+  return listAnswer(await request("/lists", { method: "POST", body: JSON.stringify(body) }));
+}
+export async function updateList(id: string, body: UpdateListRequest): Promise<HouseList> {
+  return listAnswer(await request(`/lists/${id}`, { method: "PATCH", body: JSON.stringify(body) }));
+}
+export async function deleteList(id: string): Promise<void> {
+  await request(`/lists/${id}`, { method: "DELETE" });
+  saved("/lists", parseLists, (old) => ({ lists: old.filter((l) => l.id !== id) }));
+}
+export async function addListItems(id: string, body: AddListItemsRequest): Promise<HouseList> {
+  return listAnswer(await writeOrQueue("POST", `/lists/${id}/items`, body, { alsoOnServerError: true }));
+}
+export async function setListItemDone(id: string, itemId: string, done: boolean): Promise<HouseList> {
+  return listAnswer(await writeOrQueue("PATCH", `/lists/${id}/items/${itemId}`, { done }, { alsoOnServerError: true }));
+}
+export async function removeListItem(id: string, itemId: string): Promise<HouseList> {
+  return listAnswer(await writeOrQueue("DELETE", `/lists/${id}/items/${itemId}`));
+}
+export async function clearListDone(id: string): Promise<HouseList> {
+  return listAnswer(await writeOrQueue("POST", `/lists/${id}/clear`));
+}
+/** "I'm going shopping" tells other people: only shown as done once the server says so. */
+export async function setListTrip(id: string, going: boolean): Promise<HouseList> {
+  return listAnswer(await request(`/lists/${id}/trip`, { method: "POST", body: JSON.stringify({ going }) }));
+}
+
 // Every tab in one answer (GET /bootstrap, servers from 2026-11-26). The server runs each screen's
 // own GET as this caller and returns their texts together; each is checked with its screen's
 // parser here, exactly like a single answer, before it replaces a saved copy.
@@ -891,6 +952,7 @@ const PARSERS: [RegExp, (raw: unknown) => unknown][] = [
   [/^\/splits$/, parseSplits],
   [/^\/memories$/, parseMemories],
   [/^\/pocket-money$/, parsePocket],
+  [/^\/lists$/, parseLists],
   [/^\/circles\/[^/]+$/, parseCircle],
   [/^\/circles\/[^/]+\/feed$/, parseFeed],
   [/^\/circles\/[^/]+\/trackers$/, parseShared],
