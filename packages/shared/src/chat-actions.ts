@@ -122,7 +122,8 @@ const LocalDateTime = z.iso.datetime({ local: true });
  * - assign_task: person, title, circle?, due_at_local?, remind_at_local?, homework?, note?
  * - task_answer: ref, answer · task_nudge / task_cancel: ref · task_remind: ref, remind_at_local
  * - homework_submit: ref, text · homework_review: ref, answer ("yes" well done, "no" redo), note?
- * - split_bill: amount (the total), people (names, without the user), name? (title)
+ * - split_bill: amount (the total), people (names, without the user) or circle (split among its
+ *   members, who see their share in their own Zaki: waits for the user's OK), name? (title)
  * - split_paid: ref?, person
  * - list_add: things (what to add), list? (a list name; none = the household grocery list)
  * - list_done: things (what they got), list? · list_trip: list? (tell the circle they're going shopping)

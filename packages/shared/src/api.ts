@@ -103,6 +103,9 @@ export const PatchItemRequest = z
     remind_at: z.iso.datetime({ offset: true }).nullable().optional(),
     /** Ring as an alarm (the phone's "alarms" channel). Set from the Saved screen. */
     alarm: z.boolean().optional(),
+    /** Fire at a place (its words); null takes the place off. */
+    place: z.string().trim().min(1).max(60).nullable().optional(),
+    place_on: z.enum(["arrive", "leave"]).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type PatchItemRequest = z.infer<typeof PatchItemRequest>;

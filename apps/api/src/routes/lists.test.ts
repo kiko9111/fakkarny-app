@@ -49,11 +49,7 @@ const ok = (
 const listItem = (title: string) => ({
   type: "list_item" as const,
   title,
-  due_at_local: null,
-  remind_at_local: null,
-  follow_up_at_local: null,
   important: false,
-  nudge: null,
 });
 
 describe.skipIf(!hasTestDb)("shared household lists", () => {
@@ -120,7 +116,7 @@ describe.skipIf(!hasTestDb)("shared household lists", () => {
     return Object.defineProperty({ ...h }, "id", {
       value: id,
       enumerable: false,
-    }) as H;
+    }) as unknown as H;
   };
   const req = (
     h: H,

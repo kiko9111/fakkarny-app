@@ -11,7 +11,7 @@ const itemsOf = (row: SplitRow) => z.array(SplitItem).parse(row.itemsJson);
 export function inputOf(row: SplitRow): SplitInput {
   return {
     title: row.title,
-    people: peopleOf(row).map((p) => ({ name: p.name })),
+    people: peopleOf(row).map((p) => (p.user_id ? { name: p.name, user_id: p.user_id } : { name: p.name })),
     items: itemsOf(row),
     subtotal: row.bill === null ? null : Number(row.bill),
     service_pct: Number(row.servicePct),
@@ -19,6 +19,7 @@ export function inputOf(row: SplitRow): SplitInput {
     vat_on_service: row.vatOnService,
     tip: Number(row.tip),
     paid_by: row.paidBy,
+    circle_id: row.circleId,
   };
 }
 
@@ -28,7 +29,13 @@ export function inputOf(row: SplitRow): SplitInput {
  */
 export function computeSplit(input: SplitInput, paidNames: Set<string> = new Set()) {
   const r = splitBill(input);
-  const people = input.people.map((p, i) => ({ name: p.name, ordered: Math.round(r.ordered[i]! * 100) / 100, share: r.shares[i]!, paid: i === input.paid_by || paidNames.has(p.name) }));
+  const people = input.people.map((p, i) => ({
+    name: p.name,
+    ordered: Math.round(r.ordered[i]! * 100) / 100,
+    share: r.shares[i]!,
+    paid: i === input.paid_by || paidNames.has(p.name),
+    ...(p.user_id ? { user_id: p.user_id } : {}),
+  }));
   return {
     title: input.title,
     subtotal: Math.round(r.subtotal * 100) / 100,
@@ -44,7 +51,17 @@ export function computeSplit(input: SplitInput, paidNames: Set<string> = new Set
   };
 }
 
-export function toWireSplit(row: SplitRow, base: string): Split {
+/** Who is looking: the creator (default) or one of the people (read-only, sees their own row). */
+export interface SplitViewer {
+  id: string;
+  ownerName?: string | null;
+  instapay?: string | null;
+}
+
+export function toWireSplit(row: SplitRow, base: string, viewer?: SplitViewer): Split {
+  const mine = !viewer || viewer.id === row.userId;
+  const people = peopleOf(row).map((p) => (p.user_id && !(row.memberIds.includes(p.user_id) || p.user_id === row.userId) ? { ...p, user_id: null } : p));
+  const me = viewer && !mine ? people.findIndex((p) => p.user_id === viewer.id) : -1;
   return {
     id: row.id,
     code: row.code,
@@ -56,13 +73,18 @@ export function toWireSplit(row: SplitRow, base: string): Split {
     vat_on_service: row.vatOnService,
     tip: Number(row.tip),
     total: Number(row.total),
-    people: peopleOf(row),
+    people,
     items: itemsOf(row),
     bill: row.bill === null ? null : Number(row.bill),
     web_adds: row.webAdds,
     paid_by: row.paidBy,
     url: splitUrl(base, row.code),
     created_at: row.createdAt.toISOString(),
+    circle_id: row.circleId,
+    mine,
+    me: me >= 0 ? me : null,
+    owner_name: mine ? null : viewer?.ownerName ?? null,
+    instapay: viewer?.instapay ?? null,
   };
 }
 

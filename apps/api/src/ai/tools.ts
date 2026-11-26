@@ -146,12 +146,13 @@ export const AREA_TOOLS = [
   area({
     name: "split",
     description:
-      "Split a bill with friends: create one with the total and the other people's names (equal shares to start; each friend can add their own items on the page the user sends), or mark that a person paid their share (paid).",
+      "Split a bill with friends: create one with the total and the other people's names (equal shares to start; each friend can add their own items on the page the user sends), or with a circle from IN THE APP (circle: everyone in it gets their share in their own Zaki), or mark that a person paid their share (paid).",
     actions: { create: "split_bill", paid: "split_paid" },
     input: z.object({
       action: z.enum(["create", "paid"]),
       amount: z.number().optional().describe("create: the whole bill as paid"),
       people: z.array(Str).optional().describe("create: the others at the table, without the user"),
+      circle: Str.optional().describe("create: split among the members of this circle instead of names"),
       title: Str.optional(),
       ref: Str.optional().describe("paid: a split id from SPLITS"),
       person: Str.optional().describe("paid: who paid"),

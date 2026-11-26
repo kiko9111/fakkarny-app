@@ -480,9 +480,25 @@ export async function setFamilyRole(circleId: string, userId: string, role: Fami
   return savedCircle(await request(`/circles/${circleId}/members/${userId}`, { method: "PATCH", body: JSON.stringify({ family_role: role }) }));
 }
 
-/** One-tap check-in, shared with the circle. */
-export async function checkIn(circleId: string, kind: CheckinKind): Promise<CircleDetail> {
-  return savedCircle(await writeOrQueue("POST", `/circles/${circleId}/checkins`, { kind }));
+/** One-tap check-in, shared with the circle. `note`: a few words ("المدرسة" for "arrived at school"), never a location. */
+export async function checkIn(circleId: string, kind: CheckinKind, note?: string): Promise<CircleDetail> {
+  return savedCircle(await writeOrQueue("POST", `/circles/${circleId}/checkins`, note ? { kind, note: note.slice(0, 80) } : { kind }));
+}
+
+/**
+ * The household lists a shop of this kind shows when the phone arrives there (place reminders):
+ * read from the saved copy of GET /lists, loosely, so the phone works before and after the lists
+ * feature reaches it. Empty when there is no saved copy.
+ */
+export function peekShopLists(kind: string): { id: string; name: string; open_count: number }[] {
+  const parsed = peek("/lists", (raw) => {
+    const lists = (raw as { lists?: unknown } | null)?.lists;
+    return Array.isArray(lists) ? lists : [];
+  });
+  return (parsed ?? []).flatMap((l) => {
+    const o = l as { id?: unknown; name?: unknown; place?: unknown; open_count?: unknown };
+    return typeof o.id === "string" && typeof o.name === "string" && o.place === kind && typeof o.open_count === "number" ? [{ id: o.id, name: o.name, open_count: o.open_count }] : [];
+  });
 }
 /** A circle as a write answered it: also the saved copy the circle screen opens from. */
 function savedCircle(raw: unknown): CircleDetail {

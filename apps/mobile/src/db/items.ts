@@ -2,12 +2,29 @@ import type { Item } from "@fakkarni/shared";
 import { getDb } from "./database";
 import { itemsByIdsSql, itemStatusesSql } from "./sql";
 
-interface Row extends Omit<Item, "important" | "alarm" | "user_id"> {
+interface Row extends Omit<Item, "important" | "alarm" | "user_id" | "place" | "place_on"> {
   important: number;
   alarm: number | null;
+  place?: string | null;
+  place_on?: string | null;
 }
 
-const toItem = (r: Row): Item => ({ ...r, user_id: "", important: r.important === 1, alarm: r.alarm === 1, repeat_every_minutes: r.repeat_every_minutes ?? null });
+const toItem = (r: Row): Item => ({
+  ...r,
+  user_id: "",
+  important: r.important === 1,
+  alarm: r.alarm === 1,
+  repeat_every_minutes: r.repeat_every_minutes ?? null,
+  place: r.place ?? null,
+  place_on: r.place_on === "leave" ? "leave" : r.place_on === "arrive" ? "arrive" : null,
+});
+
+/** Open reminders and tasks that wait for a place ("when I'm at the supermarket"). */
+export async function listPlaceItems(): Promise<Item[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Row>("SELECT * FROM items WHERE status = 'open' AND place IS NOT NULL AND type IN ('reminder','task') ORDER BY created_at ASC");
+  return rows.map(toItem);
+}
 
 /** Open reminders/tasks for the Upcoming tab, soonest first, undated last. */
 export async function listUpcoming(): Promise<Item[]> {

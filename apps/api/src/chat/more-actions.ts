@@ -1,4 +1,4 @@
-import { CheckinKind, isRamadanSeason, parseInstapayLink, SplitInput, type AppAction } from "@fakkarni/shared";
+import { CheckinKind, isRamadanSeason, MAX_SPLIT_PEOPLE, parseInstapayLink, SplitInput, type AppAction } from "@fakkarni/shared";
 import { Prisma, type PrismaClient, type User } from "../generated/prisma/client";
 import { askCheckin, inviteToIftar, postCheckin, removeMember } from "../circles/ops";
 import { cancelEntry, createEntry, respond as respondDaftar, settle as settleDaftar, withPeople as daftarPeople, type EntryWithPeople } from "../daftar/store";
@@ -8,6 +8,7 @@ import { safeLocalToUtc } from "../pipeline/apply";
 import type { ReplyLang } from "../pipeline/rules";
 import type { Notice } from "../proactive/notify";
 import { computeSplit } from "../split/store";
+import { groupOf, markPaid, tellMembers } from "../split/group";
 import { canCancel as canCancelTask, canNudge as canNudgeTask, canRespond as canRespondTask, canSetRemind } from "../tasks/rules";
 import { cancel as cancelTask, nudge as nudgeTask, respond as respondTask, reviewHomework, roleOf, submitHomework, withPeople as taskPeople, type TaskWithPeople } from "../tasks/store";
 import { addRamadanPack } from "../trackers/store";
@@ -231,6 +232,14 @@ export async function runMore(ctx: Ctx, a: AppAction): Promise<One> {
 
     // ---------------------------------------------------------------- bill split
     case "split_bill": {
+      // A circle: everyone in it sees their share, so it waits for the user's OK.
+      if (a.circle) {
+        const c = pickCircle(ctx, a.circle);
+        if (!c || !a.amount) return fail(LABEL.notFound(lang, "circle"), "/split/new");
+        const others = c.members.filter((m) => m.userId !== ctx.user.id);
+        if (!others.length) return fail(LABEL.failed(lang), "/split/new");
+        return { card: card(lang, a.kind, "pending", LABEL.splitCircleAsk(lang, a.amount, c.name, others.length + 1), `/circle/${c.id}`, { kind: "split_circle", circleId: c.id, amount: a.amount, title: (a.name ?? a.title ?? "").slice(0, 60) }) };
+      }
       const people = [...new Set((a.people ?? []).map((p) => p.trim()).filter(Boolean))].slice(0, 19);
       if (!a.amount || !people.length) return fail(LABEL.failed(lang), "/split/new");
       const me = ctx.user.name ?? (lang === "english" ? "Me" : "أنا");
@@ -365,10 +374,10 @@ async function setTaskRemind(prisma: PrismaClient, t: TaskWithPeople, remindAt: 
   });
 }
 
-async function createSplit(prisma: PrismaClient, userId: string, data: ReturnType<typeof computeSplit>) {
+async function createSplit(prisma: PrismaClient, userId: string, data: ReturnType<typeof computeSplit>, group?: { circleId: string | null; memberIds: string[] }) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await prisma.split.create({ data: { ...data, code: newInviteCode(), userId } });
+      return await prisma.split.create({ data: { ...data, code: newInviteCode(), userId, ...group } });
     } catch (err) {
       if (attempt < 4 && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
       throw err;
@@ -490,6 +499,30 @@ export async function runMorePending(prisma: PrismaClient, user: User, c: Stored
   };
   const withNotices = (r: { card: StoredCard; notices: Notice[] }, notices: Notice[]) => ({ ...r, notices: notices.filter((n) => n.userId !== user.id) });
   switch (p.kind) {
+    case "split_circle": {
+      const members = await prisma.circleMember.findMany({ where: { circleId: p.circleId }, include: { user: { select: { name: true } } }, orderBy: { joinedAt: "asc" }, take: MAX_SPLIT_PEOPLE });
+      if (!members.some((m) => m.userId === user.id)) return fail(LABEL.notFound(lang, "circle"));
+      const others = members.filter((m) => m.userId !== user.id);
+      if (!others.length) return fail(LABEL.failed(lang));
+      const me = { name: user.name ?? (lang === "english" ? "Me" : "أنا"), user_id: user.id };
+      const people = [me, ...others.map((m, i) => ({ name: (m.user.name ?? (lang === "english" ? `Person ${i + 2}` : `شخص ${i + 2}`)).slice(0, 40), user_id: m.userId }))];
+      const input = SplitInput.safeParse({ title: p.title, people, subtotal: p.amount, service_pct: 0, vat_pct: 0, paid_by: 0, circle_id: p.circleId });
+      if (!input.success) return fail(LABEL.failed(lang));
+      const group = await groupOf(prisma, user.id, input.data);
+      if (!group) return fail(LABEL.notFound(lang, "circle"));
+      const row = await createSplit(prisma, user.id, computeSplit(group.input), { circleId: group.circleId, memberIds: group.memberIds });
+      const notices = await tellMembers(prisma, row, user, now);
+      await prisma.event.create({ data: { userId: user.id, name: "split_created", propsJson: { via: "chat", people: people.length, circle: true } } });
+      const share = Math.round(p.amount / people.length);
+      return withNotices(done(LABEL.splitMade(lang, p.amount, people.length, share), `/split/${row.id}`), notices);
+    }
+    case "split_i_paid": {
+      const row = await prisma.split.findFirst({ where: { id: p.splitId, memberIds: { has: user.id } } });
+      const index = row ? (row.peopleJson as { user_id?: string | null }[]).findIndex((x) => x.user_id === user.id) : -1;
+      if (!row || index < 0) return fail(LABEL.noSplit(lang));
+      const marked = await markPaid(prisma, row, index, now, "member");
+      return withNotices(done(LABEL.splitIPaid(lang), `/split/${row.id}`), marked?.notices ?? []);
+    }
     case "delete_section": {
       const s = await prisma.moneySection.findFirst({ where: { id: p.sectionId, ownerId: user.id } });
       if (!s) return fail(LABEL.notFound(lang, "section"));

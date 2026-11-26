@@ -183,6 +183,7 @@ function describeItem(i: Item, tz: string): string {
   if (i.remindAt) bits.push(`remind ${local(i.remindAt, tz)}`);
   if (i.repeatEveryMinutes) bits.push(`repeats every ${i.repeatEveryMinutes} min`);
   if (i.important) bits.push("important");
+  if (i.place) bits.push(`${i.placeOn === "leave" ? "on leaving" : "at"} place ${JSON.stringify(i.place)}`);
   if (i.type === "debt" && i.debtPerson) {
     bits.push(`${i.debtDirection === "i_owe" ? "user owes" : "owes user"}: ${i.debtPerson} ${i.debtAmount?.toString() ?? "?"}`);
   }

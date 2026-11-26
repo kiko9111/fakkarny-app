@@ -255,6 +255,10 @@ model Item {
   followedUpAt       DateTime?      @map("followed_up_at")
   // Repeating reminder: minutes between occurrences; remindAt moves forward each time.
   repeatEveryMinutes Int?           @map("repeat_every_minutes")
+  /// Place reminder: the words for the place ("the supermarket"). Coordinates never reach the server.
+  place              String?
+  /// "arrive" or "leave".
+  placeOn            String?        @map("place_on")
   sourceMessageId    String?        @map("source_message_id") @db.Uuid
   updatedAt          DateTime       @updatedAt @map("updated_at")
   createdAt          DateTime       @default(now()) @map("created_at")
@@ -333,6 +337,7 @@ model Circle {
   posts         CirclePost[]
   trackers      Tracker[]
   moneySections MoneySection[]
+  splits        Split[]
 
   @@map("circles")
 }
@@ -654,11 +659,17 @@ model Split {
   webAdds      Int      @default(0) @map("web_adds")
   paidBy       Int?     @map("paid_by")
   webViews     Int      @default(0) @map("web_views")
+  /// A group split: the circle it was made in (people with a user_id are its members).
+  circleId     String?  @map("circle_id") @db.Uuid
+  /// The members besides the creator who see this split in their app (the people's user_ids).
+  memberIds    String[] @default([]) @map("member_ids") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  circle Circle? @relation(fields: [circleId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@index([memberIds], type: Gin)
   @@map("splits")
 }
 

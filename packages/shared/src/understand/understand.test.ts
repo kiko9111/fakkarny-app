@@ -24,6 +24,13 @@ describe("when", () => {
 });
 
 describe("understand", () => {
+  it("makes a place reminder without asking for a time", () => {
+    const r = u("فكرني أشتري عيش لما أوصل السوبر ماركت");
+    expect(r.ask).toBeNull();
+    expect(r.create_items).toEqual([{ type: "task", title: "أشتري عيش", place: "السوبر ماركت", place_on: "arrive" }]);
+    expect(u("lama a5rog men el shoghl fakarny akalem mama").create_items[0]).toMatchObject({ place: "el shoghl", place_on: "leave" });
+    expect(u("remind me to call mom when I get home").create_items[0]).toMatchObject({ title: "call mom", place: "home" });
+  });
   it("sets reminders with exact times, follow-ups and importance", () => {
     expect(u("عندي دكتور عيون يوم الاحد الساعة ٥ ونص").create_items[0]).toMatchObject({ type: "reminder", due_at_local: "2026-11-22T17:30", follow_up_at_local: "2026-11-22T18:30" });
     expect(u("remind me every 8 hours to take my antibiotic").create_items[0]).toMatchObject({ repeat_every_minutes: 480, important: true });

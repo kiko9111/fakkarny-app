@@ -23,6 +23,8 @@ import { settleCards } from "../chat/more-actions";
 import { CANCELLED_REPLY, CONFIRMED_REPLY, HOME_REPLY, homeCheckin, isCancel, isConfirm, isUndo, LABEL, storedCards, type StoredCard } from "../chat/cards";
 import { UNDO_WINDOW_MS, undoCard } from "../chat/undo";
 import type { Message } from "../generated/prisma/client";
+import { parsePlaceTrigger } from "@fakkarni/shared";
+import { withPlace } from "./place";
 
 const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "save_memories"> & { app_actions?: FriendResponse["app_actions"] } = {
   create_items: [],
@@ -328,6 +330,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       else if (actions.update_items.length) actions = { ...actions, update_items: actions.update_items.map((u) => ({ ...u, alarm })) };
     }
 
+    // 3b'. A place reminder ("when I'm at the supermarket"): the place goes on what the turn
+    // creates. The model is not asked for it (the output schema has no room to spare); code reads it.
+    const trigger = crisis ? null : parsePlaceTrigger(message.text);
+    if (trigger) actions = withPlace(actions, trigger, message.text);
+
     // 3c. Zaki never says a reminder or alarm is set unless this turn set one. A reply that
     // promises one with nothing behind it gets one retry with the mistake spelled out; then an
     // item set in the last two hours counts (the user just confirmed it), else an honest reply.
@@ -432,8 +439,8 @@ const UNSET_CHECK =
 /** The turn sets a time for something: a timed reminder or task, a moved one, or a tracker with ask times. */
 function setsReminder(a: Pick<FriendResponse, "create_items" | "update_items"> & { app_actions?: FriendResponse["app_actions"] }): boolean {
   return (
-    a.create_items.some((i) => (i.type === "reminder" || i.type === "task") && Boolean(i.remind_at_local || i.due_at_local || i.repeat_every_minutes)) ||
-    a.update_items.some((u) => Boolean(u.remind_at_local || u.due_at_local || u.repeat_every_minutes || u.alarm === true)) ||
+    a.create_items.some((i) => (i.type === "reminder" || i.type === "task") && Boolean(i.remind_at_local || i.due_at_local || i.repeat_every_minutes || i.place)) ||
+    a.update_items.some((u) => Boolean(u.remind_at_local || u.due_at_local || u.repeat_every_minutes || u.alarm === true || u.place)) ||
     (a.app_actions ?? []).some((x) => x.kind === "create_tracker" || x.kind === "update_tracker")
   );
 }

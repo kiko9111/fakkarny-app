@@ -126,7 +126,7 @@ const privacyEn: LegalPage = {
         "- Subscription status from Apple or Google. We never see your card details.",
         "- Technical records: error reports and counts of events such as replies and their cost, which screens you open and which buttons you tap, and what kind of thing a chat message did (for example \"a reminder was saved\"). These never contain the text of your messages, names or amounts.",
         "- Invite links: your personal invite link shows your first name to whoever opens it. When a friend joins through it, we record that you invited them.",
-        "The app takes text, plus photos only for receipts and homework as described above. It never uses your microphone or location, and it opens the camera, your photos or your contacts only when you tap to use them.",
+        "The app takes text, plus photos only for receipts and homework as described above. Voice typing turns your voice into words on your phone: the audio is never saved or sent. If you save places for place reminders (\"remind me when I'm at the supermarket\"), your phone uses its location to notice when you arrive at or leave one of them, also while the app is closed if you allow it. Your saved places and your location stay on your phone and are never sent to us or to anyone; only the words of the reminder (for example \"the supermarket\") are stored with it, and an \"arrived\" check-in goes to your circle only when you tap it. The app opens the camera, your photos or your contacts only when you tap to use them.",
       ],
     },
     {
@@ -286,7 +286,7 @@ const privacyAr: LegalPage = {
         "- حالة الاشتراك من Apple أو Google. عمرنا ما بنشوف بيانات الكارت.",
         "- سجلات تقنية: تقارير الأخطاء وأعداد أحداث زي الردود وتكلفتها، والشاشات اللي بتفتحها والزراير اللي بتدوس عليها، ونوع اللي عملته رسالة في الشات (مثلاً «اتحفظ تذكير»). السجلات دي عمرها ما بتحتوي على نص رسائلك ولا أسامي ولا مبالغ.",
         "- لينكات الدعوة: لينك الدعوة الشخصي بتاعك بيوري اسمك الأول لأي حد يفتحه. ولما صاحب يدخل منه، بنسجّل إنك انت اللي دعيته.",
-        "التطبيق بياخد كتابة، وصور للفواتير والواجب بس زي ما اتشرح فوق. عمره ما بيستخدم المايك ولا الموقع، ومبيفتحش الكاميرا ولا الصور ولا جهات الاتصال غير لما تدوس عشان تستخدمها.",
+        "التطبيق بياخد كتابة، وصور للفواتير والواجب بس زي ما اتشرح فوق. الكتابة بالصوت بتحوّل صوتك لكلام على موبايلك، والصوت عمره ما بيتحفظ ولا بيتبعت. لو حفظت أماكن للتذكير بالمكان («فكرني لما أوصل السوبر ماركت»)، موبايلك بيستخدم موقعه عشان يعرف إنك وصلت مكان منهم أو خرجت منه، وكمان والتطبيق مقفول لو سمحت بكده. أماكنك المحفوظة وموقعك بيفضلوا على موبايلك ومبيتبعتوش لينا ولا لأي حد؛ اللي بيتحفظ مع التذكير هو كلامه بس (زي «السوبر ماركت»)، و«وصلت» بتتبعت لدايرتك بس لما تدوس. ومبيفتحش الكاميرا ولا الصور ولا جهات الاتصال غير لما تدوس عشان تستخدمها.",
       ],
     },
     {

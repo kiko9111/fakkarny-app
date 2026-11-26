@@ -153,6 +153,8 @@ const item = (over: Partial<Item> & Pick<Item, "title">): Item => ({
   debt_direction: null,
   follow_up_at: null,
   repeat_every_minutes: null,
+    place: null,
+    place_on: null,
   source_message_id: null,
   updated_at: iso(now()),
   created_at: iso(now()),

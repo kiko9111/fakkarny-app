@@ -18,3 +18,4 @@ export * from "./lists";
 export * from "./phone-brain";
 export { understand, isCrisis, addDays, addMinutes, type Understood, type UnderstandInput, type UnderstandItem } from "./understand";
 export * from "./understand/clarify";
+export * from "./places";

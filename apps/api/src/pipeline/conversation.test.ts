@@ -171,6 +171,37 @@ describe.skipIf(!hasTestDb)("conversation pipeline", () => {
     await app.close();
   });
 
+  it("puts the place on a place reminder, and counts it as set (no time asked, no 'not set' rewrite)", async () => {
+    const { model, calls } = fakeModel([ok({ reply: ["تمام، هفكرك بالعيش أول ما توصل السوبر ماركت 🛒"], create_items: [{ type: "task", title: "شراء عيش" }] })]);
+    const app = appWith(model);
+    const { body } = await send(app, "فكرني أشتري عيش لما أوصل السوبر ماركت");
+    expect(calls).toHaveLength(1); // no retry for an "unset" reminder
+    expect(body.replies.map((r) => r.text)).toEqual(["تمام، هفكرك بالعيش أول ما توصل السوبر ماركت 🛒"]);
+    expect(body.items[0]).toMatchObject({ title: "شراء عيش", place: "السوبر ماركت", place_on: "arrive", remind_at: null });
+    await app.close();
+  });
+
+  it("makes a task from the message when the model saved nothing for a place reminder", async () => {
+    const { model } = fakeModel([ok({ reply: ["Sure, I'll remind you when you leave work"] })]);
+    const app = appWith(model);
+    const { body } = await send(app, "when I leave work remind me to call mom");
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ type: "task", title: "call mom", place: "work", place_on: "leave" });
+    // The model sees the place on the item next turn.
+    const stored = await prisma.item.findFirstOrThrow({ where: { place: "work" } });
+    expect(stored.placeOn).toBe("leave");
+    await app.close();
+  });
+
+  it("turns a shopping item into the place task", async () => {
+    const { model } = fakeModel([ok({ reply: ["Got it 🥖"], create_items: [{ type: "list_item", title: "bread" }] })]);
+    const app = appWith(model);
+    const { body } = await send(app, "remind me to buy bread when I'm at the supermarket");
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ type: "task", title: "bread", place: "supermarket" });
+    await app.close();
+  });
+
   it("answers a retried message whose reply was lost (server restarted mid-reply)", async () => {
     const { model } = fakeModel([ok({ reply: ["أهو ده اللي عندك الأسبوع ده"] })]);
     const app = appWith(model);

@@ -134,7 +134,8 @@ export function describeUnderstood(u: Understood, nowLocal: string, titles: Reco
     else {
       const when = i.due_at_local ? ` ${whenWords(i.due_at_local, nowLocal, "english")}` : "";
       const extra = [i.repeat_every_minutes ? repeatWords(i.repeat_every_minutes, "english") : "", i.alarm ? "as an alarm" : "", i.follow_up_at_local ? "will ask how it went after" : ""].filter(Boolean).join(", ");
-      lines.push(`${i.type === "reminder" ? "Reminder" : "To-do"} «${i.title}»${when}${extra ? ` (${extra})` : ""}`);
+      const place = i.place ? ` when the user ${i.place_on === "leave" ? "leaves" : "gets to"} ${i.place} (a place reminder: the phone fires it there)` : "";
+      lines.push(`${i.type === "reminder" ? "Reminder" : "To-do"} «${i.title}»${when}${place}${extra ? ` (${extra})` : ""}`);
     }
   }
   for (const up of u.update_items) {
@@ -173,6 +174,7 @@ export function templateReply(u: Understood, nowLocal: string, lang: ReplyLang, 
   for (const i of u.create_items) {
     if (i.type === "debt" && i.debt) parts.push(ar ? `سجلت في الدفتر: ${i.debt.direction === "i_owe" ? `عليك ${i.debt.amount} لـ${i.debt.person}` : `${i.debt.person} عليه ${i.debt.amount}`}` : `Daftar: ${i.debt.direction === "i_owe" ? `you owe ${i.debt.person} ${i.debt.amount}` : `${i.debt.person} owes you ${i.debt.amount}`}`);
     else if (i.type === "list_item") parts.push(ar ? `«${i.title}» في قايمة الطلبات` : `«${i.title}» is on the list`);
+    else if (i.place) parts.push(ar ? `هفكرك «${i.title}» ${i.place_on === "leave" ? "لما تخرج من" : "لما توصل"} ${i.place}` : `I'll remind you «${i.title}» when you ${i.place_on === "leave" ? "leave" : "get to"} ${i.place}`);
     else if (i.due_at_local && i.type === "reminder") parts.push(ar ? `هفكرك «${i.title}» ${whenWords(i.due_at_local, nowLocal, lang)}${i.repeat_every_minutes ? ` و${repeatWords(i.repeat_every_minutes, lang)}` : ""}` : `I'll remind you «${i.title}» ${whenWords(i.due_at_local, nowLocal, lang)}${i.repeat_every_minutes ? `, ${repeatWords(i.repeat_every_minutes, lang)}` : ""}`);
     else parts.push(ar ? `كتبت «${i.title}»${i.due_at_local ? ` ${whenWords(i.due_at_local, nowLocal, lang).replace(/ الساعة.*$/, "")}` : ""}` : `Noted «${i.title}»`);
   }

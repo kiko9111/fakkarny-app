@@ -151,8 +151,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(itemRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(deviceRoutes, { prisma, authenticate });
     app.register(eventRoutes, { prisma, authenticate, now: deps.now });
-    app.register(splitRoutes, { prisma, authenticate, publicUrl: deps.invites?.publicUrl });
-    app.register(splitPageRoutes, { prisma, publicUrl: deps.invites?.publicUrl, storeUrl: deps.invites?.storeUrl });
+    app.register(splitRoutes, { prisma, authenticate, publicUrl: deps.invites?.publicUrl, now: deps.now, push: deps.push });
+    app.register(splitPageRoutes, { prisma, publicUrl: deps.invites?.publicUrl, storeUrl: deps.invites?.storeUrl, push: deps.push });
     app.register(cardRoutes, { prisma, publicUrl: deps.invites?.publicUrl });
     app.register(photoRoutes, { prisma, authenticate, model: deps.model, now: deps.now, requireSubscription: billing.requireSubscription });
     app.register(homeworkRoutes, { prisma, authenticate, model: deps.model, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
