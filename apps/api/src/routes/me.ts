@@ -68,7 +68,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -88,6 +88,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.split.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.photo.findMany({ where, include: { task: { select: { title: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.pocketMoneyEntry.findMany({ where: { OR: [{ childId: id }, { parentId: id }] }, orderBy: { createdAt: "asc" } }),
+      prisma.houseListItem.findMany({ where: { OR: [{ addedById: id }, { doneById: id }] }, include: { list: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -110,6 +111,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       splits: splits.map((x) => ({ title: x.title, total: Number(x.total), currency: x.currency, people: (x.peopleJson as { name: string; share: number; paid: boolean }[]).map((p) => ({ name: p.name, share: p.share, paid: p.paid })), created_at: x.createdAt.toISOString() })),
       photos: photos.map((p) => ({ task: p.task?.title ?? null, mime: p.mime, data: Buffer.from(p.data).toString("base64"), created_at: p.createdAt.toISOString() })),
       pocket_money: pocket.map((e) => ({ role: e.childId === id ? ("child" as const) : ("parent" as const), kind: e.kind, amount: e.amount, title: e.title, at: e.createdAt.toISOString() })),
+      list_items: listItems.map((i) => ({ list: i.list.name, title: i.title, qty: i.qty, added: i.addedById === id, done_at: i.doneAt?.toISOString() ?? null, created_at: i.createdAt.toISOString() })),
     };
     return res;
   });
@@ -121,6 +123,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       // Circle posts point at users by plain id (no foreign key), so remove the user's own
       // words (check-in notes, iftar notes, RSVPs) and posts about them here.
       await tx.circlePost.deleteMany({ where: { OR: [{ actorId: user.id }, { targetId: user.id }] } });
+      // Private lists go with the account; a circle's lists stay for the others.
+      await tx.houseList.deleteMany({ where: { ownerId: user.id, circleId: null } });
       // Circles they own pass to the longest-standing member, as when an owner leaves;
       // a circle left with nobody in it goes too.
       const owned = await tx.circleMember.findMany({ where: { userId: user.id, role: "owner" }, select: { circleId: true } });

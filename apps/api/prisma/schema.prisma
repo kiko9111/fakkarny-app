@@ -171,6 +171,10 @@ model User {
   tasksTaken      CircleTask[]     @relation("TaskAssignee")
   pocketAsChild   PocketMoneyEntry[] @relation("PocketChild")
   pocketAsParent  PocketMoneyEntry[] @relation("PocketParent")
+  listsOwned      HouseList[]        @relation("ListOwner")
+  listTrips       HouseList[]        @relation("ListTrip")
+  listItemsAdded  HouseListItem[]    @relation("ListItemAdder")
+  listItemsDone   HouseListItem[]    @relation("ListItemDoer")
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
@@ -325,6 +329,7 @@ model Circle {
   daftar        DaftarEntry[]
   tasks         CircleTask[]
   pocketMoney   PocketMoneyEntry[]
+  lists         HouseList[]
   posts         CirclePost[]
   trackers      Tracker[]
   moneySections MoneySection[]
@@ -699,4 +704,47 @@ model PocketMoneyEntry {
   @@index([childId, createdAt])
   @@index([parentId, createdAt])
   @@map("pocket_money")
+}
+
+/// Shared household lists (2026-11-26): one per circle and kind of shop, or private (circle_id null).
+model HouseList {
+  id         String    @id @default(uuid()) @db.Uuid
+  // The creator. A private list is the creator's alone; a circle's list stays when its creator leaves.
+  ownerId    String?   @map("owner_id") @db.Uuid
+  circleId   String?   @map("circle_id") @db.Uuid
+  name       String
+  // grocery | pharmacy | bakery | butcher | home | other (shared ListPlace)
+  place      String    @default("grocery")
+  // "I'm going to the market": who is out shopping for this list, since when.
+  tripUserId String?   @map("trip_user_id") @db.Uuid
+  tripAt     DateTime? @map("trip_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  owner    User?           @relation("ListOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  tripUser User?           @relation("ListTrip", fields: [tripUserId], references: [id], onDelete: SetNull)
+  circle   Circle?         @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  items    HouseListItem[]
+
+  @@index([ownerId])
+  @@index([circleId])
+  @@map("house_lists")
+}
+
+model HouseListItem {
+  id        String    @id @default(uuid()) @db.Uuid
+  listId    String    @map("list_id") @db.Uuid
+  title     String
+  qty       String?
+  addedById String?   @map("added_by_id") @db.Uuid
+  doneAt    DateTime? @map("done_at")
+  doneById  String?   @map("done_by_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  list    HouseList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  addedBy User?     @relation("ListItemAdder", fields: [addedById], references: [id], onDelete: SetNull)
+  doneBy  User?     @relation("ListItemDoer", fields: [doneById], references: [id], onDelete: SetNull)
+
+  @@index([listId, doneAt])
+  @@map("house_list_items")
 }

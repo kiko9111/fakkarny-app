@@ -1,4 +1,4 @@
-import { getCircle, getCircleFeed, getCircleTrackers, getMe, getMoney, getPocketMoney, listCircles, listDaftar, listMemories, listSplits, listTasks, listTrackers, refreshAll } from "./api";
+import { getCircle, getCircleFeed, getCircleTrackers, getMe, getMoney, getPocketMoney, listCircles, listLists, listDaftar, listMemories, listSplits, listTasks, listTrackers, refreshAll } from "./api";
 import { PREFETCH_AT_ONCE, PREFETCH_AFTER_CHAT_MS, planPrefetch } from "./prefetch-plan";
 
 let last = 0;
@@ -29,7 +29,7 @@ export function prefetchAll(now = Date.now(), changed = false): void {
   const quiet = <T>(p: () => Promise<T>) => () => p().then((v) => v as T | null).catch(() => null);
   void (async () => {
     if (await refreshAll()) return;
-    const first = [quiet(listCircles), quiet(getMe), quiet(listTasks), quiet(listTrackers), quiet(listDaftar), quiet(getMoney), quiet(listSplits), quiet(listMemories), quiet(getPocketMoney)];
+    const first = [quiet(listCircles), quiet(getMe), quiet(listTasks), quiet(listTrackers), quiet(listDaftar), quiet(getMoney), quiet(listSplits), quiet(listMemories), quiet(getPocketMoney), quiet(listLists)];
     const [circles] = (await inTurns(first)) as [Awaited<ReturnType<typeof listCircles>> | null];
     // Each circle the user is in (detail, feed and shared trackers).
     const more = (circles ?? []).slice(0, 8).flatMap((c) => [quiet(() => getCircle(c.id)), quiet(() => getCircleFeed(c.id)), quiet(() => getCircleTrackers(c.id))]);

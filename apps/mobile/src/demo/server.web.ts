@@ -890,6 +890,63 @@ const pocket = () => {
     ],
   };
 };
+
+// Household lists (2026-11-26): one family grocery list with a few things, one ticked off.
+type DemoItem = { id: string; title: string; qty: string | null; added_by_name: string | null; is_mine: boolean; done: boolean; done_by_name: string | null; done_at: string | null; created_at: string };
+type DemoList = { id: string; name: string; place: string; circle_id: string | null; circle_name: string | null; is_owner: boolean; trip: { user_id: string; name: string | null; is_me: boolean; at: string } | null; items: DemoItem[]; updated_at: string };
+const demoItem = (title: string, by: string | null, mine: boolean, hoursAgo: number, done = false): DemoItem => ({ id: id(), title, qty: null, added_by_name: by, is_mine: mine, done, done_by_name: done ? by : null, done_at: done ? inHours(-1) : null, created_at: inHours(-hoursAgo) });
+const demoLists: DemoList[] = [
+  {
+    id: id(),
+    name: L("البقالة", "Groceries"),
+    place: "grocery",
+    circle_id: "c-family",
+    circle_name: L("البيت", "Home"),
+    is_owner: true,
+    trip: null,
+    items: [demoItem(L("بيض", "Eggs"), L("منى", "Mona"), false, 5), demoItem(L("لبن", "Milk"), null, true, 4), demoItem(L("عيش", "Bread"), L("يوسف", "Youssef"), false, 3), demoItem(L("رز", "Rice"), L("منى", "Mona"), false, 6, true)],
+    updated_at: inHours(-1),
+  },
+];
+const wireList = (l: DemoList) => ({ ...l, open_count: l.items.filter((i) => !i.done).length });
+const findList = (lid: string) => demoLists.find((l) => l.id === lid) ?? demoLists[0]!;
+const touched = (l: DemoList) => ({ list: wireList(Object.assign(l, { updated_at: iso(now()) })) });
+on("GET", "/lists", () => ({ lists: demoLists.map(wireList) }));
+on("POST", "/lists", (_m, b) => {
+  const l: DemoList = { id: String(b.id ?? id()), name: String(b.name ?? ""), place: String(b.place ?? "grocery"), circle_id: (b.circle_id as string | null) ?? null, circle_name: b.circle_id ? L("البيت", "Home") : null, is_owner: true, trip: null, items: [], updated_at: iso(now()) };
+  demoLists.unshift(l);
+  return { list: wireList(l) };
+});
+on("POST", "/lists/([^/]+)/items", (m, b) => {
+  const l = findList(m[1]!);
+  for (const x of (b.items as { id?: string; title: string; qty?: string | null }[]) ?? []) l.items.push({ ...demoItem(x.title, null, true, 0), id: x.id ?? id(), qty: x.qty ?? null });
+  return touched(l);
+});
+on("PATCH", "/lists/([^/]+)/items/([^/]+)", (m, b) => {
+  const l = findList(m[1]!);
+  l.items = l.items.map((i) => (i.id === m[2] ? { ...i, done: Boolean(b.done), done_by_name: b.done ? L("إنت", "You") : null, done_at: b.done ? iso(now()) : null } : i));
+  return touched(l);
+});
+on("DELETE", "/lists/([^/]+)/items/([^/]+)", (m) => {
+  const l = findList(m[1]!);
+  l.items = l.items.filter((i) => i.id !== m[2]);
+  return touched(l);
+});
+on("POST", "/lists/([^/]+)/clear", (m) => {
+  const l = findList(m[1]!);
+  l.items = l.items.filter((i) => !i.done);
+  return touched(l);
+});
+on("POST", "/lists/([^/]+)/trip", (m, b) => {
+  const l = findList(m[1]!);
+  l.trip = b.going ? { user_id: "me", name: null, is_me: true, at: iso(now()) } : null;
+  return touched(l);
+});
+on("DELETE", "/lists/([^/]+)", (m) => {
+  const i = demoLists.findIndex((l) => l.id === m[1]);
+  if (i >= 0) demoLists.splice(i, 1);
+  return null;
+});
 on("GET", "/pocket-money", () => pocket());
 on("POST", "/pocket-money/paid", (_m, b) => {
   pocketPaid = Math.min(30, pocketPaid + Number(b.amount ?? 0));

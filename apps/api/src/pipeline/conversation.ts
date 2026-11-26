@@ -15,6 +15,7 @@ import { summarizeIfNeeded } from "./summarize";
 import { inBackground } from "../lib/background";
 import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
+import { addToList, listFastPath } from "../lists/chat";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
@@ -143,6 +144,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       counted(prisma, user.id, "reply_fast_path", { money: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now }), money.cards ?? []);
       return { ...result, notices: [...(result.notices ?? []), ...money.notices.filter((n) => n.userId !== user.id)] };
+    }
+
+    // 1a''. Household lists by rules: "ضيف بيض للقايمة", "القايمة فيها ايه", "نازل السوبر ماركت". No AI call.
+    const listed = crisisKeyword ? null : await listFastPath(prisma, user, message.text, script, now).catch(() => null);
+    if (listed) {
+      counted(prisma, user.id, "reply_fast_path", { list: true });
+      const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [listed.text], response: EMPTY_ACTIONS, now }), listed.cards);
+      return { ...result, notices: [...(result.notices ?? []), ...listed.notices.filter((n) => n.userId !== user.id)] };
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never
@@ -342,6 +351,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // 4. Apply actions + store replies, then the app actions (money, trackers, circles) as cards.
     // The cost event is written alongside, not after.
+    // Things to buy go on the household list everyone in the circle sees, not into the user's
+    // own plans (2026-11-26). The model's list items and the rule engine's land there the same way.
+    const listThings = crisis || actions.app_actions?.some((a) => a.kind === "list_add") ? [] : actions.create_items.filter((i) => i.type === "list_item").map((i) => i.title);
+    if (!crisis && actions.create_items.some((i) => i.type === "list_item")) actions = { ...actions, create_items: actions.create_items.filter((i) => i.type !== "list_item") };
     const appActions = crisis ? [] : actions.app_actions ?? [];
     const aiEvent = brain
       ? event(prisma, user.id, "ai_call", {
@@ -387,6 +400,10 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       }
       applied = await withCards(prisma, applied, ran.cards);
       applied = { ...applied, notices: [...(applied.notices ?? []), ...ran.notices] };
+    }
+    if (listThings.length) {
+      const out = await addToList(prisma, user, script, listThings.map((title) => ({ title, qty: null })), null, now).catch(() => null);
+      if (out) applied = { ...(await withCards(prisma, applied, [out.card])), notices: [...(applied.notices ?? []), ...out.notices.filter((n) => n.userId !== user.id)] };
     }
     // A debt with someone in their circles: offer the shared Daftar too (unless the model already did).
     const debts = crisis ? [] : actions.create_items.flatMap((i) => (i.type === "debt" && i.debt && !appActions.some((a) => a.kind === "daftar_add") ? [i.debt] : []));

@@ -158,9 +158,20 @@ export const AREA_TOOLS = [
     }),
   }),
   area({
+    name: "list",
+    description:
+      "Shared household lists (groceries, the pharmacy, anything to buy), seen and ticked off by everyone in the circle: add things (add; one entry per thing, in the user's words), tick off what they got (done), or tell the circle they are going shopping now so the others add what they need (trip). Things to buy can also go in respond as list_item items; use one way, not both.",
+    actions: { add: "list_add", done: "list_done", trip: "list_trip" },
+    input: z.object({
+      action: z.enum(["add", "done", "trip"]),
+      things: z.array(Str).optional().describe("add / done: the things, one per entry"),
+      list: Str.optional().describe("A list name from IN THE APP; leave out for the household grocery list"),
+    }),
+  }),
+  area({
     name: "app",
     description:
-      "Everything else: forget something you remembered about them (forget, with what to forget), change a setting (settings: name, wake_time / sleep_time \"HH:MM\", instapay (their https://ipn.eg link), address (\"female\" or \"male\"), tone (playful, balanced, calm), checkins (2, 4 = every 2 or 4 hours, off)), or open a place in the app (open: memories, settings, money, daftar, trackers, circles, today, receipt (read a receipt photo), invite_friend, paywall, split, session).",
+      "Everything else: forget something you remembered about them (forget, with what to forget), change a setting (settings: name, wake_time / sleep_time \"HH:MM\", instapay (their https://ipn.eg link), address (\"female\" or \"male\"), tone (playful, balanced, calm), checkins (2, 4 = every 2 or 4 hours, off)), or open a place in the app (open: memories, settings, money, daftar, trackers, circles, today, receipt (read a receipt photo), invite_friend, paywall, split, session, lists).",
     actions: { forget: "forget", settings: "settings", open: "open_screen" },
     input: z.object({
       action: z.enum(["forget", "settings", "open"]),
@@ -233,6 +244,8 @@ export function toolCallToAction(name: string, input: unknown): AppAction | null
   // Names and texts the model makes too long are cut rather than dropped.
   for (const k of ["name", "title", "section", "tracker", "circle", "person"] as const) if (typeof o[k] === "string") o[k] = o[k].slice(0, 60);
   for (const k of ["note", "text"] as const) if (typeof o[k] === "string") o[k] = o[k].slice(0, 200);
+  if (typeof o["list"] === "string") o["list"] = o["list"].slice(0, 60);
+  if (Array.isArray(o["things"])) o["things"] = o["things"].filter((t): t is string => typeof t === "string" && Boolean(t.trim())).map((t) => t.trim().slice(0, 80)).slice(0, 30);
   const parsed = AppAction.safeParse(o);
   return parsed.success ? parsed.data : null;
 }

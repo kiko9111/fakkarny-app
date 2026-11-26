@@ -34,6 +34,7 @@ import { taskRoutes } from "./routes/tasks";
 import { feedRoutes } from "./routes/feed";
 import { moneyRoutes } from "./routes/money";
 import { trackerRoutes } from "./routes/trackers";
+import { listRoutes } from "./routes/lists";
 import { sessionRoutes } from "./routes/session";
 import type { FriendModel } from "./ai/model";
 import type { PushSender } from "./proactive/push";
@@ -143,6 +144,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(taskRoutes, { prisma, authenticate, now: deps.now, requireSubscription: billing.requireSubscription, push: deps.push });
     app.register(trackerRoutes, { prisma, authenticate, now: deps.now });
+    app.register(listRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(feedRoutes, { prisma, authenticate, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
     app.register(moneyRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(sessionRoutes, { prisma, authenticate, now: deps.now, model: deps.model, enabled: deps.sessionEnabled });

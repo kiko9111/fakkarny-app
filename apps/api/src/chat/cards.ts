@@ -40,7 +40,8 @@ export type PendingPayload =
   | { kind: "checkin"; circleId: string; checkinKind: "arrived" | "home" | "on_way" | "medicine" | "ok"; note: string | null }
   | { kind: "ask_checkin"; circleId: string; userId: string }
   | { kind: "leave_circle"; circleId: string }
-  | { kind: "iftar"; circleId: string; on: string; note: string | null };
+  | { kind: "iftar"; circleId: string; on: string; note: string | null }
+  | { kind: "list_trip"; listId: string };
 
 /** How to take back a done card. Only the user's own things; nothing that reached other people. */
 export type UndoPayload =
@@ -60,7 +61,9 @@ export type UndoPayload =
   | { kind: "split_paid"; splitId: string; index: number }
   | { kind: "daftar_entry"; entryId: string }
   | { kind: "task_remind"; taskId: string; remindAt: string | null }
-  | { kind: "item_status"; itemId: string; status: "open" };
+  | { kind: "item_status"; itemId: string; status: "open" }
+  | { kind: "list_items"; listId: string; itemIds: string[] }
+  | { kind: "list_undone"; listId: string; itemIds: string[] };
 
 /** Cards for the wire, without the server-only fields. Tolerates anything stored (old rows: null). */
 export function wireActions(json: unknown): ChatAction[] {
@@ -230,12 +233,12 @@ export const LABEL = {
   setting: (l: ReplyLang, what: string) => (l === "english" ? `Settings: ${what}` : `الإعدادات: ${what}`),
   badSetting: (l: ReplyLang) => (l === "english" ? "That value doesn't fit, try it in Settings" : "القيمة دي مش مظبوطة، جرّب من الإعدادات"),
   open: (l: ReplyLang, screen: string) => (l === "english" ? `Open ${screen}` : `افتح ${screen}`),
-  notFound: (l: ReplyLang, what: "section" | "tracker" | "circle" | "person" | "which_circle", name?: string) => {
+  notFound: (l: ReplyLang, what: "section" | "tracker" | "circle" | "person" | "which_circle" | "list" | "list_item", name?: string) => {
     const n = name ? q(name) : "";
     if (l === "english") {
-      return { section: `I couldn't find the section ${n}`, tracker: `I couldn't find the tracker ${n}`, circle: `I couldn't find the circle ${n}`, person: `I couldn't find ${n} in your circles`, which_circle: "Which circle? Say its name" }[what];
+      return { section: `I couldn't find the section ${n}`, tracker: `I couldn't find the tracker ${n}`, circle: `I couldn't find the circle ${n}`, person: `I couldn't find ${n} in your circles`, which_circle: "Which circle? Say its name", list: `I couldn't find the list ${n}`, list_item: `${n} isn't open on the list` }[what];
     }
-    return { section: `مالقيتش قسم ${n}`, tracker: `مالقيتش متابعة ${n}`, circle: `مالقيتش دايرة ${n}`, person: `مالقيتش ${n} في الدواير بتاعتك`, which_circle: "أنهي دايرة؟ قولي اسمها" }[what];
+    return { section: `مالقيتش قسم ${n}`, tracker: `مالقيتش متابعة ${n}`, circle: `مالقيتش دايرة ${n}`, person: `مالقيتش ${n} في الدواير بتاعتك`, which_circle: "أنهي دايرة؟ قولي اسمها", list: `مالقيتش قايمة ${n}`, list_item: `${n} مش في القايمة` }[what];
   },
   ownerOnly: (l: ReplyLang, name: string) => (l === "english" ? `Only the owner of ${q(name)} can change its budget` : `صاحب ${q(name)} بس اللي يغير ميزانيته`),
   tooMany: (l: ReplyLang) => (l === "english" ? "That's the most this allows for now" : "ده أقصى عدد دلوقتي"),
