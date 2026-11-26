@@ -800,10 +800,10 @@ Rules:
   `europe-west4-drams3a`), beside the database, and a service without a volume moves with no
   downtime. The owner was asked for both on 2026-11-26. The region has moved when the smoke
   test's `/splits` time minus its `/health` time (one database round trip, ~0.09 s on that day)
-  falls to about 0.02 s. Its `x-railway-edge` line names the edge nearest the runner (iad1 for
-  a US runner whatever the server's region); the test also sends `x-railway-debug`, which per
-  Railway's docs adds `x-railway-upstream-zone`, the zone the server runs in (added after the
-  deploy's run, so not yet seen in a log). During an overlap two servers run: the DB pools are
+  falls to about 0.02 s, and when its `x-railway-upstream-zone` line (the zone the server runs
+  in, which Railway adds because the test sends `x-railway-debug`) no longer says
+  `railway/us-east4-eqdc4a`. The `x-railway-edge` line only names the edge nearest the runner
+  (iad1 and lax1 on that day's two runs). During an overlap two servers run: the DB pools are
   sized for one (8 + 3 of the session pooler's ~15).
 - Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
   words show changes: the stored answer and everything a turn decides are as before.
@@ -827,14 +827,16 @@ Rules:
     passes without the stream steps the mode down for the life of the process (eager → plain →
     off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
     the API takes the eager flag on a strict tool was not checked with a real key before this
-    shipped. Live since the deploy of 2026-11-26: the smoke test's streamed small-talk turns
-    showed their words (12 `draft` events each, none taken back, first words at 1.6–2.4 s and
-    the whole answer at 2.3–3.9 s; `first` 1.2–2.0 s in the turn's timing), the turn whose reply
-    only says a reminder is set came whole as it should, and the e2e walk read a stream to its
-    end. That does not say which mode served them: read /admin, "How replies were read from the
-    model" (the `stream` and `stream_lost` props on `ai_call` events: eager / plain / whole, and
-    refused / timeout / cut for a streamed try that was lost and read whole instead) and "first
-    words".
+    shipped. It does, live since the deploy of 2026-11-26: the smoke test's streamed small-talk
+    turns showed their words in 12 to 20 `draft` events, none taken back, and the parts reached
+    the runner spread over 0.6–0.7 s of the model's writing (the test prints when each part
+    arrived; a reply read without the eager flag arrives bunched). First words at 1.5–2.4 s, the
+    whole answer at 2.3–3.9 s (`first` 1.1–2.0 s in the turn's timing). The turn that sets a
+    reminder came whole, as it does when the reply opens by saying it is set, and the e2e walk
+    read a stream to its end. /admin, "How replies were read from the model" (the `stream` and
+    `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout / cut
+    for a streamed try that was lost and read whole instead) and "first words" show the same
+    for every turn.
   - Cost of a lost stream: it is paid for as far as it got. What it read is known from its
     start and added to the turn's usage; what it had written is only told at a stream's end,
     so the turn's cost is a floor. The eager flag changes the tools, which come before the

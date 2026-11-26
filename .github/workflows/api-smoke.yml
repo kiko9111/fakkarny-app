@@ -56,7 +56,7 @@ jobs:
           # without streaming, or a turn the rules answer, answers in one piece as before.
           stream() {
             body=$(printf '{"client_id":"%s","text":"%s","created_at":"%s","timezone":"Africa/Cairo"}' "$(cat /proc/sys/kernel/random/uuid)" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
-            curl -sN -m 90 -o /tmp/stream --trace-ascii /tmp/trace --trace-time -w "$2 %{http_code} %{content_type} | first byte %{time_starttransfer}s | all %{time_total}s\n" "${H[@]}" -H "accept: text/event-stream, application/json" -X POST -d "$body" "$API/messages"
+            curl -sN -m 90 -o /tmp/stream --trace-ascii /tmp/trace --trace-time -w "$2 %{http_code} %{content_type} | first byte %{time_starttransfer}s | all %{time_total}s\n" "${H[@]}" -H "accept: text/event-stream, application/json" -d "$body" "$API/messages"
             node -e '
               const fs = require("fs");
               const t = fs.readFileSync("/tmp/stream", "utf8");
@@ -82,6 +82,15 @@ jobs:
           stream "احكيلي حاجة حلوة عن النهارده" "small talk (AI)"
           stream "يومي كان طويل اوي ومحتاج افصل شوية" "small talk 2 (AI)"
           stream "فكرني بكره الساعة 9 الصبح اكلم الدكتور" "reminder with a time (AI: the line that says it is set comes with the answer)"
+          # One person using the app leaves the server quiet for more than half a minute all the
+          # time, and the API's database pool lets a connection go once it has been idle that long.
+          # The first burst of lookups after that opens connections again, each several round trips
+          # to the database. "context" in "server ms" is the part of a turn that pays for it:
+          # compare the turn after the quiet with the one right after it.
+          echo "--- after 35 quiet seconds: a chat turn, then the same kind of turn again"
+          sleep 35
+          stream "قولي حاجة تفرحني" "small talk after the quiet (AI)"
+          stream "وقولي حاجة كمان" "small talk right after (AI)"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
