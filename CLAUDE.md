@@ -1059,6 +1059,18 @@ Rules:
     gets one more pull after it (`oneAtATime`, lib/one-at-a-time.ts), so "accept" followed by a
     pull sees the new plan. `useItems.complete` sends the PATCH right after the local write, and a
     reload that read SQLite a moment before the write can't bring the ticked row back.
+  - Answers that change plans without carrying them: a card's answer (POST /messages/:id/actions),
+    a reply with cards (a chat yes/no to a card, "undo", an app action such as a moved task
+    reminder) and a resend answered from what the server stored (only the plans the message made).
+    The phone pulls items after each (ActionCards, `markSynced` in sync/index.ts), so Today has the
+    change before it is opened. Network events refresh only when the phone comes back online:
+    Android reports every change of signal strength as one.
+  - Today's "Coming up" (`comingUp`, lib/coming-up.ts) lists plans from the last hour onward
+    soonest first, then plans with no time, then plans whose time passed (the latest first).
+    One-off reminders stay open after they ring, and old ones used to fill the five places so a new
+    plan only raised the "+N". A row shows when Zaki reminds beside the plan's own time when the
+    two differ (`planTimes`, lib/plan-time.ts): a change to the reminder alone used to show
+    nothing. Upcoming places a plan with only a reminder time by that time, not under "No date".
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

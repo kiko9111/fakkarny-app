@@ -1,5 +1,5 @@
 import { AppState } from "react-native";
-import { addNetworkStateListener } from "expo-network";
+import { addNetworkStateListener, getNetworkStateAsync } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
 import { getMe, listMessagesAfter, patchMe, postMessageRaw, screenCache, writeOutbox } from "@/lib/api";
 import { PostMessageResponse } from "@fakkarni/shared";
@@ -45,6 +45,10 @@ const store: OutboxStore = {
       itemsChanged.emit();
       void scheduleItems(res.items, true);
     }
+    // Plans the answer does not carry: a yes to a card (a task accepted), an undo, a reminder time
+    // an app action moved, or a resend answered from what the server stored (it holds only the
+    // plans the message made). Bring them down now instead of when Today is next opened.
+    if (res.duplicate || res.replies.some((m) => m.actions.length > 0)) void pullItems();
     // Zaki may have changed anything (money, trackers, tasks, circles): open screens reload now.
     dataChanged.emit();
   },
@@ -174,8 +178,20 @@ export function startSync() {
   void syncLanguage();
   // The on-phone model takes a few seconds to load: do it now, not when the first message waits.
   warmBrain();
-  addNetworkStateListener(({ isConnected, isInternetReachable }) => {
-    if (isConnected && isInternetReachable !== false) refresh();
+  // Back online: refresh. Only then: Android reports every change of signal strength or
+  // bandwidth as a network event (expo-network emits on each onCapabilitiesChanged), and each one
+  // used to start a whole refresh. Unknown at start (the refresh above has just run).
+  let online: boolean | null = null;
+  const reachable = (s: { isConnected?: boolean; isInternetReachable?: boolean | null }) => s.isConnected === true && s.isInternetReachable !== false;
+  void getNetworkStateAsync()
+    .then((s) => {
+      online ??= reachable(s);
+    })
+    .catch(() => {});
+  addNetworkStateListener((s) => {
+    const was = online;
+    online = reachable(s);
+    if (online && was === false) refresh();
   });
   AppState.addEventListener("change", (state) => {
     if (state === "active") refresh();
