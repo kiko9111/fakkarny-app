@@ -856,12 +856,14 @@ Rules:
     a spinner in the middle of the page (People, a circle, Daftar sections and one section,
     splits and one split, Memories). A screen that failed with nothing saved shows its retry.
   - Chat: a message that arrives while the chat is open rises into place once
-    (chat/entrance.ts, pure: the first list, and rows that scroll back into view, do not; a
-    reply's draft and the stored reply are one bubble); the first message of a local day has
-    the day above it (chat/days.ts, pure: Today, Yesterday, weekday, then the date) and a new
-    day ends a run of bubbles; scrolled up past about half a screen (`JUMP_AFTER`), a round button
-    brings the newest message back (the list is inverted, so that is offset 0), and sending does
-    the same.
+    (chat/entrance.ts, pure: the first list does not, and of a history that lands in one piece,
+    as when signing in pulls it, only the newest four do, so older rows never rise as they are
+    scrolled to; a reply's draft and the stored reply are one bubble; the screen hands the list
+    over while it is drawn, because a bubble asks when it is first drawn). The first message of
+    a local day has the day above it (chat/days.ts, pure: Today, Yesterday, weekday, then the
+    date) and a new day ends a run of bubbles. Scrolled up past about half a screen
+    (`JUMP_AFTER`), a round button brings the newest message back (the list is inverted, so that
+    is offset 0), and sending does the same.
   - Text boxes (`TextField`) show focus with the theme's colour and a soft ring
     (`shadow.focus`), not the browser's outline.
   - Numbers are written with Latin digits in Arabic too (`dateLocale` is ar-EG-u-nu-latn):

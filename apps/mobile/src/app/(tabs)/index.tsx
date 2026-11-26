@@ -123,13 +123,14 @@ export default function ChatScreen() {
     return [...all].reverse();
   }, [messages, loaded]);
   // Messages that arrive while the chat is open rise into place; the ones in the first list are
-  // simply there (chat/entrance.ts).
+  // simply there (chat/entrance.ts). The list is handed over here, while the screen is drawn and
+  // not in an effect: each bubble asks whether it arrives when it is first drawn.
   const entrance = useRef(createEntrance()).current;
-  useEffect(() => {
-    if (loaded) entrance.open(data.map((m) => m.client_id));
-    // The first list only: `open` ignores every later call.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
+  const listed = useRef<LocalMessage[] | null>(null);
+  if (loaded && listed.current !== data) {
+    listed.current = data;
+    entrance.list(data.map((m) => m.client_id));
+  }
   const now = new Date();
 
   // Android is edge-to-edge, so the window no longer resizes for the keyboard: padding on both platforms.
