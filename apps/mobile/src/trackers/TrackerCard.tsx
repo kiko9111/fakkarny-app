@@ -3,10 +3,10 @@ import { StyleSheet, TextInput, View } from "react-native";
 import { TRACKER_TEMPLATES, type Tracker, type TrackerKind } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
-import { dateLocale, t } from "@/i18n";
+import { dateLocale, listComma, t } from "@/i18n";
 import { deleteTracker, logTracker, saveTracker, undoTracker, updateTracker } from "@/lib/api";
 import { useGuess } from "@/lib/optimistic";
-import { ask, Badge, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
+import { ask, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
 import { QueuedOffline } from "@/sync/writes";
 import { askTimeLabel, bumpTracker, formatNumber, monthBars, progress, weekBars } from "./logic";
 
@@ -25,6 +25,22 @@ export const TRACKER_ICON: Record<TrackerKind, IconName> = {
 };
 
 export const trackerName = (tr: Pick<Tracker, "kind" | "name">) => (tr.kind === "custom" ? tr.name ?? plain(t.trackers.kinds.custom) : plain(t.trackers.kinds[tr.kind]));
+
+/**
+ * Days in a row, small: a flame and the number, like the one in the chat's header. The words
+ * ("5 days in a row") are read out, not drawn: written out, they took the room of the line
+ * beside them and "Today's goal done" broke in two.
+ */
+export function TrackerStreak({ days }: { days: number }) {
+  return (
+    <View style={styles.streak} accessible accessibilityLabel={fill(t.ui.streakDays, { n: days })}>
+      <Icon name="flame" size={14} color={palette.ok} />
+      <Text variant="smallStrong" color={palette.ok}>
+        {days}
+      </Text>
+    </View>
+  );
+}
 
 /**
  * One thing the user follows: today's number, the week, and one-tap logging. A step shows at
@@ -93,7 +109,7 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
             {done ? t.ui.goalDone : sub}
           </Text>
         </View>
-        {tr.streak >= 2 ? <Badge label={fill(t.ui.streakDays, { n: tr.streak })} tone="ok" /> : null}
+        {tr.streak >= 2 ? <TrackerStreak days={tr.streak} /> : null}
         <IconButton name="ellipsis-horizontal" label={t.trackers.remove} onPress={menu} size={36} />
       </View>
 
@@ -127,7 +143,7 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
             <View style={styles.meta}>
               <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
               <Text variant="small" color={palette.inkSoft}>
-                {fill(t.trackers.asksAt, { times: tr.ask_times.map((x) => askTimeLabel(x, dateLocale)).join("، ") })}
+                {fill(t.trackers.asksAt, { times: tr.ask_times.map((x) => askTimeLabel(x, dateLocale)).join(listComma) })}
               </Text>
             </View>
           ) : null}
@@ -173,7 +189,7 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
             <Button label={t.trackers.log} size="sm" disabled={amount === null} onPress={() => amount !== null && log(amount)} />
           </>
         ) : (
-          <Button label={t.trackers.plusOne} icon="add" size="sm" onPress={() => log()} />
+          <Button label={t.trackers.plusOne} size="sm" style={styles.plus} onPress={() => log()} />
         )}
         {tr.month.some((v) => v > 0) ? <Button label={showMonth ? t.trackers.hideMonth : t.trackers.showMonth} kind="text" size="sm" icon="stats-chart-outline" onPress={() => setShowMonth((v) => !v)} /> : null}
         {tr.total > 0 ? <Button label={t.trackers.undo} kind="text" size="sm" icon="arrow-undo-outline" disabled={waiting} onPress={() => run(() => undoTracker(tr.id))} /> : null}
@@ -186,6 +202,7 @@ const styles = StyleSheet.create({
   card: { gap: space.md },
   dim: { opacity: 0.6 },
   flex: { flex: 1, minWidth: 0 },
+  streak: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: palette.okSoft },
   head: { flexDirection: "row", alignItems: "center", gap: space.md },
   numberRow: { flexDirection: "row", alignItems: "flex-end", gap: space.xs },
   week: { flexDirection: "row", gap: 4, height: 30, alignItems: "flex-end", width: 104 },
@@ -198,5 +215,7 @@ const styles = StyleSheet.create({
   track: { height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, overflow: "hidden" },
   fill: { height: 6, borderRadius: 3 },
   actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
+  // The card's main tap: wide enough for a thumb though its label is two characters.
+  plus: { minWidth: 76 },
   input: { flex: 1, minWidth: 100, minHeight: 40, backgroundColor: palette.surfaceAlt, borderRadius: radius.pill, paddingHorizontal: space.lg, fontSize: 16, fontFamily: fonts.body, color: palette.ink },
 });

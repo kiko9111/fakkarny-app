@@ -77,6 +77,8 @@ export const shadow = {
   card: { boxShadow: `0px 6px 18px ${tint(0.08)}, 0px 1px 2px rgba(20, 16, 30, 0.04)` },
   raised: { boxShadow: `0px 14px 34px ${tint(0.16)}, 0px 2px 6px rgba(20, 16, 30, 0.06)` },
   button: { boxShadow: `0px 8px 18px ${tint(0.32)}` },
+  /** A soft ring in the theme's colour around the box being typed in. */
+  focus: { boxShadow: `0px 0px 0px 3px ${tint(0.16)}` },
 } as const;
 
 /**

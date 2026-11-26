@@ -845,6 +845,33 @@ Rules:
     EXPO_PUBLIC_API_URL set to the address of apps/mobile/scripts/web-live.mjs, which serves
     the export and passes everything else to the API (how to run is in the file; CUT=<n> cuts
     streamed answers).
+- Polish pass (2026-11-26, same thread; every screen walked in English and Arabic in the
+  browser preview). Rules that came out of it:
+  - Motion is src/ui/motion.tsx only: `Appear` (a short fade and lift, once) and `LoadingCards`
+    (soft cards that keep a page's shape). Core `Animated`, opacity and position only, native
+    driver on the phone, and the phone's "reduce motion" setting is honoured (fade, no movement,
+    no pulse). No animation library and no new native module: this reaches builds over the air.
+    Not checked on a real phone before it shipped (the same pattern as the toast and typing dots).
+  - A screen's first load with nothing saved shows `LoadingCards` where its list will be, never
+    a spinner in the middle of the page (People, a circle, Daftar sections and one section,
+    splits and one split, Memories). A screen that failed with nothing saved shows its retry.
+  - Chat: a message that arrives while the chat is open rises into place once
+    (chat/entrance.ts, pure: the first list, and rows that scroll back into view, do not; a
+    reply's draft and the stored reply are one bubble); the first message of a local day has
+    the day above it (chat/days.ts, pure: Today, Yesterday, weekday, then the date) and a new
+    day ends a run of bubbles; scrolled up past about half a screen (`JUMP_AFTER`), a round button
+    brings the newest message back (the list is inverted, so that is offset 0), and sending does
+    the same.
+  - Text boxes (`TextField`) show focus with the theme's colour and a soft ring
+    (`shadow.focus`), not the browser's outline.
+  - Numbers are written with Latin digits in Arabic too (`dateLocale` is ar-EG-u-nu-latn):
+    never type Arabic-Indic digits into a string. What the user types is still read both ways
+    (`parseAmount`, `parseContact`). Lists inside a sentence join with `listComma` (i18n).
+  - On a card the main button is the positive one: Cancel is never the filled button
+    (TaskCard), and a row's actions sit under it, not squeezed beside the title (private notes
+    in the Daftar are laid out like `DaftarCard`). A streak beside a title is a flame and the
+    number (`TrackerStreak`), with the words read out.
+  - The browser preview has sample split bills (demo/server.web.ts, the shared `splitBill` math).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

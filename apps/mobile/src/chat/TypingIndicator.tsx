@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, Platform, StyleSheet, View } from "react-native";
-import { glass, palette, radius, shadow, space, ZakiAvatar } from "@/ui";
+import { t } from "@/i18n";
+import { Appear, glass, palette, radius, space, ZakiAvatar } from "@/ui";
 
 /** Three soft dots that take turns: Zaki is writing. `small` sits under the words of a reply still being written. */
 export function TypingDots({ small = false }: { small?: boolean }) {
@@ -37,12 +38,12 @@ export function TypingDots({ small = false }: { small?: boolean }) {
 /** Zaki's face and the dots while the reply is being written. */
 export function TypingIndicator() {
   return (
-    <View style={styles.row} accessibilityLabel="typing">
+    <Appear style={styles.row} rise={6} ms={160}>
       <ZakiAvatar size={28} />
-      <View style={styles.bubble}>
+      <View style={styles.bubble} accessibilityLabel={t.ui.zakiTyping}>
         <TypingDots />
       </View>
-    </View>
+    </Appear>
   );
 }
 

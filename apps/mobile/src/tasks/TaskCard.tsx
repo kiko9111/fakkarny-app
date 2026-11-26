@@ -223,7 +223,7 @@ export function TaskCard({ task: fromList, showCircle, onChanged }: { task: Circ
       {actions.length ? (
         <View style={styles.actions}>
           {actions.map((a, n) => (
-            <Button key={a} label={t.tasks.actions[a]} size="sm" icon={ACTION_ICON[a]} kind={n === 0 ? "filled" : a === "cancel" ? "danger" : "outline"} disabled={busy} onPress={() => run(a)} />
+            <Button key={a} label={t.tasks.actions[a]} size="sm" icon={ACTION_ICON[a]} kind={a === "cancel" ? "danger" : n === 0 ? "filled" : "outline"} disabled={busy} onPress={() => run(a)} />
           ))}
           {canRemind && !picking ? <Button label={t.tasks.changeRemind} size="sm" kind="text" icon="alarm-outline" disabled={busy} onPress={() => setPicking(true)} /> : null}
         </View>
