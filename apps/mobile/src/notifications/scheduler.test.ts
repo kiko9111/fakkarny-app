@@ -39,7 +39,7 @@ const plan = (i: Item, now: Date) => planReminderNotifications(i, { now, alwaysD
  * made, a stored record, and optional delays. Like a phone whose alarms ring late, it keeps a
  * notification scheduled past its time.
  */
-function phone(opts: { scheduled?: string[]; at?: Record<string, number>; list?: "fail" | "hang"; record?: Record<string, string>; callMs?: number; hang?: string } = {}) {
+function phone(opts: { scheduled?: string[]; at?: Record<string, number>; list?: "fail" | "hang"; record?: Record<string, string>; callMs?: number; hang?: string; ios?: boolean } = {}) {
   const scheduled = new Set(opts.scheduled ?? []);
   const times = new Map(Object.entries(opts.at ?? {}));
   const calls: string[] = [];
@@ -49,7 +49,8 @@ function phone(opts: { scheduled?: string[]; at?: Record<string, number>; list?:
       calls.push("list");
       if (opts.list === "fail") throw new Error("no list");
       if (opts.list === "hang") return new Promise<Listed[]>(() => {});
-      return [...scheduled].map((identifier) => ({ identifier, at: times.get(identifier) ?? null }));
+      // iOS lists a date as calendar parts: no time.
+      return [...scheduled].map((identifier) => ({ identifier, at: opts.ios ? null : (times.get(identifier) ?? null) }));
     },
     schedule: async (n) => {
       calls.push(`schedule ${n.identifier}`);
@@ -119,7 +120,8 @@ describe("notification scheduler", () => {
     const p = phone();
     const s = make(p);
     await s.enqueue([item({ id: "a", due_at: iso(120) })]);
-    s.remember(snoozeId("a"), signature({ date: new Date(T0 + 30 * 60_000), kind: "hint", body: "Call mom" }));
+    // Later on the backup reminder (at 90): an hour on, past the plan's own reminders.
+    s.remember(snoozeId("a"), signature({ date: new Date(T0 + 150 * 60_000), kind: "hint", body: "Call mom" }));
     // Re-planning the open item leaves the snooze alone.
     await s.enqueue([item({ id: "a", due_at: iso(120) })]);
     p.take();
@@ -307,6 +309,24 @@ describe("notification scheduler", () => {
     const p = phone();
     await make(p).enqueue([item({ id: "a" })]);
     expect(Object.keys(p.record() ?? {})).toEqual(["item_a_hint"]);
+  });
+
+  it("on an iPhone, cancels a closed plan's notification whose record says it rang long ago", async () => {
+    // iOS still lists it, so it was scheduled again by a run that stopped before writing the record.
+    const old = signature({ date: new Date(T0 - 5 * 60 * 60_000), kind: "hint", body: "x" });
+    const p = phone({ ios: true, scheduled: ["item_a_hint"], record: { item_a_hint: old } });
+    await make(p).enqueue([item({ id: "a", status: "done" })]);
+    expect(p.calls).toEqual(["list", "cancel item_a_hint"]);
+  });
+
+  it("names the items it holds notifications of, read from the phone at launch", async () => {
+    const p = phone({ scheduled: ["item_a_hint", "item_b_r29000000", "item_b_snooze", "other"] });
+    const s = make(p);
+    expect((await s.tracked()).sort()).toEqual(["a", "b"]);
+    expect(p.take()).toEqual(["list"]);
+    // A closed plan planned again loses its notifications and leaves the list.
+    await s.enqueue([item({ id: "a", status: "done" })]);
+    expect(await s.tracked()).toEqual(["b"]);
   });
 });
 

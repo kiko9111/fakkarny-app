@@ -26,5 +26,12 @@ export const MESSAGES_WITH_CARD_SQL = "SELECT client_id, actions_json FROM messa
 
 /** id and status of the items with these ids (n of them; the reminders in the notification shade). */
 export function itemStatusesSql(n: number): string {
-  return `SELECT id, status FROM items WHERE id IN (${Array.from({ length: Math.max(n, 1) }, () => "?").join(", ")})`;
+  return `SELECT id, status FROM items WHERE id IN (${marks(n)})`;
 }
+
+/** Every column of the items with these `n` ids. */
+export function itemsByIdsSql(n: number): string {
+  return `SELECT * FROM items WHERE id IN (${marks(n)})`;
+}
+
+const marks = (n: number) => Array.from({ length: Math.max(n, 1) }, () => "?").join(", ");

@@ -59,6 +59,10 @@ export function repeatId(itemId: string, at: Date) {
 export function itemPrefix(itemId: string) {
   return `item_${itemId}_`;
 }
+/** The item an identifier of this app belongs to, or null for one that isn't an item's. */
+export function itemIdOf(identifier: string): string | null {
+  return /^item_(.+)_(?:hint|clear|followup|snooze|r\d+)$/.exec(identifier)?.[1] ?? null;
+}
 /** "Later" on a reminder: an hour on. Re-planning leaves it alone; closing the item clears it. */
 export function snoozeId(itemId: string) {
   return `item_${itemId}_snooze`;

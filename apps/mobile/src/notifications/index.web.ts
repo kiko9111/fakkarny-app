@@ -10,6 +10,7 @@ export function scheduleItem(_item: Item): void {}
 export async function scheduleItems(_items: readonly Item[], _soon = false): Promise<void> {}
 export async function clearScheduled(): Promise<void> {}
 export async function tidyShade(): Promise<void> {}
+export async function planTheRest(_planned: readonly Item[]): Promise<void> {}
 export function listenForNotifications(_onMessage: () => void, _say: (text: string) => void) {
   return () => {};
 }

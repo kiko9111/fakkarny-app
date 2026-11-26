@@ -5,8 +5,8 @@
  * calls and the stored record are injected, so it is unit-tested.
  */
 import type { Item } from "@fakkarni/shared";
-import type { PlannedNotification } from "./plan";
-import { firesAt, itemChanges, listedSignature, signature, UNKNOWN } from "./reconcile";
+import { itemIdOf, type PlannedNotification } from "./plan";
+import { itemChanges, launchSignature, signature, UNKNOWN } from "./reconcile";
 
 /** A notification the phone has scheduled, and when it fires when the phone says (Android does). */
 export interface Listed {
@@ -58,6 +58,12 @@ export interface Scheduler {
   enqueue(items: readonly Item[], soon?: boolean): Promise<void>;
   /** A notification scheduled outside the plan (the "Later" snooze), so closing its item clears it. */
   remember(identifier: string, sig: string): void;
+  /**
+   * The items the phone holds notifications of, as far as this app knows (the record and the
+   * phone's own list are read first if they haven't been). A plan closed while the app was stopped
+   * before its notifications went, or whose cancel failed, stays among them until planned again.
+   */
+  tracked(): Promise<string[]>;
   /**
    * Forget everything and stop (the phone is being wiped; the caller cancels every notification
    * after `idle`). Items enqueued after it belong to the person being wiped and are dropped, until
@@ -130,14 +136,11 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
     const map = new Map<string, string>();
     if (present) {
       listed = true;
-      // What the phone holds is the truth; the record only adds the details. Where the phone says
-      // when one fires (Android), a record with another time is stale (a run stopped before it was
-      // written) and that time is kept instead. One past its time has not rung yet (Android rings
-      // late): an open plan's is left to ring, a closed plan's is cancelled.
-      for (const { identifier, at } of present) {
-        const sig = saved[identifier];
-        map.set(identifier, sig !== undefined && (at === null || firesAt(sig) === at) ? sig : at ? listedSignature(at) : UNKNOWN);
-      }
+      // What the phone holds is the truth; the record only adds the details (launchSignature). One
+      // listed past its time has not rung yet (Android rings late): an open plan's is left to
+      // ring, a closed plan's is cancelled.
+      const t = now();
+      for (const { identifier, at } of present) map.set(identifier, launchSignature(saved[identifier], at, t));
       dirty = true;
     } else {
       for (const [id, sig] of Object.entries(saved)) map.set(id, sig);
@@ -245,6 +248,16 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
       known.set(identifier, sig);
       dirty = true;
       persist();
+    },
+    async tracked() {
+      // Reads the record and the phone's list first, if no run has yet.
+      await drain();
+      const ids = new Set<string>();
+      for (const identifier of known?.keys() ?? []) {
+        const id = itemIdOf(identifier);
+        if (id) ids.add(id);
+      }
+      return [...ids];
     },
     reset() {
       generation++;

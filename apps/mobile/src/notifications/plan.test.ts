@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fill, itemPrefix, planReminderNotifications, type ReminderItem } from "./plan";
+import { fill, itemIdOf, itemPrefix, planReminderNotifications, type ReminderItem } from "./plan";
 
 const now = new Date("2026-11-22T10:00:00Z");
 const clearText = (title: string, due: Date) => `Just so you don't miss it: ${title} at ${due.toISOString().slice(11, 16)}`;
@@ -106,5 +106,18 @@ describe("repeating reminders and follow-ups", () => {
     expect(p.at(-1)!.date.toISOString()).toBe("2026-11-22T18:00:00.000Z");
     const night = planReminderNotifications({ ...withFollow, follow_up_at: "2026-11-22T23:30:00.000Z" }, { now, alwaysDirect: false, clearText, followupText, awake });
     expect(night.some((n) => n.kind === "followup")).toBe(false);
+  });
+});
+
+describe("itemIdOf", () => {
+  it("reads the item from every identifier this app schedules, and nothing else", () => {
+    expect(itemIdOf("item_9f1c-22_hint")).toBe("9f1c-22");
+    expect(itemIdOf("item_9f1c-22_clear")).toBe("9f1c-22");
+    expect(itemIdOf("item_9f1c-22_followup")).toBe("9f1c-22");
+    expect(itemIdOf("item_9f1c-22_snooze")).toBe("9f1c-22");
+    expect(itemIdOf("item_9f1c-22_r29412345")).toBe("9f1c-22");
+    expect(itemIdOf("item_a_b_hint")).toBe("a_b");
+    expect(itemIdOf("zaki-message")).toBeNull();
+    expect(itemIdOf("item_x_other")).toBeNull();
   });
 });

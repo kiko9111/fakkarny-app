@@ -109,14 +109,22 @@ export async function upsertItem(i: Item): Promise<boolean> {
   return result.changes > 0;
 }
 
-/** Several items in one transaction; returns the ones written (a newer copy on the phone wins). */
+/**
+ * Several items, one statement each; returns the ones written (a newer copy on the phone wins).
+ * Not in a transaction: expo-sqlite shares one connection, and a transaction begun while another
+ * is open (a chat reply being saved, `markSynced`) fails with "cannot start a transaction within a
+ * transaction", which lost the whole pull. One that fails is left as it was: its version on the
+ * phone is unchanged, so the next pull brings it again.
+ */
 export async function upsertItems(items: readonly Item[]): Promise<Item[]> {
-  if (!items.length) return [];
-  const db = await getDb();
   const wrote: Item[] = [];
-  await db.withTransactionAsync(async () => {
-    for (const i of items) if (await upsertItem(i)) wrote.push(i);
-  });
+  for (const i of items) {
+    try {
+      if (await upsertItem(i)) wrote.push(i);
+    } catch {
+      // the next pull tries it again
+    }
+  }
   return wrote;
 }
 

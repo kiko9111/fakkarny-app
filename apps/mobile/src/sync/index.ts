@@ -14,7 +14,7 @@ import { itemsChanged } from "@/lib/signals";
 import { LIVE_EVERY_MS } from "@/lib/live-plan";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
-import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, tidyShade, watchPushToken } from "@/notifications";
+import { ensurePermissionAndRegister, listenForNotifications, planTheRest, scheduleItems, setupNotifications, tidyShade, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
 import { prefetchAll, prefetchSoon, setChatBusy } from "@/lib/prefetch";
 import { createSyncQueue, type OutboxStore } from "./queue";
@@ -164,8 +164,14 @@ export function startSync() {
       .then((r) => (r === "done" && waiting > 0 ? dataChanged.emit() : undefined))
       .catch(() => {});
     void pullMessages();
-    // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
-    void listScheduled().then(scheduleItems).catch(() => {});
+    // Repeating reminders are planned a day ahead: top them up whenever the app comes back. Then
+    // any other plan the phone still holds notifications of (one closed while the app was stopped).
+    void listScheduled()
+      .then((open) => {
+        void scheduleItems(open);
+        return planTheRest(open);
+      })
+      .catch(() => {});
     // Reminders in the shade that no longer help: a closed plan's, an hourly reminder's older ones.
     void tidyShade();
     // Items made or closed on the server outside the chat (circle tasks, Session steps).

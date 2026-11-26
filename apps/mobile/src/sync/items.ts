@@ -9,8 +9,9 @@ import { changedItems } from "./changed";
 async function pullOnce(): Promise<void> {
   try {
     const [server, local] = await Promise.all([listItems(), localItemVersions()]);
-    // All in one transaction, then every list of plans redraws; notifications follow in the
-    // background (on Android each one is a trip through the system, and nothing waits for them).
+    // Written one by one (upsertItems says why), then every list of plans redraws; notifications
+    // follow in the background (on Android each one is a trip through the system, and nothing
+    // waits for them).
     const wrote = await upsertItems(changedItems(server, local));
     if (!wrote.length) return;
     itemsChanged.emit();

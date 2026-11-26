@@ -4,7 +4,7 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import type { Item } from "@fakkarni/shared";
-import { itemStatuses } from "@/db/items";
+import { itemsByIds, itemStatuses } from "@/db/items";
 import { kvGet, kvSet } from "@/db/kv";
 import { oneAtATime } from "@/lib/one-at-a-time";
 import { prefs } from "@/lib/prefs";
@@ -17,6 +17,7 @@ import { fill, legacyIds, planReminderNotifications, snoozeId, type PlannedNotif
 import { signature } from "./reconcile";
 import { createScheduler, listedAt, type NotificationHost } from "./scheduler";
 import { shownItemId, staleShown } from "./shade";
+import { readTaps, rememberTap, tapKey } from "./taps";
 
 const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
@@ -119,6 +120,21 @@ function planFor(item: Item, now: Date): PlannedNotification[] {
 
 /** What this app scheduled (identifier → signature), so a launch knows what is already there. */
 const RECORD_KEY = "notif:scheduled";
+/** Done / Later taps already answered (taps.ts). */
+const TAPS_KEY = "notif:taps";
+
+/** Whether this Done / Later tap is new; it is remembered as answered at once, before any wait. */
+function firstAnswer(res: Notifications.NotificationResponse): boolean {
+  const key = tapKey(res.notification.request.identifier, res.notification.date, res.actionIdentifier);
+  try {
+    const taps = readTaps(localStorage.getItem(TAPS_KEY));
+    if (taps.includes(key)) return false;
+    localStorage.setItem(TAPS_KEY, JSON.stringify(rememberTap(taps, key)));
+  } catch {
+    // storage gone: answer it (a second answer only repeats the same chat line)
+  }
+  return true;
+}
 
 const host: NotificationHost = {
   list: async () => (await Notifications.getAllScheduledNotificationsAsync()).map((r) => ({ identifier: r.identifier, at: listedAt(r.trigger) })),
@@ -163,6 +179,23 @@ export function scheduleItems(items: readonly Item[], soon = false): Promise<voi
   // A plan was closed: its reminders still in the notification shade go too.
   if (items.some((i) => i.status !== "open")) void tidyShade();
   return planned;
+}
+
+/**
+ * Plans the phone holds notifications of besides `planned` (the open reminders just planned): one
+ * closed while the app was stopped before its notifications went, one whose cancel failed, a task
+ * with only a deadline. Planning them again cancels what a plan no longer wants and puts back what
+ * the system dropped. Items leave the phone only with a wipe, which cancels every notification, so
+ * one that isn't found is left alone. In the background: nothing waits for it.
+ */
+export async function planTheRest(planned: readonly Item[]): Promise<void> {
+  try {
+    const skip = new Set(planned.map((i) => i.id));
+    const ids = (await scheduler.tracked()).filter((id) => !skip.has(id));
+    if (ids.length) void scheduleItems(await itemsByIds(ids));
+  } catch {
+    // The database is busy: the next return to the app tries again.
+  }
 }
 
 /**
@@ -217,14 +250,25 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
     if (type === "reminder" || type === "followup") pullSoon();
     if (type === "reminder") tidySoon();
   });
-  const response = Notifications.addNotificationResponseReceivedListener(async (res) => {
+  /**
+   * A tap on a notification or on its Done / Later. `found`: read at start, tapped while the app was
+   * stopped; only Done and Later are answered then (the app opened on its own first screen).
+   */
+  const answer = async (res: Notifications.NotificationResponse, found: boolean) => {
     const data = res.notification.request.content.data as { type?: string; itemId?: string; title?: string; repeating?: boolean } | undefined;
+    const quick = (res.actionIdentifier === ACTION_DONE || res.actionIdentifier === ACTION_LATER) && Boolean(data?.itemId);
+    if (found && !quick) return;
+    if (quick && !firstAnswer(res)) return;
+    try {
+      // Answered: an update that reloads the app must not find it again.
+      Notifications.clearLastNotificationResponse();
+    } catch {
+      // a build without it
+    }
     if (data?.type === "reminder" || data?.type === "followup") pullSoon();
     // Android keeps a notification in the shade after Done or Later on it: it goes now.
     const tapped = res.notification.request.identifier;
-    if ((res.actionIdentifier === ACTION_DONE || res.actionIdentifier === ACTION_LATER) && data?.itemId) {
-      void Notifications.dismissNotificationAsync(tapped).catch(() => {});
-    }
+    if (quick) void Notifications.dismissNotificationAsync(tapped).catch(() => {});
     if (res.actionIdentifier === ACTION_DONE && data?.itemId) {
       // Everything goes through the conversation: the answer shows in the chat and the friend replies.
       if (data.title) say(fill(t.notifications.doneSay, { title: data.title }));
@@ -240,6 +284,9 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
       }
     } else if (res.actionIdentifier === ACTION_LATER && data?.itemId) {
       if (data.title) say(fill(t.notifications.laterSay, { title: data.title }));
+      // Found at start: the chat line asks the server to move the plan an hour on from now, and that
+      // rings; a snooze counted from the tap could only ring in its way, or not at all.
+      if (found) return;
       // Its own identifier: re-planning the item leaves it alone, and closing the item clears it.
       const identifier = snoozeId(data.itemId);
       const body = res.notification.request.content.body ?? data.title ?? "";
@@ -254,7 +301,16 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
       if (data?.type === "message") onMessage();
       router.navigate("/");
     }
-  });
+  };
+  const response = Notifications.addNotificationResponseReceivedListener((res) => void answer(res, false));
+  // Done or Later tapped while the app was stopped reached no listener: Android keeps that tap in
+  // the app's process (lost if the process ends first) until the app opens, and hands it over here.
+  try {
+    const last = Notifications.getLastNotificationResponse();
+    if (last) void answer(last, true);
+  } catch {
+    // a build without it
+  }
   return () => {
     received.remove();
     response.remove();
