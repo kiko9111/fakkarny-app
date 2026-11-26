@@ -87,6 +87,8 @@ export class PatientPool extends pg.Pool {
   readonly #patienceMs: number;
   readonly #regrowMs: number;
   readonly #onNoRoom: Patience["onNoRoom"];
+  /** How long a query may wait for a connection in all (pg's connectionTimeoutMillis; 0 = no limit). */
+  readonly #timeoutMs: number;
   /** When the pool may try one more connection again; 0 while it is not held back. */
   #growAt = 0;
   /** Connections that were let in and not closed since (pg's own count includes attempts on their way). */
@@ -98,6 +100,7 @@ export class PatientPool extends pg.Pool {
     this.#patienceMs = patience.patienceMs ?? 10_000;
     this.#regrowMs = patience.regrowMs ?? 3_000;
     this.#onNoRoom = patience.onNoRoom;
+    this.#timeoutMs = this.options.connectionTimeoutMillis ?? 0;
     this.on("connect", (client) => {
       this.#let.add(client);
       // A new connection was let in: there is room again.
@@ -126,34 +129,70 @@ export class PatientPool extends pg.Pool {
   }
 
   // Every query goes through here: `pool.query()` calls it with a callback, a transaction
-  // without one. The callback runs in the same turn as pg's own, as with pg's plain pool:
-  // pool.query() puts its 'error' listener on the connection there, before anything more is
-  // read from it. One step through a promise in between left the connection without a
-  // listener for that moment, and a session the server ended (a restart: FATAL right after an
-  // answer, in the same read) was thrown out of the socket's handler and stopped the process.
+  // without one. pg hands a connection to the next query from inside the read that ended the
+  // last one, and a session the server ended (a restart or a failover: FATAL right after an
+  // answer, in the same read) is reported on the connection while that read goes on. With no
+  // 'error' listener on it by then, the error is thrown out of the socket's handler and the
+  // process stops. So the callback runs in the same turn as pg's own, as with pg's plain pool
+  // (pool.query() puts its listener on the connection there), and a caller of the promise form,
+  // which can put its listener on only after its `await` (Prisma's transactions), gets the
+  // connection with one already on it, kept until that caller has had its turn.
   override connect(): Promise<pg.PoolClient>;
   override connect(callback: Checkout): void;
   override connect(callback?: Checkout): Promise<pg.PoolClient> | void {
     if (callback) return this.#checkout(callback, Date.now(), FIRST_WAIT_MS);
     return new Promise<pg.PoolClient>((resolve, reject) =>
-      this.#checkout((err, client) => (err || !client ? reject(err) : resolve(client)), Date.now(), FIRST_WAIT_MS),
+      this.#checkout(
+        (err, client) => {
+          if (err || !client) return reject(err);
+          // An error in that moment needs no telling: pg has marked the connection as not
+          // usable, the caller's first query fails with that, and its release drops it.
+          const hold = () => {};
+          client.on("error", hold);
+          setImmediate(() => client.removeListener("error", hold));
+          resolve(client);
+        },
+        Date.now(),
+        FIRST_WAIT_MS,
+      ),
     );
   }
 
   #checkout(callback: Checkout, started: number, wait: number): void {
     this.#growAgain();
-    super.connect((err, client, release) => {
+    this.#ask(started, (err, client, release) => {
       if (!err || !isNoRoom(err)) return callback(err, client, release);
       this.#stopGrowing();
-      const left = this.#patienceMs - (Date.now() - started);
-      if (left <= 0) return callback(err, undefined, () => {});
+      const waited = Date.now() - started;
+      const limit = this.#timeoutMs || Number.POSITIVE_INFINITY;
       // With connections of its own the pool is now "full" at its size: asking again queues
-      // this query for one of them. With none there is nothing to queue for: it tries a new
-      // connection again, a little later each time and not in step with the others.
-      if (this.#open > 0) return this.#checkout(callback, started, wait);
+      // this query for one of them, for what is left of the time any query waits for a
+      // connection. That also holds for a query that already waited in the queue and was then
+      // sent off to open a connection of its own (#serveWaiting) and refused.
+      if (this.#open > 0) return waited < limit ? this.#checkout(callback, started, wait) : callback(err, undefined, () => {});
+      // With none there is nothing to queue for: it tries a new connection again, a little later
+      // each time and not in step with the others, for `patienceMs`.
+      const left = Math.min(this.#patienceMs, limit) - waited;
+      if (left <= 0) return callback(err, undefined, () => {});
       const next = Math.min(wait * 2, MAX_WAIT_MS);
       setTimeout(() => this.#checkout(callback, started, next), Math.min(left, wait * (0.75 + Math.random() / 2)));
     });
+  }
+
+  /**
+   * pg's own `connect`, with its wait cut to what is left of the query's: a query that asks
+   * again (above) waits for a connection as long as one that asks once, not that long again.
+   */
+  #ask(started: number, callback: Checkout): void {
+    const full = this.#timeoutMs;
+    if (!full) return super.connect(callback);
+    // pg reads the timeout in this call, while it queues the query or starts its connection.
+    this.options.connectionTimeoutMillis = Math.max(1, full - (Date.now() - started));
+    try {
+      super.connect(callback);
+    } finally {
+      this.options.connectionTimeoutMillis = full;
+    }
   }
 
   /** Opens a connection for each query in pg's queue, up to `max` (pg's own step for one waiting query). */

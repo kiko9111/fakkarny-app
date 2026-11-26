@@ -2,7 +2,6 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { type AddressInfo, connect, createServer, type Server } from "node:net";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { afterEach, describe, expect, it } from "vitest";
 import { hasTestDb, TEST_DATABASE_URL } from "../test/db";
 
@@ -52,18 +51,47 @@ function startServer(env: Record<string, string>) {
   return { child, logs, ended, listening };
 }
 
-/** A TCP proxy in front of the test database whose every answer arrives `delayMs` late. */
-async function slowProxy(target: URL, delayMs: number): Promise<{ url: string; close: () => void }> {
+/** pg's goodbye on a connection it closes itself (Terminate: "X" and its length, 4). */
+const TERMINATE = Buffer.from([0x58, 0, 0, 0, 4]);
+
+/**
+ * A TCP proxy in front of the test database whose every answer arrives `delayMs` late, in the
+ * order it was sent. For each connection through it, it notes whether the server ended it with
+ * pg's goodbye, which happens only when the server closes its pool itself: a process that just
+ * exits leaves its connections to be closed by the system, with no goodbye.
+ */
+async function slowProxy(target: URL, delayMs: number) {
+  const sessions: { ended: boolean; saidGoodbye: boolean }[] = [];
   const proxy: Server = createServer((client) => {
+    const session = { ended: false, saidGoodbye: false };
+    sessions.push(session);
     const up = connect(Number(target.port || 5432), target.hostname);
-    let last = 0;
-    up.on("data", (chunk) => {
-      const at = Math.max(Date.now() + delayMs, last);
-      last = at;
-      setTimeout(() => client.writable && client.write(chunk), at - Date.now());
+    // One queue per connection, so the answers can never overtake each other.
+    const queue: { at: number; chunk: Buffer }[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      timer = undefined;
+      while (queue.length && queue[0]!.at <= Date.now()) {
+        const { chunk } = queue.shift()!;
+        if (client.writable) client.write(chunk);
+      }
+      if (queue.length) timer = setTimeout(flush, queue[0]!.at - Date.now());
+    };
+    up.on("data", (chunk: Buffer) => {
+      queue.push({ at: Date.now() + delayMs, chunk });
+      timer ??= setTimeout(flush, delayMs);
     });
-    client.on("data", (chunk) => up.write(chunk));
-    const end = () => (client.destroy(), up.destroy());
+    let tail = Buffer.alloc(0);
+    client.on("data", (chunk: Buffer) => {
+      tail = Buffer.concat([tail, chunk]).subarray(-TERMINATE.length);
+      up.write(chunk);
+    });
+    client.on("end", () => (session.saidGoodbye = tail.equals(TERMINATE)));
+    const end = () => {
+      session.ended = true;
+      client.destroy();
+      up.destroy();
+    };
     client.on("close", end);
     up.on("close", () => setTimeout(end, delayMs + 50));
     client.on("error", () => {});
@@ -73,7 +101,7 @@ async function slowProxy(target: URL, delayMs: number): Promise<{ url: string; c
   const url = new URL(target.href);
   url.hostname = "127.0.0.1";
   url.port = String((proxy.address() as AddressInfo).port);
-  return { url: url.href, close: () => proxy.close() };
+  return { url: url.href, sessions, close: () => proxy.close() };
 }
 
 describe("the server as the container starts it", () => {
@@ -121,21 +149,14 @@ describe("the server as the container starts it", () => {
   // it (Fastify's keep-alive timeout, 72 s): the server held its database connections that long
   // and was killed at the end of the drain.
   it.skipIf(process.platform === "win32" || !hasTestDb)(
-    "finishes a reply that is in flight at SIGTERM, then exits at once although the caller keeps its connection",
+    "finishes a reply that is in flight at SIGTERM, closes its database connections, then exits at once although the caller keeps its connection",
     async () => {
       const proxy = await slowProxy(new URL(TEST_DATABASE_URL!), 400);
-      const watcher = new pg.Client({ connectionString: TEST_DATABASE_URL });
-      await watcher.connect();
       try {
         const port = await freePort();
-        const appName = `stop-test-${port}`;
-        const viaProxy = new URL(proxy.url);
-        viaProxy.searchParams.set("application_name", appName);
-        const server = startServer({ PORT: String(port), DATABASE_URL: viaProxy.href });
+        const server = startServer({ PORT: String(port), DATABASE_URL: proxy.url });
         child = server.child;
         expect(await server.listening).toBe("up");
-        const openConnections = async () =>
-          (await watcher.query<{ n: number }>("select count(*)::int as n from pg_stat_activity where application_name = $1", [appName])).rows[0]!.n;
 
         // One request on a connection the caller keeps, as a proxy's connection pool does.
         const socket = connect(port, "127.0.0.1");
@@ -156,11 +177,12 @@ describe("the server as the container starts it", () => {
         expect(ended.at - answeredAt).toBeLessThan(5_000); // not the 72 s of a kept connection
         expect(server.logs.out).not.toContain("shutdown failed");
         await until(() => socket.destroyed || socket.readableEnded);
-        await new Promise((r) => setTimeout(r, 200));
-        expect(await openConnections()).toBe(0); // its database connections were given back
+        // The server closed its database connections itself before it exited.
+        await until(() => proxy.sessions.every((session) => session.ended));
+        expect(proxy.sessions.length).toBeGreaterThan(0);
+        expect(proxy.sessions.map((session) => session.saidGoodbye)).toEqual(proxy.sessions.map(() => true));
         socket.destroy();
       } finally {
-        await watcher.end();
         proxy.close();
       }
     },

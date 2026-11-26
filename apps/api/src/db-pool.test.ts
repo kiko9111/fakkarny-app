@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hasTestDb, TEST_DATABASE_URL } from "../test/db";
 import type { FriendModel, FriendModelResult } from "./ai/model";
 import { buildApp } from "./app";
+import { PRISMA_OPTIONS } from "./db";
 import { isNoRoom, openPool, PatientPool, poolSettings } from "./db-pool";
 import { PrismaClient } from "./generated/prisma/client";
 import { createConversationPipeline } from "./pipeline/conversation";
@@ -18,7 +19,7 @@ const FULL = "(EMAXCONNSESSION) max clients reached in session mode - max client
 
 /** A stand-in server with a fixed number of places, and the client class that connects to it. */
 function standIn(places: number) {
-  const server = { places, open: 0, most: 0, attempts: 0, refused: 0, failWith: null as Error | null, lateError: false };
+  const server = { places, open: 0, most: 0, attempts: 0, refused: 0, failWith: null as Error | null, lateError: false, queryMs: 5 };
   class Client extends EventEmitter {
     _queryable = true;
     _ending = false;
@@ -38,7 +39,7 @@ function standIn(places: number) {
       }, 5);
     }
     query(_text: unknown, _values: unknown, cb: (err: Error | undefined, res?: unknown) => void) {
-      setTimeout(() => cb(undefined, { rows: [] }), 5);
+      setTimeout(() => cb(undefined, { rows: [] }), server.queryMs);
     }
     end(cb?: () => void) {
       if (this.#in) server.open--;
@@ -50,7 +51,8 @@ function standIn(places: number) {
       return this.#in;
     }
   }
-  const pool = (patience: ConstructorParameters<typeof PatientPool>[1] = {}) => new PatientPool({ Client, max: 8, idleTimeoutMillis: 60_000, connectionTimeoutMillis: 2_000 } as unknown as pg.PoolConfig, patience);
+  const pool = (patience: ConstructorParameters<typeof PatientPool>[1] = {}, timeoutMs = 2_000) =>
+    new PatientPool({ Client, max: 8, idleTimeoutMillis: 60_000, connectionTimeoutMillis: timeoutMs } as unknown as pg.PoolConfig, patience);
   return { server, pool };
 }
 const burst = (pool: pg.Pool, n: number) => Promise.all(Array.from({ length: n }, () => pool.query("select 1")));
@@ -175,6 +177,47 @@ describe("a pool that waits its turn", () => {
     await burst(pool, 12);
     expect(pool.room).toBe(8);
     expect(server.most).toBe(8);
+    await pool.end();
+  });
+
+  it("once there is room for only some of the queries that were waiting, the rest wait on for a connection instead of failing", async () => {
+    const { server, pool: make } = standIn(2);
+    server.queryMs = 40;
+    // A short patience: these queries have waited longer than it by the time room comes back.
+    const pool = make({ regrowMs: 40, patienceMs: 50 });
+    const first = burst(pool, 12);
+    await sleep(150);
+    expect(pool.room).toBe(2);
+    // One place comes free. The next query's try is let in, which lifts the limit, and the pool
+    // sends the queries still waiting off to open connections of their own: all but one are
+    // refused, after a wait in the queue longer than the patience.
+    server.places = 3;
+    const refusedBefore = server.refused;
+    const late = pool.query("select 1");
+    await expect(Promise.all([first, late])).resolves.toHaveLength(2);
+    expect(server.refused).toBeGreaterThan(refusedBefore);
+    expect(server.most).toBe(3);
+    await pool.end();
+  });
+
+  it("asked again after a refusal, a query waits for a connection as long in all as one asked once", async () => {
+    const { server, pool: make } = standIn(2);
+    const pool = make({ regrowMs: 40, patienceMs: 50 }, 1_200);
+    // Every connection the server allows is held (transactions that do not end in time).
+    const held = [await pool.connect(), await pool.connect()];
+    const started = Date.now();
+    const waiting = pool.query("select 1");
+    await sleep(400);
+    // A third place, taken by the next caller; the query that was waiting is sent off to open
+    // a connection of its own, is refused, and asks again with 800 ms of its 1200 left.
+    server.places = 3;
+    held.push(await pool.connect());
+    await expect(waiting).rejects.toThrow("timeout exceeded when trying to connect");
+    const took = Date.now() - started;
+    expect(server.refused).toBeGreaterThanOrEqual(1);
+    expect(took).toBeGreaterThanOrEqual(1_150);
+    expect(took).toBeLessThan(1_450); // not 1200 ms more from the refusal
+    for (const client of held) client.release();
     await pool.end();
   });
 
@@ -319,6 +362,35 @@ describe("a session the server ends (a restart, a failover)", () => {
     }
   });
 
+  it("fails the transaction that was waiting for the connection, and nothing is thrown", async () => {
+    const server = await endingServer("after-answer");
+    process.on("uncaughtException", onThrown);
+    const pool = openPool(server.url, { max: 1 });
+    try {
+      const first = pool.query("select 1");
+      // As Prisma starts a transaction: it takes the connection with `await pool.connect()` and
+      // puts its own 'error' listener on it only after that await.
+      const second = (async () => {
+        const client = await pool.connect();
+        client.on("error", () => {});
+        try {
+          return await client.query("begin");
+        } finally {
+          client.release();
+        }
+      })();
+      await expect(first).resolves.toBeDefined();
+      await expect(second).rejects.toThrow("not queryable");
+      await sleep(50);
+      expect(thrown).toEqual([]);
+      expect(pool.totalCount).toBe(0); // the ended connection was not put back
+    } finally {
+      process.off("uncaughtException", onThrown);
+      await pool.end().catch(() => {});
+      await server.close();
+    }
+  });
+
   it("fails the query of a connection ended right after it opened, and nothing is thrown", async () => {
     const server = await endingServer("after-start");
     process.on("uncaughtException", onThrown);
@@ -450,6 +522,21 @@ describe.skipIf(!hasTestDb)("the pool on a real Postgres", () => {
     await prisma.$disconnect();
     expect(pool.ended).toBe(true);
   });
+
+  it("lets a transaction wait for a connection as long as a query does, not Prisma's own 2 s", async () => {
+    const pool = openPool(TEST_DATABASE_URL!, { max: 1 });
+    const prisma = new PrismaClient({ adapter: new PrismaPg(pool, { disposeExternalPool: true }), ...PRISMA_OPTIONS });
+    try {
+      // The only connection is busy for longer than Prisma's default wait.
+      const busy = pool.query("select pg_sleep(2.3)");
+      await sleep(50);
+      const [one] = await prisma.$transaction(async (tx) => tx.$queryRaw<{ n: number }[]>`select 1::int as n`);
+      expect(one?.n).toBe(1);
+      await busy;
+    } finally {
+      await prisma.$disconnect();
+    }
+  }, 15_000);
 
   it("keeps the connections of a burst for the next one", async () => {
     const pool = openPool(TEST_DATABASE_URL!, { max: 6, idleTimeoutMillis: 400 });

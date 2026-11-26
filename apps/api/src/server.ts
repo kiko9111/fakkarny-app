@@ -65,31 +65,38 @@ const STOP = {
   closeAllAfterMs: 40_000,
   /** pg-boss's wait for a running job (the proactive tick) to end. */
   jobsMs: 20_000,
-  /** The wait for pushes and dashboard rows the last requests started. */
-  backgroundMs: 5_000,
+  /** The wait for chat turns whose caller has gone, and for pushes and dashboard rows the last requests started. */
+  backgroundMs: 10_000,
   /** If anything still hangs, the process ends anyway, before the platform kills it. */
   giveUpAfterMs: 55_000,
 };
 let boss: Awaited<ReturnType<typeof startJobs>> | undefined;
 let starting: Promise<unknown> = Promise.resolve();
 let stopping = false;
+/** Where the stop is, for the log line if it has to give up. */
+let step = "start";
 const shutdown = async (signal: string) => {
   if (stopping) return;
   stopping = true;
   app.log.info({ signal }, "shutting down");
-  setTimeout(() => process.exit(1), STOP.giveUpAfterMs).unref();
+  setTimeout(() => {
+    app.log.error({ step }, "shutdown gave up");
+    process.exit(1);
+  }, STOP.giveUpAfterMs).unref();
   try {
     await starting.catch(() => {});
-    // No new connections; the replies in flight finish. Node's close() only closes the
-    // connections that are idle at that moment, and a reply that ends later leaves its
-    // keep-alive connection open until the caller closes it (up to Fastify's 72 s): close each
-    // one as soon as it is idle, streamed replies included, and every one that is left after
-    // closeAllAfterMs.
+    // No new connections; the replies in flight finish whole, and each connection is closed as
+    // soon as its reply is out, streamed replies included (plugins/closing.ts). One still busy
+    // after closeAllAfterMs is closed then.
+    step = "requests";
     const closing = app.close();
-    const sweep = setInterval(() => app.server.closeIdleConnections(), 250);
     const cutoff = setTimeout(() => app.server.closeAllConnections(), STOP.closeAllAfterMs);
-    await Promise.all([closing.finally(() => (clearInterval(sweep), clearTimeout(cutoff))), boss?.stop({ timeout: STOP.jobsMs })]);
+    await Promise.all([closing.finally(() => clearTimeout(cutoff)), boss?.stop({ timeout: STOP.jobsMs })]);
+    // Chat turns whose caller went away, and pushes and rows started by the last requests
+    // (lib/background.ts), before the database goes.
+    step = "background";
     await backgroundSettled(STOP.backgroundMs);
+    step = "database";
     await prisma?.$disconnect();
     process.exit(0);
   } catch (err) {

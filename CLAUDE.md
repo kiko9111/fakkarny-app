@@ -941,9 +941,13 @@ Rules:
     more attempt through; the first connection that is let in lifts the limit and opens
     connections for the queries still waiting (pg only does that when its queue is stirred: they
     stayed on the few old connections; `#serveWaiting` calls pg's private `_pulseQueue`, and a
-    test fails if it goes). A transaction waits for a connection as long as a query does
-    (`transactionOptions.maxWait` 15 s in db.ts; Prisma's own 2 s turned a full pooler into
-    500s for every write in a transaction). With no connection at all a
+    test fails if it goes). Those that the pooler refuses on the way queue again too: while the
+    pool has connections, a refused query waits for one for what is left of its 15 s
+    (`#ask` cuts pg's timeout to it), however long it had already waited (second review,
+    2026-11-26: one that had waited past 10 s failed with a 500). A transaction waits for a
+    connection as long as a query does (`PRISMA_OPTIONS` in db.ts, `transactionOptions.maxWait`
+    15 s, also used by test/db.ts; Prisma's own 2 s turned a full pooler into 500s for every write
+    in a transaction; a test fails without it). With no connection at all a
     query tries again for 10 s, then fails with the server's own words. Any other failure to
     connect passes through at once. The server's log says "db: no room for another connection
     at the pooler" (at most every 30 s) when it happens. Tests: db-pool.test.ts, with a
@@ -958,7 +962,11 @@ Rules:
     answer (a database restart or failover, 57P01) then reached a connection with no listener,
     was thrown out of the socket's handler and would have stopped the server (independent
     review, 2026-11-26; db-pool.test.ts runs both cases on a stand-in server on a real socket).
-    Never put an `await` or `.then` between pg's callback and the caller's.
+    Never put an `await` or `.then` between pg's callback and the caller's. The promise form
+    (`await pool.connect()`, which Prisma uses for every transaction and adds its own listener
+    only after) gets the connection with a listener already on it, kept until `setImmediate`
+    (second review: a plain pg pool crashes the same way there); the transaction then fails
+    with "not queryable" and its release drops the connection.
   - `pg` is a direct dependency of the API now. There must be one copy of it in the tree: the
     Prisma adapter takes a pool only if it is `instanceof` its own `pg.Pool` (the "is the pool
     Prisma runs on" test fails otherwise).
@@ -984,21 +992,33 @@ Rules:
     is the first process (a start command set in Railway's dashboard would replace the
     Dockerfile's), and `version` now comes from apps/api/package.json (no npm in front, so no
     npm_package_version). server.test.ts keeps the command and the clean stop.
-  - The stop (server.ts `shutdown`, after the independent review of 2026-11-26). Node's close()
+  - The stop (server.ts `shutdown`, after the independent reviews of 2026-11-26). Node's close()
     only closes connections that are idle at that moment: a reply in flight at the signal ended
     with `Connection: keep-alive`, and a caller that keeps its connections (the deploy's proxy)
     held the server open for Fastify's 72 s keep-alive, past the 60 s drain, so it was killed
     still holding its database connections; the first measurement above had a caller that
     closed its own. Now: the signal handlers go in before the first wait (a first process with
     no handler drops the signal); then the HTTP close and pg-boss's stop (20 s for a running
-    tick) together, with idle connections closed every 250 ms and every connection at 40 s;
-    then up to 5 s for pushes and dashboard rows the last requests started (`track` in
-    lib/background.ts: `pushNotices`, `inBackground`); then the pool closes and the process
-    exits 0, and at 55 s it exits whatever still hangs. server.test.ts runs a reply through a
-    slow proxy to the database with SIGTERM in the middle and a caller that keeps its
-    connection: exit within 5 s of the answer, no database connection left. Still deaf: a
-    signal during module loading, and during `prisma migrate deploy` (sh is the first process
-    then); a deploy superseded while it starts runs until it is killed.
+    tick) together, every connection closed at 40 s; then up to 10 s for chat turns whose phone
+    has gone (Fastify waits for connections, not handlers) and pushes and dashboard rows the
+    last requests started (`track` in lib/background.ts: messages.ts `answer`, `pushNotices`,
+    `inBackground`); then the pool closes and the process exits 0, and at 55 s it exits
+    whatever still hangs, logging "shutdown gave up" with the step it was on.
+    How the HTTP close treats connections is plugins/closing.ts: Node's close() takes a
+    connection whose reply has ended for idle and destroys it while the end of that reply still
+    waits to be written, so the close first waits (up to 5 s) for ended replies to be written
+    out; after that, each connection is closed as soon as its reply has been handed to the
+    network ('finish', which streamed replies reach too). A sweep of idle connections every
+    250 ms, the first version, cut big answers to slow callers in 4 of 4 runs (second review).
+    GET /bootstrap leaves out the parts it had not started when the close began (Fastify
+    refuses requests to itself from then on; it used to answer 500). Tests: plugins/closing.test.ts
+    (8 MB answers to a caller that stops reading, plain and streamed), and server.test.ts runs
+    a reply through a slow proxy to the database with SIGTERM in the middle and a caller that
+    keeps its connection: exit within 5 s of the answer, and every database connection ended
+    with pg's goodbye (Terminate), which only a pool that closes itself sends (a count of the
+    database's sessions after the exit could not fail: the system closes them anyway). Still
+    deaf: a signal during module loading, and during `prisma migrate deploy` (sh is the first
+    process then); a deploy superseded while it starts runs until it is killed.
   - Live: neither is deployed when this is written. After the deploy, the smoke test's turn
     "after the quiet" and the one "right after" should show the same "first byte" and the same
     "context" in "server ms" (they were 483 ms against 279 ms), and its /health line `"pid":1`;

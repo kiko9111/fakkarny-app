@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
 import { registerIdempotency } from "./plugins/idempotency";
 import { registerGzip } from "./plugins/gzip";
+import { registerClosing } from "./plugins/closing";
 import Fastify, { type FastifyBaseLogger, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { INSTALL_ID_HEADER, REPLY_STREAM_HEADER } from "@fakkarni/shared";
 import type { PrismaClient } from "./generated/prisma/client";
@@ -89,6 +90,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
 
   if (deps.sentry) Sentry.setupFastifyErrorHandler(app);
   app.addHook("onResponse", async (_req, reply) => metrics.record(reply.statusCode));
+  // The stop (server.ts): every reply in flight arrives whole, and its connection closes after it.
+  registerClosing(app);
   // A phone asks for a reply as it is written only from a server that says it sends one
   // (apps/mobile/src/sync/stream.ts), so this line is also the way to stop the asking.
   const liveReplies = deps.liveReplies;

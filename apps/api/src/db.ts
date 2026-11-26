@@ -4,18 +4,20 @@ import { PrismaClient } from "./generated/prisma/client";
 let client: PrismaClient | undefined;
 let warnedAt = 0;
 
+/**
+ * What the server's Prisma is opened with besides its pool (the database tests use the same,
+ * test/db.ts). A transaction waits for a connection as long as a single query does: Prisma's own
+ * default is 2 s, after which the request failed with a 500 while the pool waited for room.
+ */
+export const PRISMA_OPTIONS = { transactionOptions: { maxWait: CHECKOUT_TIMEOUT_MS } };
+
 /** Lazily created so the API (and /health) can start without a database. */
 export function db(): PrismaClient {
   if (!client) {
     const connectionString = process.env["DATABASE_URL"];
     if (!connectionString) throw new Error("DATABASE_URL is not set");
-    // The pool's numbers and what it does when the pooler is full: db-pool.ts. A transaction
-    // waits for a connection as long as a single query does (Prisma's own default is 2 s, after
-    // which the request failed with a 500 while the pool waited for room).
-    client = new PrismaClient({
-      adapter: pgAdapter(connectionString, {}, { onNoRoom: warnNoRoom }),
-      transactionOptions: { maxWait: CHECKOUT_TIMEOUT_MS },
-    });
+    // The pool's numbers and what it does when the pooler is full: db-pool.ts.
+    client = new PrismaClient({ adapter: pgAdapter(connectionString, {}, { onNoRoom: warnNoRoom }), ...PRISMA_OPTIONS });
   }
   return client;
 }
