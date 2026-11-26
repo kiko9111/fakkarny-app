@@ -61,9 +61,19 @@ Rules:
 - Production API: Railway project `mellow-reverence`, service `@fakkarni/api`, built
   from the root Dockerfile and deployed from branch `claude/new-session-60jlqv` on
   every push: https://fakkarniapi-production.up.railway.app (health check /health).
-  railway.json (config as code): traffic moves to a new deploy only after its /health answers, the old
-  one keeps serving 20 s more, then gets SIGTERM and 60 s to finish replies in flight. Deploys used to
-  drop chat for a minute (messages sat on "Sending…").
+  Every deploy needs the owner's yes. How: check the deploy branch out, `git merge --no-ff
+  origin/main -F <message file>` (no workflow tag in the message), settle a conflict with main's
+  side (`git checkout --theirs <file>`: the branch once carried a cherry-pick of #60), confirm
+  `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
+  builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
+  (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
+  server answers, a 404 that the old one still does. Live by 2026-11-26 07:52Z: main at
+  8f054e7 (through #64; the branch's tree equals main's).
+  railway.json (#59, on the deploy branch only since that deploy) asks that traffic moves to a new
+  deploy only after its /health answers, that the old one keeps serving 20 s more, then gets
+  SIGTERM and 60 s to finish replies in flight. Deploys used to drop chat for a minute (messages
+  sat on "Sending…"). Whether Railway reads the file for this service is not confirmed: see
+  "Railway stops reading railway.json" below.
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
@@ -571,8 +581,10 @@ Rules:
   (src/ui/DateTimePicker.tsx, pure JS on purpose so it reaches builds over the air; logic in
   src/lib/calendar.ts) besides the quick picks.
 - Live server check: the cloud session can't reach the Railway URL. .github/workflows/api-smoke.yml
-  (a pushed commit message containing "[api-smoke]") times the screens' GETs and runs the e2e test
-  against production, with this commit's phone client and with the client of the installed build.
+  (a pushed commit message containing "[api-smoke]", or started by hand: it has `workflow_dispatch`,
+  which is the way after a deploy because nothing needs pushing) times the screens' GETs and runs
+  the e2e test against production, with this commit's phone client and with the client of the
+  installed build. The log of a running job cannot be read; it is there when the job ends (~2 min).
 - Rate limit: 600 requests a minute per caller (120 refused whole screens while chat, which has its
   own 30/min bucket, kept working). 429s are logged as "rate_limited". The phone shows busy / server /
   sign-in text from `failText` (src/lib/errors.ts) instead of always "no connection".
@@ -708,6 +720,15 @@ Rules:
   taps 0.6–2.1 s → 0.4–1.2 s; a chat turn besides the model 0.9–1.8 s → 0.5–1.3 s. At 0.02 s a trip
   (the API in the database's region) the same code gives 0.2 s, 0.09–0.26 s and 0.11–0.29 s: the
   region move is worth more than any code change, and it is a Railway dashboard setting.
+  Live after the deploy of 2026-11-26 (smoke test, a fresh account, a US runner, the API still in
+  US East; the run before the deploy → the run after): every tab's data, nine GETs adding up to
+  4.1 s → one GET /bootstrap of 0.30 s (0.76 s the first time after the restart; the nine GETs one
+  by one now add up to 2.7 s); one tab's GET 0.28–0.78 s → 0.20–0.30 s; sign-in plus one query
+  0.27–0.38 s → 0.19–0.22 s (the runner's own trip to Railway was 0.08 s of the first and
+  0.11–0.13 s of the second, so one database round trip is still ~0.09 s); a turn the rules
+  answer 0.88 s → 0.57 s; an AI turn 2.3–5.0 s → 2.7–3.5 s (the model: `rules` and `context` end
+  at 0.27–0.30 s in the turn's timing). An account with circles has more in its /bootstrap than
+  the fresh one measured here.
 - Server speed rules (same pass):
   - Count round trips, not queries: run independent lookups together, and never add a query in a
     row to a hot path (auth, GET of a tab, POST /messages) without measuring it.
@@ -769,9 +790,21 @@ Rules:
     r.fulfill({ contentType: "text/html", body }))` and open https://zaki.preview/ (a file:// page
     cannot route, and plain http has no `crypto.randomUUID`).
 - Railway stops reading railway.json (config as code, deprecated) on 2026-12-01
-  (docs.railway.com/config-as-code): before then the health check path, the 20 s overlap and the
-  60 s drain from #59 must be set in the service's settings in the dashboard, where the region is
-  set too. After that date the file is ignored and deploys run on the service settings.
+  (docs.railway.com/config-as-code): files "continue to work for services that already use them"
+  until then, and "new services cannot opt into" it. Ours first had the file on its deploy branch
+  with the deploy of 2026-11-26, so it may not be read at all (a deployment's details page marks
+  the settings that came from a file; not looked at). Either way the health check path (/health),
+  the 20 s overlap and the 60 s drain from #59 belong in the service's Settings in the dashboard
+  (the last two also as the service variables RAILWAY_DEPLOYMENT_OVERLAP_SECONDS and
+  RAILWAY_DEPLOYMENT_DRAINING_SECONDS), where the region is set too: EU West (Amsterdam,
+  `europe-west4-drams3a`), beside the database, and a service without a volume moves with no
+  downtime. The owner was asked for both on 2026-11-26. The region has moved when the smoke
+  test's `/splits` time minus its `/health` time (one database round trip, ~0.09 s on that day)
+  falls to about 0.02 s. Its `x-railway-edge` line names the edge nearest the runner (iad1 for
+  a US runner whatever the server's region); the test also sends `x-railway-debug`, which per
+  Railway's docs adds `x-railway-upstream-zone`, the zone the server runs in (added after the
+  deploy's run, so not yet seen in a log). During an overlap two servers run: the DB pools are
+  sized for one (8 + 3 of the session pooler's ~15).
 - Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
   words show changes: the stored answer and everything a turn decides are as before.
   - Wire: the phone POSTs /messages with `Accept: text/event-stream, application/json`
@@ -794,9 +827,14 @@ Rules:
     passes without the stream steps the mode down for the life of the process (eager → plain →
     off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
     the API takes the eager flag on a strict tool was not checked with a real key before this
-    shipped: after a deploy read /admin, "How replies were read from the model" (the `stream`
-    and `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout /
-    cut for a streamed try that was lost and read whole instead) and "first words".
+    shipped. Live since the deploy of 2026-11-26: the smoke test's streamed small-talk turns
+    showed their words (12 `draft` events each, none taken back, first words at 1.6–2.4 s and
+    the whole answer at 2.3–3.9 s; `first` 1.2–2.0 s in the turn's timing), the turn whose reply
+    only says a reminder is set came whole as it should, and the e2e walk read a stream to its
+    end. That does not say which mode served them: read /admin, "How replies were read from the
+    model" (the `stream` and `stream_lost` props on `ai_call` events: eager / plain / whole, and
+    refused / timeout / cut for a streamed try that was lost and read whole instead) and "first
+    words".
   - Cost of a lost stream: it is paid for as far as it got. What it read is known from its
     start and added to the turn's usage; what it had written is only told at a stream's end,
     so the turn's cost is a floor. The eager flag changes the tools, which come before the
