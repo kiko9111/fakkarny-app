@@ -17,6 +17,7 @@ import type { PushSender } from "../proactive/push";
 import { balances, monthOf, monthRange, settleUp } from "../money/rules";
 import { addEntry, mergeDuplicateSections, sameSection, toWireEntry, toWireSection, toWireSections, visibleTo } from "../money/store";
 import { monthGift } from "../money/gift";
+import { inBackground } from "../lib/background";
 
 export interface MoneyRoutesOptions {
   prisma: PrismaClient;
@@ -155,7 +156,7 @@ export const moneyRoutes: FastifyPluginAsync<MoneyRoutesOptions> = async (app, o
     }
     if (!added.replay) {
       void pushNotices(prisma, opts.push, added.notices.filter((n) => n.userId !== req.user.id), app.log);
-      void prisma.event.create({ data: { userId: req.user.id, name: "money_logged", propsJson: { via: "app", shared: Boolean(s.circleId) } } }).catch(() => {});
+      inBackground(prisma.event.create({ data: { userId: req.user.id, name: "money_logged", propsJson: { via: "app", shared: Boolean(s.circleId) } } }));
     }
     return reply.code(added.replay ? 200 : 201).send({
       section: await toWireSection(prisma, s, req.user, monthOf(at, req.user.timezone)),

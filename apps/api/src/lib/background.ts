@@ -23,17 +23,25 @@ export function track<T>(work: Promise<T>): Promise<T> {
   return work;
 }
 
-/** Resolves when every tracked piece of work has ended, or after `ms`, whichever comes first. */
+/**
+ * Resolves when every tracked piece of work has ended, or after `ms`, whichever comes first.
+ * Work that tracked work starts as it ends (a chat turn's push to another person, its rows for
+ * the dashboard) is waited for as well: the set is read again until it is empty.
+ */
 export async function backgroundSettled(ms: number): Promise<void> {
-  if (running.size === 0) return;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([
-    Promise.allSettled([...running]),
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms);
-    }),
-  ]);
-  clearTimeout(timer);
+  const until = Date.now() + ms;
+  while (running.size > 0) {
+    const left = until - Date.now();
+    if (left <= 0) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled([...running]),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, left);
+      }),
+    ]);
+    clearTimeout(timer);
+  }
 }
 
 /** How many tracked pieces of work are still running (for tests). */
