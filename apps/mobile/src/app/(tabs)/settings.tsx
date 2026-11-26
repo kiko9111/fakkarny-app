@@ -1,11 +1,12 @@
-import { useCallback, useState, type ReactNode } from "react";
-import { Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { AppState, Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { parseInstapayLink, type Item, type PatchMeRequest, type User } from "@fakkarni/shared";
 import { authAvailable, currentAccountLabel, signOut } from "@/auth";
 import { listAlarms } from "@/db/items";
+import { alarmStatus, fullScreenAlarms, openAlarmSetting, testAlarm } from "@/notifications";
 import { resetLocalData } from "@/db/reset";
 import { saveItem } from "@/sync/save-item";
 import { dateLocale, language, t } from "@/i18n";
@@ -85,11 +86,19 @@ export default function SettingsScreen() {
   // Shown at once on tap (it used to wait for the server, so a slow or failed save looked like a dead button).
   const [gender, setGender] = useState<"female" | "male" | "">(cached?.gender ?? "");
   const [alarms, setAlarms] = useState<Item[]>([]);
+  // What Android lets the full-screen alarm do; read again when the user comes back from Settings.
+  const [alarmPerm, setAlarmPerm] = useState(alarmStatus);
+  useEffect(() => {
+    if (!fullScreenAlarms) return;
+    const sub = AppState.addEventListener("change", (s) => s === "active" && setAlarmPerm(alarmStatus()));
+    return () => sub.remove();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       void currentAccountLabel().then(setAccount);
       void listAlarms().then(setAlarms).catch(() => {});
+      setAlarmPerm(alarmStatus());
       void getMe()
         .then((u) => {
           setUser(u);
@@ -306,6 +315,37 @@ export default function SettingsScreen() {
               </View>
             ))
           )}
+          {fullScreenAlarms ? (
+            <>
+              <Text variant="small" color={palette.inkSoft}>
+                {t.alarms.fullScreenNote}
+              </Text>
+              {alarmPerm && !alarmPerm.exact ? (
+                <>
+                  <Text variant="small" color={palette.inkSoft}>
+                    {t.alarms.exactOff}
+                  </Text>
+                  <Button label={t.alarms.exactAllow} size="sm" kind="tonal" onPress={() => openAlarmSetting("exact")} />
+                </>
+              ) : null}
+              {alarmPerm && !alarmPerm.fullScreen ? (
+                <>
+                  <Text variant="small" color={palette.inkSoft}>
+                    {t.alarms.fullScreenOff}
+                  </Text>
+                  <Button label={t.alarms.fullScreenAllow} size="sm" kind="tonal" onPress={() => openAlarmSetting("fullScreen")} />
+                </>
+              ) : null}
+              <Button
+                label={t.alarms.test}
+                size="sm"
+                kind="text"
+                onPress={() => {
+                  if (testAlarm(10)) notify(t.alarms.testSet);
+                }}
+              />
+            </>
+          ) : null}
         </View>
       </Group>
 

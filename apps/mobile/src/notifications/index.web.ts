@@ -14,3 +14,13 @@ export async function planTheRest(_planned: readonly Item[]): Promise<void> {}
 export function listenForNotifications(_onMessage: () => void, _say: (text: string) => void) {
   return () => {};
 }
+export const fullScreenAlarms = false;
+export function alarmStatus(): { exact: boolean; fullScreen: boolean } | null {
+  return null;
+}
+export function openAlarmSetting(_which: "exact" | "fullScreen"): boolean {
+  return false;
+}
+export function testAlarm(_seconds = 10): boolean {
+  return false;
+}

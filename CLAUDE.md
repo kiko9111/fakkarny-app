@@ -562,7 +562,7 @@ Rules:
   - User.gender ("female"/"male", PATCH /me, onboarding in Arabic, Settings, chat setting "address")
     decides ADDRESS THE USER AS before the old memory rule; while unset the context asks Zaki to ask once.
   - Item.alarm: only when the user asks or says yes; the phone schedules it on the "alarms" channel
-    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). A full-screen alarm needs a new native build.
+    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). Full-screen alarm: see "Full-screen alarm".
 
 - Saved copies and lenient lists (2026-11-23): server-only screens (circles list, a circle with its
   feed and trackers, Daftar, money, sections, tasks, trackers, splits) read through `cachedGet` in
@@ -1171,6 +1171,23 @@ Rules:
   - Chat: the task tool takes `amount` on homework as the reward; the confirm card shows it.
   - Screens: app/homework/plan.tsx, help.tsx, check.tsx, app/pocket.tsx; entry points on the circle
     screen and on each homework card (parent: "Zaki, explain the lesson"; child: "Check with Zaki").
+
+- Full-screen alarm (2026-11-26, Android, native): modules/zaki-alarm (local Expo module, Kotlin).
+  `withNativeAlarms` (src/notifications/alarm.ts, pure + tested) sends every planned notification
+  with `alarm` to it instead of expo-notifications (and cancels an expo copy of the same identifier,
+  so a phone moving to the new build never rings twice); a plan that stops being an alarm goes back.
+  Native side: kept in SharedPreferences "zaki_alarms", AlarmManager.setAlarmClock when exact alarms
+  are allowed (SCHEDULE_EXACT_ALARM, user-granted on Android 14+), else setAndAllowWhileIdle (may be
+  late); re-armed on boot, app update and permission change (missed by < 30 min: rings at once). It
+  rings as an insistent notification on channel "zaki_alarm_ring" (alarm sound, USAGE_ALARM) with a
+  full-screen intent to AlarmActivity (over the lock screen: time, words, Stop / 10 more minutes /
+  Open Zaki), stopping by itself after 10 min. A snooze is `<id>~snooze`, never listed to JS. Words
+  come from JS at schedule time (i18n `t.alarms`). Me › Alarms shows buttons to the two system
+  settings when they are off, and "Try an alarm" (10 s). Optional module: builds before it, iPhone
+  and Expo Go keep the loud "alarms" channel. Google Play: USE_FULL_SCREEN_INTENT is only granted by
+  default to alarm/calling apps on Android 14+, so the Play listing needs the full-screen intent
+  declaration (else it silently becomes a banner; the app shows the setting button). Not yet run on
+  a real phone when written.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
