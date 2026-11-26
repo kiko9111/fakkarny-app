@@ -1,5 +1,6 @@
 import type { Item } from "@fakkarni/shared";
 import { getDb } from "./database";
+import { itemStatusesSql } from "./sql";
 
 interface Row extends Omit<Item, "important" | "alarm" | "user_id"> {
   important: number;
@@ -47,4 +48,12 @@ export async function localItemVersions(): Promise<Map<string, string>> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ id: string; updated_at: string }>("SELECT id, updated_at FROM items");
   return new Map(rows.map((r) => [r.id, r.updated_at]));
+}
+
+/** id → status of the items with these ids that the phone holds. */
+export async function itemStatuses(ids: readonly string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ id: string; status: string }>(itemStatusesSql(ids.length), ...ids);
+  return new Map(rows.map((r) => [r.id, r.status]));
 }

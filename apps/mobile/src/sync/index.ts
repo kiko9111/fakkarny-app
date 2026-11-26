@@ -14,7 +14,7 @@ import { itemsChanged } from "@/lib/signals";
 import { LIVE_EVERY_MS } from "@/lib/live-plan";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
-import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, watchPushToken } from "@/notifications";
+import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, tidyShade, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
 import { prefetchAll, prefetchSoon, setChatBusy } from "@/lib/prefetch";
 import { createSyncQueue, type OutboxStore } from "./queue";
@@ -166,6 +166,8 @@ export function startSync() {
     void pullMessages();
     // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
     void listScheduled().then(scheduleItems).catch(() => {});
+    // Reminders in the shade that no longer help: a closed plan's, an hourly reminder's older ones.
+    void tidyShade();
     // Items made or closed on the server outside the chat (circle tasks, Session steps).
     void pullItems();
     // Every tab loads in the background, so each screen opens at once with fresh numbers.

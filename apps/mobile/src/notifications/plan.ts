@@ -31,6 +31,8 @@ export interface PlannedNotification {
   itemId: string;
   /** Show on the alarm channel. */
   alarm?: boolean;
+  /** The plan's title, which the notification carries for Done / Later ("Done «title»"). */
+  title?: string;
 }
 
 export const CLEAR_LEAD_MS = 30 * 60_000;
@@ -94,6 +96,7 @@ export function planReminderNotifications(
       body: item.nudge ?? item.title,
       kind: "repeat" as const,
       itemId: item.id,
+      title: item.title,
       ...(item.alarm ? { alarm: true } : {}),
     }));
   }
@@ -119,7 +122,7 @@ export function planReminderNotifications(
   }
   return out
     .filter((n) => n.date.getTime() > opts.now.getTime())
-    .map((n) => (item.alarm && n.kind !== "followup" ? { ...n, alarm: true } : n));
+    .map((n) => ({ ...n, title: item.title, ...(item.alarm && n.kind !== "followup" ? { alarm: true } : {}) }));
 }
 
 /** "{title} at {time}" templating for i18n strings. */

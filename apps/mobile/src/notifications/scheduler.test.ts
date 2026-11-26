@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Item } from "@fakkarni/shared";
 import { legacyIds, planReminderNotifications, snoozeId } from "./plan";
 import { signature } from "./reconcile";
-import { createScheduler, type NotificationHost } from "./scheduler";
+import { createScheduler, listedAt, type Listed, type NotificationHost } from "./scheduler";
 
 const T0 = Date.parse("2026-11-26T10:00:00Z");
 const iso = (minFromT0: number) => new Date(T0 + minFromT0 * 60_000).toISOString();
@@ -34,23 +34,29 @@ function item(over: Partial<Item> & { id: string }): Item {
 
 const plan = (i: Item, now: Date) => planReminderNotifications(i, { now, alwaysDirect: false, clearText: (title) => `${title}, just so you know`, awake: () => true });
 
-/** A stand-in for the phone: what is scheduled, every call made, a stored record, and optional delays. */
-function phone(opts: { scheduled?: string[]; list?: "fail" | "hang"; record?: Record<string, string>; callMs?: number; hang?: string } = {}) {
+/**
+ * A stand-in for the phone: what is scheduled (and when it fires, as Android lists it), every call
+ * made, a stored record, and optional delays. Like a phone whose alarms ring late, it keeps a
+ * notification scheduled past its time.
+ */
+function phone(opts: { scheduled?: string[]; at?: Record<string, number>; list?: "fail" | "hang"; record?: Record<string, string>; callMs?: number; hang?: string } = {}) {
   const scheduled = new Set(opts.scheduled ?? []);
+  const times = new Map(Object.entries(opts.at ?? {}));
   const calls: string[] = [];
   let record: Record<string, string> | null = opts.record ?? null;
   const host: NotificationHost = {
     list: async () => {
       calls.push("list");
       if (opts.list === "fail") throw new Error("no list");
-      if (opts.list === "hang") return new Promise<string[]>(() => {});
-      return [...scheduled];
+      if (opts.list === "hang") return new Promise<Listed[]>(() => {});
+      return [...scheduled].map((identifier) => ({ identifier, at: times.get(identifier) ?? null }));
     },
     schedule: async (n) => {
       calls.push(`schedule ${n.identifier}`);
       if (opts.hang === n.identifier) return new Promise<void>(() => {});
       if (opts.callMs) await pause(opts.callMs);
       scheduled.add(n.identifier);
+      times.set(n.identifier, n.date.getTime());
     },
     cancel: async (id) => {
       calls.push(`cancel ${id}`);
@@ -221,9 +227,95 @@ describe("notification scheduler", () => {
     expect(p.record()).toEqual({});
   });
 
+  it("cancels a closed plan's notification past its time that Android has not rung yet", async () => {
+    let now = T0;
+    const p = phone();
+    const s = make(p, { now: () => now });
+    await s.enqueue([item({ id: "a", remind_at: iso(30) })]);
+    p.take();
+    now = T0 + 75 * 60_000; // 45 minutes past its time, still scheduled
+    await s.enqueue([item({ id: "a", remind_at: iso(30) })]);
+    expect(p.take()).toEqual([]);
+    await s.enqueue([item({ id: "a", remind_at: iso(30), status: "done" })]);
+    expect(p.take()).toEqual(["cancel item_a_hint"]);
+  });
+
+  it("at start with no record, leaves an open plan's late notification to ring and cancels a closed plan's", async () => {
+    const late = T0 - 40 * 60_000;
+    const p = phone({ scheduled: ["item_a_hint", "item_b_hint"], at: { item_a_hint: late, item_b_hint: late } });
+    const s = make(p);
+    await s.enqueue([item({ id: "a", remind_at: iso(-40) }), item({ id: "b", remind_at: iso(-40), status: "done" })]);
+    expect(p.take()).toEqual(["list", "cancel item_b_hint"]);
+    expect(p.scheduled.has("item_a_hint")).toBe(true);
+  });
+
+  it("rings once after Later: the snooze gives way to the plan the server moved an hour on", async () => {
+    const p = phone();
+    const s = make(p);
+    await s.enqueue([item({ id: "a", remind_at: iso(-1) })]);
+    s.remember(snoozeId("a"), signature({ date: new Date(T0 + 59 * 60_000), kind: "hint", body: "Call mom" }));
+    p.take();
+    await s.enqueue([item({ id: "a", remind_at: iso(60) })]);
+    expect(p.take()).toEqual(["cancel item_a_snooze", "schedule item_a_hint"]);
+    expect([...p.scheduled]).toEqual(["item_a_hint"]);
+  });
+
+  it("schedules a renamed plan again, so Done and Later send the new title", async () => {
+    const p = phone();
+    const s = make(p);
+    await s.enqueue([item({ id: "a", nudge: "Heading out soon?" })]);
+    p.take();
+    await s.enqueue([item({ id: "a", nudge: "Heading out soon?", title: "Call mom about Friday" })]);
+    expect(p.take()).toEqual(["schedule item_a_hint"]);
+  });
+
+  it("at start, trusts the time the phone lists over a stale record, so a closed plan's is still cancelled", async () => {
+    // The record says 06:00 (a run stopped before it wrote the move); the phone holds 12:00.
+    const p = phone({ scheduled: ["item_a_hint"], at: { item_a_hint: T0 + 120 * 60_000 }, record: { item_a_hint: signature({ date: new Date(T0 - 240 * 60_000), kind: "hint", body: "Call mom", title: "Call mom" }) } });
+    const s = make(p);
+    await s.enqueue([item({ id: "a", remind_at: iso(120), status: "done" })]);
+    expect(p.take()).toEqual(["list", "cancel item_a_hint"]);
+  });
+
+  it("drops what is enqueued during a wipe, and takes items again once reopened", async () => {
+    const p = phone({ callMs: 15 });
+    const s = make(p);
+    void s.enqueue([item({ id: "x" })]);
+    await pause(5); // a native call is on its way
+    s.reset();
+    await s.enqueue([item({ id: "late" })]); // the last person's, answered after the wipe began
+    await s.idle();
+    expect(p.calls.some((c) => c.includes("item_late"))).toBe(false);
+    s.reopen();
+    await s.enqueue([item({ id: "next" })]);
+    expect(p.scheduled.has("item_next_hint")).toBe(true);
+  });
+
+  it("hands on an item enqueued while a stopped run waits on a native call", async () => {
+    const p = phone({ callMs: 20 });
+    const s = make(p);
+    void s.enqueue([item({ id: "x" })]);
+    await pause(5);
+    s.reset();
+    s.reopen();
+    const next = s.enqueue([item({ id: "next" })]);
+    await next;
+    expect(p.scheduled.has("item_next_hint")).toBe(true);
+  });
+
   it("writes the record so the next launch knows what is scheduled", async () => {
     const p = phone();
     await make(p).enqueue([item({ id: "a" })]);
     expect(Object.keys(p.record() ?? {})).toEqual(["item_a_hint"]);
+  });
+});
+
+describe("listedAt", () => {
+  it("reads an Android date trigger's time, and nothing else", () => {
+    expect(listedAt({ type: "date", value: T0, repeats: false, channelId: "reminders" })).toBe(T0);
+    expect(listedAt({ type: "calendar", value: { year: 2026, month: 11 } })).toBeNull();
+    expect(listedAt({ type: "date", value: "soon" })).toBeNull();
+    expect(listedAt(null)).toBeNull();
+    expect(listedAt(undefined)).toBeNull();
   });
 });

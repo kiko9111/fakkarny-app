@@ -4,7 +4,9 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import type { Item } from "@fakkarni/shared";
+import { itemStatuses } from "@/db/items";
 import { kvGet, kvSet } from "@/db/kv";
+import { oneAtATime } from "@/lib/one-at-a-time";
 import { prefs } from "@/lib/prefs";
 import { itemsChanged } from "@/lib/signals";
 import { upsertItem } from "@/db/messages";
@@ -13,7 +15,8 @@ import { patchItem, registerDevice } from "@/lib/api";
 import { awakeAtMinutes } from "@fakkarni/shared";
 import { fill, legacyIds, planReminderNotifications, snoozeId, type PlannedNotification } from "./plan";
 import { signature } from "./reconcile";
-import { createScheduler, type NotificationHost } from "./scheduler";
+import { createScheduler, listedAt, type NotificationHost } from "./scheduler";
+import { shownItemId, staleShown } from "./shade";
 
 const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
@@ -118,7 +121,7 @@ function planFor(item: Item, now: Date): PlannedNotification[] {
 const RECORD_KEY = "notif:scheduled";
 
 const host: NotificationHost = {
-  list: async () => (await Notifications.getAllScheduledNotificationsAsync()).map((r) => r.identifier),
+  list: async () => (await Notifications.getAllScheduledNotificationsAsync()).map((r) => ({ identifier: r.identifier, at: listedAt(r.trigger) })),
   schedule: async (n, item) => {
     await Notifications.scheduleNotificationAsync({
       identifier: n.identifier,
@@ -156,14 +159,42 @@ export function scheduleItem(item: Item): void {
 
 /** `soon`: ahead of a bulk top-up (a reminder just made or changed). Resolves when they are planned. */
 export function scheduleItems(items: readonly Item[], soon = false): Promise<void> {
-  return scheduler.enqueue(items, soon);
+  const planned = scheduler.enqueue(items, soon);
+  // A plan was closed: its reminders still in the notification shade go too.
+  if (items.some((i) => i.status !== "open")) void tidyShade();
+  return planned;
 }
 
-/** Cancel every local notification (the phone is being wiped). */
+/**
+ * Takes reminders that no longer help out of the notification shade (shade.ts): every one of a
+ * closed plan, and an open plan's older ones. In the background, one run at a time: nothing waits
+ * for it.
+ */
+export const tidyShade = oneAtATime(async () => {
+  try {
+    const shown = (await Notifications.getPresentedNotificationsAsync()).map((n) => ({ identifier: n.request.identifier, date: n.date }));
+    const ids = [...new Set(shown.map((n) => shownItemId(n.identifier)).filter((id): id is string => id !== null))];
+    if (!ids.length) return;
+    const status = await itemStatuses(ids);
+    for (const id of staleShown(shown, (itemId) => status.get(itemId))) await Notifications.dismissNotificationAsync(id).catch(() => {});
+  } catch {
+    // The phone can't list them (Android 5) or the database is busy: the next refresh tries again.
+  }
+});
+
+/**
+ * Cancel every local notification and clear the shade (the phone is being wiped). Plans that
+ * arrive meanwhile are the last person's and are dropped.
+ */
 export async function clearScheduled(): Promise<void> {
   scheduler.reset();
-  await scheduler.idle();
-  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+  try {
+    await scheduler.idle();
+    await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    await Notifications.dismissAllNotificationsAsync().catch(() => {});
+  } finally {
+    scheduler.reopen();
+  }
 }
 
 /**
@@ -177,14 +208,23 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
     setTimeout(onMessage, 20_000);
     setTimeout(onMessage, 75_000);
   };
+  // A reminder shown while the app is open: the plan's older one leaves the shade (an hourly
+  // reminder would stack up). A moment later, so the new one is surely in the shade by then.
+  const tidySoon = () => setTimeout(() => void tidyShade(), 1500);
   const received = Notifications.addNotificationReceivedListener((n) => {
     const type = n.request.content.data?.["type"];
     if (type === "message") onMessage();
     if (type === "reminder" || type === "followup") pullSoon();
+    if (type === "reminder") tidySoon();
   });
   const response = Notifications.addNotificationResponseReceivedListener(async (res) => {
     const data = res.notification.request.content.data as { type?: string; itemId?: string; title?: string; repeating?: boolean } | undefined;
     if (data?.type === "reminder" || data?.type === "followup") pullSoon();
+    // Android keeps a notification in the shade after Done or Later on it: it goes now.
+    const tapped = res.notification.request.identifier;
+    if ((res.actionIdentifier === ACTION_DONE || res.actionIdentifier === ACTION_LATER) && data?.itemId) {
+      void Notifications.dismissNotificationAsync(tapped).catch(() => {});
+    }
     if (res.actionIdentifier === ACTION_DONE && data?.itemId) {
       // Everything goes through the conversation: the answer shows in the chat and the friend replies.
       if (data.title) say(fill(t.notifications.doneSay, { title: data.title }));
@@ -193,6 +233,7 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
       try {
         const item = await patchItem(data.itemId, { status: "done" });
         if (await upsertItem(item)) itemsChanged.emit();
+        // Closed: its other reminders leave the shade too (scheduleItems tidies it).
         scheduleItem(item);
       } catch {
         // Offline: keep it open; the friend will ask about it later.

@@ -1046,8 +1046,8 @@ Rules:
     time is one call. Each item's first pass after a launch schedules everything planned again (a
     force stop drops alarms the record can't see). Repeats have one identifier per occurrence
     (`item_<id>_r<minute>`), so a moving window only adds the new ones; "Later" is
-    `item_<id>_snooze` (left alone while the item is open, cleared when it closes); one that is due
-    now is left to ring; a call with no answer counts as failed after 15 s; `soon` puts a reminder
+    `item_<id>_snooze` (left alone while the item is open, cleared when it closes); one whose time
+    has come is left to ring; a call with no answer counts as failed after 15 s; `soon` puts a reminder
     just made ahead of a bulk top-up. First launch after this change: the old slot identifiers
     (`_r0`…`_r15`) are cancelled once.
   - Rules: never await `scheduleItem` / `scheduleItems` on the user's path. Write SQLite first,
@@ -1071,6 +1071,29 @@ Rules:
     plan only raised the "+N". A row shows when Zaki reminds beside the plan's own time when the
     two differ (`planTimes`, lib/plan-time.ts): a change to the reminder alone used to show
     nothing. Upcoming places a plan with only a reminder time by that time, not under "No date".
+  - Android rings late: without the exact-alarm permission (this app has none) Android 12 and later
+    may ring an alarm up to about an hour after its time, and the library keeps it scheduled until
+    it rings. So a record is forgotten only 3 hours past its time (`FIRED_GRACE_MS`): until then a
+    closed plan's is cancelled and an open plan's is left to ring. The phone's list gives each
+    notification's time on Android (`listedAt`), so one with no record is judged the same way.
+  - The notification shade (notifications/shade.ts, pure): Android keeps a notification there after
+    Done or Later on it, and each occurrence of a repeating reminder has its own identifier, so an
+    hourly reminder stacked up and a plan ticked off in Today kept its reminder. Done / Later
+    dismiss the tapped one; `tidyShade` takes out every reminder of a closed plan and all but the
+    newest of an open one (follow-ups and Zaki's messages are left alone), on every refresh, when
+    a plan closes (`scheduleItems`) and when a reminder arrives with the app open.
+  - Later is two things: the local snooze (`item_<id>_snooze`, an hour on) and a chat line that asks
+    the server to move the plan an hour on. The snooze gives way when one of the plan's own
+    reminders rings within 15 minutes of it (`SNOOZE_SAME_MS`), or both rang seconds apart. The
+    signature includes the plan's title, because Done and Later send it to the chat: a renamed plan
+    is scheduled again. The record is written after every item that changed it, and at a launch a
+    time the phone lists beats a record that says another time (a run stopped before writing).
+    The wipe (`clearScheduled`) drops plans enqueued while it runs (`reset` until `reopen`: they are
+    the last person's) and clears the shade.
+  - Never roll the app back over the air to a bundle from before this scheduler (b62a7e2 or older):
+    its `scheduleItem` cancels only the old slot identifiers, so the per-occurrence repeats
+    (`item_<id>_r<minute>`) and the snooze it can't see would ring twice, and "stop reminding me"
+    would not stop them. Fix forward instead.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

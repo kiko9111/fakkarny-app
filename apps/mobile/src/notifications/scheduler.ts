@@ -6,11 +6,28 @@
  */
 import type { Item } from "@fakkarni/shared";
 import type { PlannedNotification } from "./plan";
-import { itemChanges, signature, UNKNOWN } from "./reconcile";
+import { firesAt, itemChanges, listedSignature, signature, UNKNOWN } from "./reconcile";
+
+/** A notification the phone has scheduled, and when it fires when the phone says (Android does). */
+export interface Listed {
+  identifier: string;
+  at: number | null;
+}
+
+/**
+ * When a scheduled request fires, from the trigger the phone lists it with: Android gives a date
+ * trigger as {type: "date", value: <ms>}. Anything else (iOS lists a date as calendar parts) is
+ * null, an unknown time.
+ */
+export function listedAt(trigger: unknown): number | null {
+  if (!trigger || typeof trigger !== "object") return null;
+  const { type, value } = trigger as { type?: unknown; value?: unknown };
+  return type === "date" && typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
 
 export interface NotificationHost {
-  /** Identifiers of every notification the phone has scheduled now (one native call); null if it can't say. */
-  list(): Promise<string[] | null>;
+  /** Every notification the phone has scheduled now (one native call); null if it can't say. */
+  list(): Promise<Listed[] | null>;
   /** Schedule one notification; scheduling an identifier that is already scheduled replaces it. */
   schedule(n: PlannedNotification, item: Item): Promise<void>;
   cancel(identifier: string): Promise<void>;
@@ -28,7 +45,7 @@ export interface SchedulerOptions {
   now?: () => number;
   /** A native call with no answer after this long counts as failed, so one stuck call can't hold every reminder after it. */
   callTimeoutMs?: number;
-  /** The record is written after this many items, and when the queue is empty. */
+  /** The record is written after this many items that changed it, and when the queue is empty. */
   saveEvery?: number;
 }
 
@@ -41,13 +58,19 @@ export interface Scheduler {
   enqueue(items: readonly Item[], soon?: boolean): Promise<void>;
   /** A notification scheduled outside the plan (the "Later" snooze), so closing its item clears it. */
   remember(identifier: string, sig: string): void;
-  /** Forget everything and stop (the phone is being wiped; the caller cancels every notification after `idle`). */
+  /**
+   * Forget everything and stop (the phone is being wiped; the caller cancels every notification
+   * after `idle`). Items enqueued after it belong to the person being wiped and are dropped, until
+   * `reopen`.
+   */
   reset(): void;
+  /** Take items again after `reset` (every notification of the last person is gone). */
+  reopen(): void;
   /** Resolves when nothing is being worked on. */
   idle(): Promise<void>;
 }
 
-export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15_000, saveEvery = 20 }: SchedulerOptions): Scheduler {
+export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15_000, saveEvery = 1 }: SchedulerOptions): Scheduler {
   /** identifier → signature of what is scheduled, as far as this app knows; null until read. */
   let known: Map<string, string> | null = null;
   /** Whether the phone's own list was read: if not, identifiers older versions used are cleared once per item. */
@@ -62,6 +85,8 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
   let dirty = false;
   /** Bumped by reset(): work started before it stops between native calls. */
   let generation = 0;
+  /** From reset() to reopen(): what is enqueued belongs to the person being wiped. */
+  let closed = false;
 
   const timed = <T>(p: Promise<T>): Promise<T> =>
     new Promise<T>((resolve, reject) => {
@@ -95,7 +120,7 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
     } catch {
       saved = {};
     }
-    let present: string[] | null = null;
+    let present: Listed[] | null = null;
     try {
       present = await timed(host.list());
     } catch {
@@ -105,8 +130,14 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
     const map = new Map<string, string>();
     if (present) {
       listed = true;
-      // What the phone holds is the truth; the record only adds the details.
-      for (const id of present) map.set(id, saved[id] ?? UNKNOWN);
+      // What the phone holds is the truth; the record only adds the details. Where the phone says
+      // when one fires (Android), a record with another time is stale (a run stopped before it was
+      // written) and that time is kept instead. One past its time has not rung yet (Android rings
+      // late): an open plan's is left to ring, a closed plan's is cancelled.
+      for (const { identifier, at } of present) {
+        const sig = saved[identifier];
+        map.set(identifier, sig !== undefined && (at === null || firesAt(sig) === at) ? sig : at ? listedSignature(at) : UNKNOWN);
+      }
       dirty = true;
     } else {
       for (const [id, sig] of Object.entries(saved)) map.set(id, sig);
@@ -173,7 +204,9 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
       } finally {
         persist();
         draining = null;
-        if (queue.size && gen === generation) void drain();
+        // reset() empties the queue, so whatever is in it now was enqueued since: a run stopped by a
+        // reset still hands it on.
+        if (queue.size) void drain();
       }
     })();
     return draining;
@@ -181,7 +214,7 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
 
   return {
     enqueue(items, soon = false) {
-      if (!items.length) return Promise.resolve();
+      if (!items.length || closed) return Promise.resolve();
       const done = items.map(
         (item) =>
           new Promise<void>((resolve) => {
@@ -204,6 +237,7 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
       return Promise.all(done).then(() => undefined);
     },
     remember(identifier, sig) {
+      if (closed) return;
       if (!known) {
         remembered.push([identifier, sig]);
         return;
@@ -221,8 +255,12 @@ export function createScheduler({ host, plan, now = Date.now, callTimeoutMs = 15
       seen.clear();
       known = new Map();
       listed = true;
+      closed = true;
       dirty = true;
       persist();
+    },
+    reopen() {
+      closed = false;
     },
     async idle() {
       // A drain that ends with more queued starts the next one: wait for all of them.
