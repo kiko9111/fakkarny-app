@@ -210,11 +210,12 @@ describe("a pool that waits its turn", () => {
     await sleep(400);
     // A third place, taken by the next caller; the query that was waiting is sent off to open
     // a connection of its own, is refused, and asks again with 800 ms of its 1200 left.
+    const refusedBefore = server.refused;
     server.places = 3;
     held.push(await pool.connect());
     await expect(waiting).rejects.toThrow("timeout exceeded when trying to connect");
     const took = Date.now() - started;
-    expect(server.refused).toBeGreaterThanOrEqual(1);
+    expect(server.refused - refusedBefore).toBe(1); // it was sent off, refused, and asked again
     expect(took).toBeGreaterThanOrEqual(1_150);
     expect(took).toBeLessThan(1_450); // not 1200 ms more from the refusal
     for (const client of held) client.release();

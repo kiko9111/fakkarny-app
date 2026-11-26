@@ -67,8 +67,8 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Live by 2026-11-26 07:52Z: main at
-  8f054e7 (through #64; the branch's tree equals main's).
+  server answers, a 404 that the old one still does. Live by 2026-11-26 21:00Z: main at
+  c83ab25 (through #67, homework and pocket money, with #66 and #68; the branch's tree equals main's).
   railway.json (#59, on the deploy branch only since that deploy) asks that traffic moves to a new
   deploy only after its /health answers, that the old one keeps serving 20 s more, then gets
   SIGTERM and 60 s to finish replies in flight. Deploys used to drop chat for a minute (messages
@@ -1002,17 +1002,28 @@ Rules:
     tick) together, every connection closed at 40 s; then up to 10 s for chat turns whose phone
     has gone (Fastify waits for connections, not handlers) and pushes and dashboard rows the
     last requests started (`track` in lib/background.ts: messages.ts `answer`, `pushNotices`,
-    `inBackground`); then the pool closes and the process exits 0, and at 55 s it exits
-    whatever still hangs, logging "shutdown gave up" with the step it was on.
+    `inBackground`; the wait reads the set again until it is empty, so the push a turn starts
+    as it ends is waited for too, and a dashboard row is written with `inBackground`, never a
+    bare `void prisma.….catch()`); then the pool closes and the process exits 0, and at 55 s it
+    exits whatever still hangs, logging "shutdown gave up" with the step it was on.
     How the HTTP close treats connections is plugins/closing.ts: Node's close() takes a
     connection whose reply has ended for idle and destroys it while the end of that reply still
     waits to be written, so the close first waits (up to 5 s) for ended replies to be written
-    out; after that, each connection is closed as soon as its reply has been handed to the
-    network ('finish', which streamed replies reach too). A sweep of idle connections every
-    250 ms, the first version, cut big answers to slow callers in 4 of 4 runs (second review).
+    out; after that, each connection is closed as soon as its last reply has been handed to the
+    network ('finish', which streamed replies reach too), and that reply says `Connection:
+    close`. A caller may send its next request before the last answer (pipelining): Node hands
+    the connection to the next reply inside its own 'finish' listener, before Fastify's
+    onResponse, so the plugin closes a connection only when `socket._httpMessage` is empty (what
+    Node's own close() reads) and says `Connection: close` only on a connection's last request
+    (Node drops the replies queued behind one that says it). A reply queued behind another on a
+    connection that died never hears 'finish' or 'close', so the plugin also drops it when the
+    connection closes (it held every later close for the full 5 s). A sweep of idle
+    connections every 250 ms, the first version, cut big answers to slow callers in 4 of 4 runs
+    (second review); the first closing plugin lost a pipelined answer (third review).
     GET /bootstrap leaves out the parts it had not started when the close began (Fastify
     refuses requests to itself from then on; it used to answer 500). Tests: plugins/closing.test.ts
-    (8 MB answers to a caller that stops reading, plain and streamed), and server.test.ts runs
+    (8 MB answers to a caller that stops reading, plain and streamed; two pipelined requests;
+    a caller gone before its queued answer), and server.test.ts runs
     a reply through a slow proxy to the database with SIGTERM in the middle and a caller that
     keeps its connection: exit within 5 s of the answer, and every database connection ended
     with pg's goodbye (Terminate), which only a pool that closes itself sends (a count of the
