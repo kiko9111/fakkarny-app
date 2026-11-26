@@ -67,12 +67,23 @@ const boss =
       })
     : undefined;
 
+// A deploy tells the old server to stop (SIGTERM) once the new one answers. The container starts
+// this file as its first process (Dockerfile), so the signal arrives here: no new requests, the
+// replies in flight are finished, the database connections are given back, and the process ends.
+let stopping = false;
 const shutdown = async (signal: string) => {
+  if (stopping) return;
+  stopping = true;
   app.log.info({ signal }, "shutting down");
-  await boss?.stop();
-  await app.close();
-  await prisma?.$disconnect();
-  process.exit(0);
+  try {
+    await boss?.stop();
+    await app.close();
+    await prisma?.$disconnect();
+    process.exit(0);
+  } catch (err) {
+    app.log.error({ err: err instanceof Error ? err.name : "unknown" }, "shutdown failed");
+    process.exit(1);
+  }
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));

@@ -1,12 +1,13 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import { pgAdapter } from "../src/db-pool";
 import { PrismaClient } from "../src/generated/prisma/client";
 
 export const TEST_DATABASE_URL = process.env["TEST_DATABASE_URL"];
 /** Use as `describe.skipIf(!hasTestDb)` so DB tests skip cleanly without Postgres. */
 export const hasTestDb = Boolean(TEST_DATABASE_URL);
 
+/** The server's own pool class (src/db-pool.ts), so every database test runs through it. */
 export function testPrisma(): PrismaClient {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL! }) });
+  return new PrismaClient({ adapter: pgAdapter(TEST_DATABASE_URL!, { max: 10, idleTimeoutMillis: 10_000 }) });
 }
 
 export async function resetDb(prisma: PrismaClient) {

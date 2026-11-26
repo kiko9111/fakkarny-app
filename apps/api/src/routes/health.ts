@@ -9,5 +9,7 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
     service: "fakkarni-api",
     version: VERSION,
     time: new Date().toISOString(),
+    // 1 in the container: the server is its first process and hears a deploy's stop signal (Dockerfile).
+    pid: process.pid,
   }));
 };

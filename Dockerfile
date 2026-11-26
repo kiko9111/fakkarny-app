@@ -24,4 +24,7 @@ RUN cd apps/api && npx prisma generate
 WORKDIR /app/apps/api
 EXPOSE 3000
 # Apply pending migrations, then start (pg-boss creates its own schema on start).
-CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx src/server.ts"]
+# `exec node` makes the server the container's first process. A deploy's stop signal (SIGTERM)
+# goes to that process only: with `sh` or `npx tsx` there it was never passed on, so the old
+# server ran on, holding its database connections, until it was killed. tsx is the loader.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node --import tsx src/server.ts"]

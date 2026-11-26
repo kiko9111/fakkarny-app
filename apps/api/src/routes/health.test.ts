@@ -11,6 +11,7 @@ describe("GET /health", () => {
     expect(res.statusCode).toBe(200);
     const body = HealthResponse.parse(res.json());
     expect(body.status).toBe("ok");
+    expect(body.pid).toBe(process.pid);
   });
 
   it("404s unknown routes", async () => {
