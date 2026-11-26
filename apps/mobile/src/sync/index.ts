@@ -10,6 +10,7 @@ import { prefs } from "@/lib/prefs";
 import { track } from "@/lib/analytics";
 import { createEmitter } from "@/lib/emitter";
 import { dataChanged } from "@/lib/live";
+import { itemsChanged } from "@/lib/signals";
 import { LIVE_EVERY_MS } from "@/lib/live-plan";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
@@ -37,8 +38,13 @@ const store: OutboxStore = {
   ...sqliteOutbox,
   async markSynced(clientId, res) {
     await sqliteOutbox.markSynced(clientId, res);
-    // New or changed reminders become local notifications (they fire offline).
-    await scheduleItems(res.items).catch(() => {});
+    if (res.items.length) {
+      // Saved: every list of plans shows them now. Their local notifications (they fire offline)
+      // are planned in the background: on Android each one is a trip through the system, and
+      // the reply, the next message and the screens used to wait for all of them.
+      itemsChanged.emit();
+      void scheduleItems(res.items, true);
+    }
     // Zaki may have changed anything (money, trackers, tasks, circles): open screens reload now.
     dataChanged.emit();
   },

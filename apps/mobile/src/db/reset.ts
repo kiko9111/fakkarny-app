@@ -1,5 +1,5 @@
-import * as Notifications from "expo-notifications";
 import { forgetSaved } from "@/lib/api";
+import { clearScheduled } from "@/notifications";
 import { prefs } from "@/lib/prefs";
 import { getDb } from "./database";
 
@@ -9,7 +9,7 @@ export async function resetLocalData(): Promise<void> {
   await db.withTransactionAsync(async () => {
     await db.execAsync("DELETE FROM messages; DELETE FROM items; DELETE FROM kv;");
   });
-  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+  await clearScheduled();
   prefs.clear();
   forgetSaved();
 }

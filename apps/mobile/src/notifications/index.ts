@@ -6,11 +6,14 @@ import { router } from "expo-router";
 import type { Item } from "@fakkarni/shared";
 import { kvGet, kvSet } from "@/db/kv";
 import { prefs } from "@/lib/prefs";
+import { itemsChanged } from "@/lib/signals";
 import { upsertItem } from "@/db/messages";
 import { t, dateLocale } from "@/i18n";
 import { patchItem, registerDevice } from "@/lib/api";
 import { awakeAtMinutes } from "@fakkarni/shared";
-import { allIds, fill, hintId, planReminderNotifications } from "./plan";
+import { fill, legacyIds, planReminderNotifications, snoozeId, type PlannedNotification } from "./plan";
+import { signature } from "./reconcile";
+import { createScheduler, type NotificationHost } from "./scheduler";
 
 const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
@@ -100,20 +103,23 @@ function formatTime(d: Date) {
   return d.toLocaleTimeString(dateLocale, { hour: "numeric", minute: "2-digit" });
 }
 
-/** (Re)schedule an item's local notifications; cancels them when it's done or cancelled. */
-export async function scheduleItem(item: Item) {
-  for (const id of allIds(item.id)) await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
-  if (item.type !== "reminder" && item.type !== "task") return;
-  const alwaysDirect = prefs.get("always_direct") === "1";
-  const planned = planReminderNotifications(item, {
-    now: new Date(),
-    alwaysDirect,
+/** The phone's own clock and the server's default waking hours (07:00–23:00). */
+function planFor(item: Item, now: Date): PlannedNotification[] {
+  return planReminderNotifications(item, {
+    now,
+    alwaysDirect: prefs.get("always_direct") === "1",
     clearText: (title, due) => fill(t.notifications.clear, { title, time: formatTime(due) }),
     followupText: (title) => fill(t.notifications.followup, { title }),
-    // The phone's own clock; the server's default waking hours (07:00–23:00).
     awake: (at) => awakeAtMinutes(at.getHours() * 60 + at.getMinutes(), "07:00", "23:00"),
   });
-  for (const n of planned) {
+}
+
+/** What this app scheduled (identifier → signature), so a launch knows what is already there. */
+const RECORD_KEY = "notif:scheduled";
+
+const host: NotificationHost = {
+  list: async () => (await Notifications.getAllScheduledNotificationsAsync()).map((r) => r.identifier),
+  schedule: async (n, item) => {
     await Notifications.scheduleNotificationAsync({
       identifier: n.identifier,
       content: {
@@ -127,11 +133,37 @@ export async function scheduleItem(item: Item) {
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.date, channelId: n.alarm ? ALARM_CHANNEL : CHANNEL },
     });
-  }
+  },
+  cancel: (id) => Notifications.cancelScheduledNotificationAsync(id),
+  load: () => {
+    const raw = localStorage.getItem(RECORD_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : null;
+  },
+  save: (record) => localStorage.setItem(RECORD_KEY, JSON.stringify(record)),
+  legacy: legacyIds,
+};
+
+const scheduler = createScheduler({ host, plan: planFor });
+
+/**
+ * (Re)plan an item's local notifications in the background (none when it is done or cancelled).
+ * Never awaited on the user's path: on Android every notification call is a trip through the
+ * system, and screens, the chat and the server must not wait for them.
+ */
+export function scheduleItem(item: Item): void {
+  void scheduleItems([item], true);
 }
 
-export async function scheduleItems(items: Item[]) {
-  for (const item of items) await scheduleItem(item);
+/** `soon`: ahead of a bulk top-up (a reminder just made or changed). Resolves when they are planned. */
+export function scheduleItems(items: readonly Item[], soon = false): Promise<void> {
+  return scheduler.enqueue(items, soon);
+}
+
+/** Cancel every local notification (the phone is being wiped). */
+export async function clearScheduled(): Promise<void> {
+  scheduler.reset();
+  await scheduler.idle();
+  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 }
 
 /**
@@ -160,18 +192,23 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
       if (data.repeating) return;
       try {
         const item = await patchItem(data.itemId, { status: "done" });
-        await upsertItem(item);
-        await scheduleItem(item);
+        if (await upsertItem(item)) itemsChanged.emit();
+        scheduleItem(item);
       } catch {
         // Offline: keep it open; the friend will ask about it later.
       }
     } else if (res.actionIdentifier === ACTION_LATER && data?.itemId) {
       if (data.title) say(fill(t.notifications.laterSay, { title: data.title }));
+      // Its own identifier: re-planning the item leaves it alone, and closing the item clears it.
+      const identifier = snoozeId(data.itemId);
+      const body = res.notification.request.content.body ?? data.title ?? "";
+      const date = new Date(Date.now() + 60 * 60_000);
       await Notifications.scheduleNotificationAsync({
-        identifier: hintId(data.itemId),
-        content: { title: "Zaki", body: res.notification.request.content.body ?? data.title ?? "", categoryIdentifier: CATEGORY, data, sound: true },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(Date.now() + 60 * 60_000), channelId: CHANNEL },
+        identifier,
+        content: { title: "Zaki", body, categoryIdentifier: CATEGORY, data, sound: true },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, channelId: CHANNEL },
       });
+      scheduler.remember(identifier, signature({ date, kind: "hint", body }));
     } else {
       if (data?.type === "message") onMessage();
       router.navigate("/");

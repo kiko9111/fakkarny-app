@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fill, planReminderNotifications, type ReminderItem } from "./plan";
+import { fill, itemPrefix, planReminderNotifications, type ReminderItem } from "./plan";
 
 const now = new Date("2026-11-22T10:00:00Z");
 const clearText = (title: string, due: Date) => `Just so you don't miss it: ${title} at ${due.toISOString().slice(11, 16)}`;
@@ -79,6 +79,16 @@ describe("repeating reminders and follow-ups", () => {
     const times = p.map((n) => n.date.toISOString());
     expect(times[12]).toBe("2026-11-22T22:30:00.000Z");
     expect(times[13]).toBe("2026-11-23T07:30:00.000Z");
+  });
+
+  it("keeps an occurrence's identifier when the window moves on, so only new ones need scheduling", () => {
+    const first = planReminderNotifications(water, { now, alwaysDirect: false, clearText, awake });
+    const twoHoursOn = planReminderNotifications(water, { now: new Date(now.getTime() + 2 * 3600_000), alwaysDirect: false, clearText, awake });
+    const before = new Map(first.map((n) => [n.identifier, n.date.getTime()]));
+    const kept = twoHoursOn.filter((n) => before.has(n.identifier));
+    expect(kept).toHaveLength(14);
+    expect(kept.every((n) => before.get(n.identifier) === n.date.getTime())).toBe(true);
+    expect(twoHoursOn.every((n) => n.identifier.startsWith(itemPrefix("w1")))).toBe(true);
   });
 
   it("includes a first occurrence that is still ahead", () => {

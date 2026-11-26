@@ -311,7 +311,7 @@ Rules:
   circles left empty, and deletes circle_posts by or about the user (no FK on those ids).
 - The phone pulls items changed on the server outside the chat (accepted tasks, Session steps,
   cancelled tasks) on every foreground with `pullItems` (apps/mobile/src/sync/items.ts) and
-  re-plans their notifications.
+  re-plans their notifications in the background (see "Local notifications in the background").
 - Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
   keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
   still saved, user told once), Sentry on API and app with all content collection off,
@@ -1027,6 +1027,38 @@ Rules:
   - More API instances, or a longer deploy overlap, need more room first: each instance holds up
     to 8 + 3. The pooler's pool size is a Supabase dashboard setting (Database settings,
     connection pooling); nobody has changed it.
+
+- Local notifications in the background (2026-11-26, kareem: "the today tab changes are somehow
+  late", always on the Pixel). On Android every expo-notifications schedule or cancel is a round
+  trip through the system (node_modules/expo-notifications/android: a package-manager lookup and
+  `sendBroadcast` to NotificationsService, `onReceive` on the main thread, a new thread for the
+  SharedPreferences write and AlarmManager, the answer posted back on the main looper). The old
+  `scheduleItem` cancelled 19 identifiers one by one before planning, for every item type, and it
+  was awaited: after a chat reply before `dataChanged` and the next outbox message, inside
+  `pullItems` before the next item's SQLite write, in `complete()` before the PATCH, and
+  `refresh()` re-planned every timed reminder on every return to the app and network change.
+  The browser build has no notifications (index.web.ts), which is why no browser run showed it.
+  - Now notifications/scheduler.ts (pure, tested with a stand-in phone) works in the background,
+    one native call at a time, and makes only the calls that change something
+    (notifications/reconcile.ts): a record identifier → signature (time | kind | alarm | hash of
+    the words) in localStorage `notif:scheduled`, and the phone's own list read once per launch
+    (`getAllScheduledNotificationsAsync`). Scheduling an identifier again replaces it, so a changed
+    time is one call. Each item's first pass after a launch schedules everything planned again (a
+    force stop drops alarms the record can't see). Repeats have one identifier per occurrence
+    (`item_<id>_r<minute>`), so a moving window only adds the new ones; "Later" is
+    `item_<id>_snooze` (left alone while the item is open, cleared when it closes); one that is due
+    now is left to ring; a call with no answer counts as failed after 15 s; `soon` puts a reminder
+    just made ahead of a bulk top-up. First launch after this change: the old slot identifiers
+    (`_r0`…`_r15`) are cancelled once.
+  - Rules: never await `scheduleItem` / `scheduleItems` on the user's path. Write SQLite first,
+    fire `itemsChanged` (lib/signals.ts: every list of plans re-reads SQLite, also a tab not in
+    view), then plan notifications. An item a route answered with goes through `saveItem`
+    (sync/save-item.ts), which also clears a cancelled item's notifications (the Saved screen's
+    Remove used to leave them ringing). `pullItems` writes every change in one transaction
+    (`upsertItems`), fires `itemsChanged`, then plans; a call made while a pull is on its way
+    gets one more pull after it (`oneAtATime`, lib/one-at-a-time.ts), so "accept" followed by a
+    pull sees the new plan. `useItems.complete` sends the PATCH right after the local write, and a
+    reload that read SQLite a moment before the write can't bring the ticked row back.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

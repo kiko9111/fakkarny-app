@@ -6,9 +6,8 @@ import * as Sharing from "expo-sharing";
 import { parseInstapayLink, type Item, type PatchMeRequest, type User } from "@fakkarni/shared";
 import { authAvailable, currentAccountLabel, signOut } from "@/auth";
 import { listAlarms } from "@/db/items";
-import { upsertItem } from "@/db/messages";
 import { resetLocalData } from "@/db/reset";
-import { scheduleItem } from "@/notifications";
+import { saveItem } from "@/sync/save-item";
 import { dateLocale, language, t } from "@/i18n";
 import { API_URL, deleteAccount, exportData, getMe, patchItem, patchMe, peekMe } from "@/lib/api";
 import { failText } from "@/lib/errors";
@@ -121,8 +120,7 @@ export default function SettingsScreen() {
     setAlarms((list) => list.filter((i) => i.id !== item.id));
     try {
       const updated = await patchItem(item.id, { alarm: false });
-      await upsertItem(updated);
-      await scheduleItem(updated).catch(() => {});
+      await saveItem(updated);
     } catch (err) {
       setAlarms((list) => [...list, item]);
       notify(failText(err, t.saved.offline), "error");

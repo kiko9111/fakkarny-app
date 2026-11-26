@@ -89,9 +89,10 @@ export async function listMessages(limit = 200): Promise<LocalMessage[]> {
   return rows.map(toLocal);
 }
 
-export async function upsertItem(i: Item): Promise<void> {
+/** Save an item unless the phone holds a newer copy; true when a row was written. */
+export async function upsertItem(i: Item): Promise<boolean> {
   const db = await getDb();
-  await db.runAsync(
+  const result = await db.runAsync(
     `INSERT INTO items (id, type, title, due_at, remind_at, important, status, debt_person, debt_amount, debt_direction,
        follow_up_at, source_message_id, updated_at, created_at, done_at, nudge, repeat_every_minutes, alarm)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -105,6 +106,18 @@ export async function upsertItem(i: Item): Promise<void> {
     i.debt_direction, i.follow_up_at, i.source_message_id, i.updated_at, i.created_at, i.done_at, i.nudge,
     i.repeat_every_minutes ?? null, i.alarm ? 1 : 0,
   );
+  return result.changes > 0;
+}
+
+/** Several items in one transaction; returns the ones written (a newer copy on the phone wins). */
+export async function upsertItems(items: readonly Item[]): Promise<Item[]> {
+  if (!items.length) return [];
+  const db = await getDb();
+  const wrote: Item[] = [];
+  await db.withTransactionAsync(async () => {
+    for (const i of items) if (await upsertItem(i)) wrote.push(i);
+  });
+  return wrote;
 }
 
 /** Insert messages that came from the server (friend replies, proactive messages). */

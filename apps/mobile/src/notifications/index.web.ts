@@ -6,8 +6,9 @@ export async function ensurePermissionAndRegister(_opts: { force?: boolean } = {
   return false;
 }
 export function watchPushToken() {}
-export async function scheduleItem(_item: Item) {}
-export async function scheduleItems(_items: Item[]) {}
+export function scheduleItem(_item: Item): void {}
+export async function scheduleItems(_items: readonly Item[], _soon = false): Promise<void> {}
+export async function clearScheduled(): Promise<void> {}
 export function listenForNotifications(_onMessage: () => void, _say: (text: string) => void) {
   return () => {};
 }

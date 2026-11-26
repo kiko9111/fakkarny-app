@@ -13,3 +13,10 @@ export const dataChanged = createEmitter<void>();
  * screens in view re-read their copy from memory. No request follows from this one.
  */
 export const cacheRefreshed = createEmitter<void>();
+
+/**
+ * Fired when plans in SQLite changed (a chat reply saved them, a pull brought them down, a tap
+ * closed one): every list of plans re-reads SQLite at once, also a tab not in view, so it is
+ * right when it is opened. Nothing goes to the server because of it.
+ */
+export const itemsChanged = createEmitter<void>();
