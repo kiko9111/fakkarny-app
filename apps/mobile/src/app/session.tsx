@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: palette.calmSoft, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
   hero: { alignItems: "center", gap: space.sm, marginBottom: space.xs },
   soft: { boxShadow: "none" },
-  helpline: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: "rgba(255,255,255,0.6)", borderRadius: radius.md, padding: space.md, marginTop: space.xs },
+  helpline: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: palette.wash, borderRadius: radius.md, padding: space.md, marginTop: space.xs },
   tickRow: { flexDirection: "row", gap: space.md, alignItems: "center", minHeight: 48 },
   tick: { width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: palette.calm, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface },
   tickOn: { backgroundColor: palette.calm },

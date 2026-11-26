@@ -220,11 +220,11 @@ export const styles = StyleSheet.create({
   strike: { textDecorationLine: "line-through" },
   chip: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: 40, paddingHorizontal: space.md + 2, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.glassEdge, backgroundColor: palette.surface },
   badge: { paddingHorizontal: space.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
-  track: { height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.7)", overflow: "hidden" },
+  track: { height: 8, borderRadius: 4, backgroundColor: palette.wash, overflow: "hidden" },
   fill: { height: 8, borderRadius: 4 },
   empty: { alignItems: "center", gap: space.sm, paddingVertical: space.xxl, paddingHorizontal: space.lg },
   emptyBody: { maxWidth: 320 },
-  note: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: "rgba(255,255,255,0.5)", borderWidth: 1, borderColor: "rgba(255,255,255,0.7)", borderRadius: radius.md, padding: space.md },
+  note: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: palette.wash, borderRadius: radius.md, padding: space.md },
 });
 
 export { minTouch };

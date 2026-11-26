@@ -1,7 +1,8 @@
 /**
- * Colour themes the user picks (welcome screen, Settings). Each one is soft and positive on
- * a clean, Apple-like structure: white surfaces on a lightly tinted grouped background,
- * hairline separators, one accent. Family, friends and Session keep their own colours in
+ * Colour themes the user picks (welcome screen, Settings). Each one is the same calm,
+ * near-white page (owner note, 2026-11-27: "match Apple and Muse, with a slight tint"): the ground
+ * and the greys lean a hair towards the theme, ink is near-black, and the theme's colour itself
+ * is kept for the one filled button, the active tab, small icons and status. Family, friends and Session keep their own colours in
  * every theme so they read the same everywhere.
  */
 export type ThemeId = "sunrise" | "mint" | "cloud";
@@ -28,16 +29,16 @@ export interface ThemeColors {
 
 export const THEMES: Record<ThemeId, ThemeColors> = {
   sunrise: {
-    bg: "#FBF7F3",
-    surfaceAlt: "#F5EEE7",
-    line: "#EFE6DD",
-    lineStrong: "#E0D3C6",
-    ink: "#2B2320",
-    inkSoft: "#6B5F58",
-    inkFaint: "#857870",
+    bg: "#FBFAF8",
+    surfaceAlt: "#F3F1EE",
+    line: "#ECE9E5",
+    lineStrong: "#DCD8D2",
+    ink: "#1D1B1A",
+    inkSoft: "#5E5955",
+    inkFaint: "#75706B",
     primary: "#E06438",
     primaryPressed: "#C9552C",
-    primarySoft: "#FFEADF",
+    primarySoft: "#FFEFE6",
     primaryInk: "#A9461E",
     zakiBody: "#FFC36B",
     zakiRim: "#FFAE52",
@@ -45,16 +46,16 @@ export const THEMES: Record<ThemeId, ThemeColors> = {
     zakiCheek: "#FF8C6B",
   },
   mint: {
-    bg: "#F4F9F7",
-    surfaceAlt: "#E9F4F0",
-    line: "#E0EEE9",
-    lineStrong: "#CBE2DA",
-    ink: "#1D2B28",
-    inkSoft: "#56706A",
-    inkFaint: "#6F8A84",
+    bg: "#F9FBFA",
+    surfaceAlt: "#F0F3F2",
+    line: "#E7EBE9",
+    lineStrong: "#D6DCD9",
+    ink: "#1A1C1B",
+    inkSoft: "#565D5A",
+    inkFaint: "#6E7572",
     primary: "#1E9E85",
     primaryPressed: "#17866F",
-    primarySoft: "#DDF4EE",
+    primarySoft: "#E4F5F0",
     primaryInk: "#12705E",
     zakiBody: "#8EE3CB",
     zakiRim: "#5CCDB2",
@@ -62,16 +63,16 @@ export const THEMES: Record<ThemeId, ThemeColors> = {
     zakiCheek: "#FF9FA8",
   },
   cloud: {
-    bg: "#F7F5FB",
-    surfaceAlt: "#EFEBF8",
-    line: "#E8E3F3",
-    lineStrong: "#D6CEEA",
-    ink: "#262236",
-    inkSoft: "#625C78",
-    inkFaint: "#7D7692",
+    bg: "#FAFAFC",
+    surfaceAlt: "#F2F1F6",
+    line: "#EAE9EF",
+    lineStrong: "#D9D7E1",
+    ink: "#1B1A1F",
+    inkSoft: "#5A5864",
+    inkFaint: "#72707C",
     primary: "#7B61E8",
     primaryPressed: "#6A50D6",
-    primarySoft: "#EEE9FE",
+    primarySoft: "#F0ECFE",
     primaryInk: "#5B43C4",
     zakiBody: "#C8B9FB",
     zakiRim: "#AE9AF5",

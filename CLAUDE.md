@@ -1233,6 +1233,20 @@ Rules:
   DELETE /me (private lists go). The phone shows list entry points only once GET /lists answered,
   so an over-the-air update before the server deploy shows nothing new.
 
+- Layout rebuild, foundation (2026-11-27; spec "one home, shown where due"; kareem: "match Apple and
+  Muse with a slight tint"). Replaces the liquid-glass look in the design-system note above: grounds
+  are near-white with a faint theme glow in the top corner (assets/bg/mesh-*.jpg, drawn by
+  `node scripts/make-meshes.mjs` in apps/mobile; needs Playwright), `glass` is a white surface with
+  a neutral hairline (`palette.glassEdge`) and a soft neutral shadow, ink is near-black, and the
+  theme colour is kept for the filled button, the active tab, small icons and status. A quiet fill
+  inside a white card is `palette.wash` (white-on-white fills no longer show). Shared pieces in
+  src/ui: `Segmented`, `Tile` / `TileGrid`, `NavRow` / `RowGroup`, `IntroPanel` (layout.tsx) and
+  `useAddSheet` / `AddSheet` / `HeaderPlus` (AddSheet.tsx, usage at the top of the file: the one
+  "+" in a header and its bottom sheet, plain `Modal`). Their words: src/i18n/layout/<area>.ts,
+  read as `t.lay.<area>.<key>` (`SameKeys` fails the build on a key missing in English;
+  layout.test.ts checks both ways). The browser preview does not flip paddingStart / paddingEnd
+  in Arabic (the phone does): shared rows use paddingHorizontal.
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

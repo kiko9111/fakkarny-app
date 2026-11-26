@@ -17,6 +17,8 @@ void AccessibilityInfo.isReduceMotionEnabled()
   .then((on) => (still = on))
   .catch(() => {});
 AccessibilityInfo.addEventListener("reduceMotionChanged", (on) => (still = on));
+/** Whether the phone asks for less motion: fade, don't move. */
+export const reduceMotion = () => still;
 
 /**
  * Fades its children in and lifts them into place, once, when they first show. `off` (read when

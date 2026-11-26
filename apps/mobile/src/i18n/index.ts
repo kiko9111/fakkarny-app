@@ -3,12 +3,14 @@ import { getLocales } from "expo-localization";
 import type { Language } from "@fakkarni/shared";
 import { prefs } from "@/lib/prefs";
 import { pickLanguage } from "./pick";
+import { layoutStrings } from "./layout";
 import { strings } from "./strings";
 
 // The user's choice (settings/onboarding) wins over the device language.
 const chosen = prefs.get("language");
 export const language: Language = chosen === "en" || chosen === "ar-EG" ? chosen : pickLanguage(getLocales().map((l) => l.languageTag));
-export const t = strings[language];
+// `t.lay.<area>.<key>`: the layout rebuild's words, one file per area (src/i18n/layout).
+export const t = { ...strings[language], lay: layoutStrings(language) };
 export const isRTL = language === "ar-EG";
 
 // Full RTL for Arabic even when the device itself is set to English (takes effect after a reload).

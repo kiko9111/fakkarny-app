@@ -4,13 +4,16 @@ import { prefs } from "@/lib/prefs";
 import { THEMES, themeOf, type ThemeId } from "./themes";
 
 /**
- * Zaki's design tokens, in the language of the liquid-glass logo: a soft colour mesh behind
- * everything (src/ui/glass.tsx), frosted translucent surfaces with a bright edge, rounded
- * geometry and gentle tinted depth. The accent family comes from the theme the user picked
+ * Zaki's design tokens: a near-white page with a barely-there glow of the theme in one corner
+ * (src/ui/glass.tsx), clean white surfaces with a hairline edge and a soft neutral shadow,
+ * rounded geometry. Colour is for the main button, the active tab, small icons and status. The accent family comes from the theme the user picked
  * (src/ui/themes.ts); it is read once at start-up, and changing it reloads the app.
  */
 export const themeId: ThemeId = themeOf(prefs.get("theme"));
 const th = THEMES[themeId];
+
+const SURFACE = "rgba(255,255,255,0.9)";
+const EDGE = "rgba(24,22,32,0.07)";
 
 export const palette = {
   ...th,
@@ -18,11 +21,16 @@ export const palette = {
   ground: th.bg,
   /** Screens are see-through so the colour mesh behind the app shows. */
   bg: "transparent",
-  /** Frosted glass: translucent white over the mesh, with a bright edge (`glassEdge`). */
-  surface: "rgba(255,255,255,0.68)",
-  surfaceStrong: "rgba(255,255,255,0.86)",
+  /** Cards: white, a touch see-through so the ground's tint carries, with a hairline edge (`glassEdge`). */
+  surface: SURFACE,
+  surfaceStrong: "rgba(255,255,255,0.96)",
   surfaceSolid: "#FFFFFF",
-  glassEdge: "rgba(255,255,255,0.9)",
+  /** The hairline around a surface and under a header: neutral, so it reads on white and on the ground. */
+  glassEdge: EDGE,
+  /** A quiet fill inside a white card (a progress track, a note, a day pill). */
+  wash: "rgba(24,22,32,0.045)",
+  /** Session's ground before its image draws. */
+  calmGround: "#FAFAFD",
   primarySoftGlass: th.primarySoft + "CC",
   onPrimary: "#FFFFFF",
   family: "#1F7A6E",
@@ -68,30 +76,30 @@ export const type = {
 } as const;
 export type TypeRole = keyof typeof type;
 
-/** Soft depth tinted with the theme, like light passing through glass. */
+/** The theme's colour at an alpha: only for the main button's glow and the focus ring. */
 const tint = (alpha: number) => {
   const h = th.primary.replace("#", "");
   return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${alpha})`;
 };
+/** Depth is neutral and soft: a card lifts off the page by a hair, never by a coloured glow. */
 export const shadow = {
-  card: { boxShadow: `0px 6px 18px ${tint(0.08)}, 0px 1px 2px rgba(20, 16, 30, 0.04)` },
-  raised: { boxShadow: `0px 14px 34px ${tint(0.16)}, 0px 2px 6px rgba(20, 16, 30, 0.06)` },
-  button: { boxShadow: `0px 8px 18px ${tint(0.32)}` },
+  card: { boxShadow: "0px 1px 2px rgba(24, 22, 32, 0.04), 0px 4px 14px rgba(24, 22, 32, 0.035)" },
+  raised: { boxShadow: "0px 2px 6px rgba(24, 22, 32, 0.05), 0px 14px 34px rgba(24, 22, 32, 0.10)" },
+  button: { boxShadow: `0px 4px 12px ${tint(0.2)}` },
   /** A soft ring in the theme's colour around the box being typed in. */
   focus: { boxShadow: `0px 0px 0px 3px ${tint(0.16)}` },
 } as const;
 
 /**
- * A frosted surface: translucent white, a bright hairline edge and tinted depth. On the web
- * the background behind it is blurred too; on phones the mesh is already soft, so the
- * translucency alone reads as glass.
+ * A surface: white with a hairline edge and a soft neutral shadow. (The name stays from the
+ * frosted look it replaced; every card, row and bar spreads it.)
  */
 export const glass = {
-  backgroundColor: "rgba(255,255,255,0.68)",
+  backgroundColor: SURFACE,
   borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.9)",
+  borderColor: EDGE,
   ...shadow.card,
-  ...(Platform.OS === "web" ? ({ backdropFilter: "blur(18px) saturate(160%)" } as object) : null),
+  ...(Platform.OS === "web" ? ({ backdropFilter: "blur(18px)" } as object) : null),
 } as const;
 
 /**
