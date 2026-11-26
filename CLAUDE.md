@@ -67,9 +67,10 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Deployed 2026-11-26 21:06Z (the live checks
-  at 21:13Z and 21:19Z passed): main at 9964160 (through #69, the stop fixes, on top of the 20:55Z
-  deploy of #67 with #66 and #68; the branch's tree equals main's).
+  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:10Z (db553d7; the live check at 22:16Z passed, server in
+  `europe-west4-drams3a`): main at 8313c9e (through #74, group bill split, migration group_splits;
+  the branch's tree equals main at that commit). Earlier the same evening: 21:06Z (#69) and 20:55Z
+  (#67 with #66 and #68).
   railway.json (#59, on the deploy branch only since that deploy) asks that traffic moves to a new
   deploy only after its /health answers, that the old one keeps serving 20 s more, then gets
   SIGTERM and 60 s to finish replies in flight. Deploys used to drop chat for a minute (messages
