@@ -4,7 +4,8 @@ import { TRACKER_TEMPLATES, type Tracker, type TrackerKind } from "@fakkarni/sha
 import { fill } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
-import { deleteTracker, logTracker, undoTracker, updateTracker } from "@/lib/api";
+import { deleteTracker, logTracker, saveTracker, undoTracker, updateTracker } from "@/lib/api";
+import { useGuess } from "@/lib/optimistic";
 import { ask, Badge, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
 import { QueuedOffline } from "@/sync/writes";
 import { askTimeLabel, bumpTracker, formatNumber, monthBars, progress, weekBars } from "./logic";
@@ -25,41 +26,37 @@ export const TRACKER_ICON: Record<TrackerKind, IconName> = {
 
 export const trackerName = (tr: Pick<Tracker, "kind" | "name">) => (tr.kind === "custom" ? tr.name ?? plain(t.trackers.kinds.custom) : plain(t.trackers.kinds[tr.kind]));
 
-/** One thing the user follows: today's number, the week, and one-tap logging. */
-export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tracker; onChanged: (t: Tracker) => void; onRemoved: () => void }) {
-  const [busy, setBusy] = useState(false);
+/**
+ * One thing the user follows: today's number, the week, and one-tap logging. A step shows at
+ * once (the card's own guess, lib/optimistic.ts) and is sent behind; taps that follow each other
+ * add up and go out in order, so three glasses are three quick taps.
+ */
+export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { tracker: Tracker; onChanged: (t: Tracker) => void; onRemoved: () => void }) {
+  const { shown: tr, waiting, run: send } = useGuess(fromList);
   const [amountText, setAmountText] = useState("");
   const [showMonth, setShowMonth] = useState(false);
   const money = tr.unit === "money";
   const amount = parseAmount(amountText);
 
-  const run = async (fn: () => Promise<Tracker>, guess?: Tracker) => {
-    if (busy) return;
-    setBusy(true);
-    // A log shows at once; the server's answer replaces the guess, a failure puts it back.
-    if (guess) {
-      onChanged(guess);
-      setAmountText("");
-    }
-    try {
-      onChanged(await fn());
-      setAmountText("");
-    } catch (err) {
-      // No connection: the step is kept on the phone and sent later, so the guess stays.
-      if (guess && err instanceof QueuedOffline) {
-        notify(t.trackers.savedOffline, "info");
-        return;
-      }
-      if (guess) onChanged(tr);
-      notify(t.trackers.failed, "error");
-    } finally {
-      setBusy(false);
-    }
+  const failed = () => notify(t.trackers.failed, "error");
+  const log = (amount?: number) => {
+    const step = amount ?? (TRACKER_TEMPLATES[tr.kind]?.step || 1);
+    let guessed: Tracker | null = null;
+    setAmountText("");
+    void send(() => logTracker(fromList.id, amount), { next: (shown) => (guessed = bumpTracker(shown, step)), adopt: (answer) => answer, keep: (err) => err instanceof QueuedOffline }).then(onChanged, (err) => {
+      if (!(err instanceof QueuedOffline)) return failed();
+      // No connection: the step is kept on the phone and sent later, so the guess stays, here
+      // and in the saved list every screen draws from.
+      if (guessed) saveTracker(guessed);
+      notify(t.trackers.savedOffline, "info");
+    });
   };
+  /** A change with nothing to show before the server answers (undo, stop sharing). */
+  const run = (fn: () => Promise<Tracker>) => void send(fn, { adopt: (answer) => answer }).then(onChanged, failed);
   const menu = () =>
     tr.circle_id
       ? ask(trackerName(tr), undefined, [
-          { label: t.trackers.unshare, onPress: () => void run(() => updateTracker(tr.id, { circle_id: null })) },
+          { label: t.trackers.unshare, onPress: () => run(() => updateTracker(tr.id, { circle_id: null })) },
           { label: t.trackers.remove, style: "destructive", onPress: remove },
           { label: t.trackers.no, style: "cancel" },
         ])
@@ -87,7 +84,7 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
   const bars = weekBars(tr);
 
   return (
-    <Card style={[styles.card, busy ? styles.dim : {}]}>
+    <Card style={[styles.card, waiting ? styles.dim : {}]}>
       <View style={styles.head}>
         <IconTile name={TRACKER_ICON[tr.kind]} />
         <View style={styles.flex}>
@@ -173,13 +170,13 @@ export function TrackerCard({ tracker: tr, onChanged, onRemoved }: { tracker: Tr
               maxLength={12}
               textAlign={textStart}
             />
-            <Button label={t.trackers.log} size="sm" disabled={busy || amount === null} onPress={() => amount !== null && void run(() => logTracker(tr.id, amount), bumpTracker(tr, amount))} />
+            <Button label={t.trackers.log} size="sm" disabled={amount === null} onPress={() => amount !== null && log(amount)} />
           </>
         ) : (
-          <Button label={t.trackers.plusOne} icon="add" size="sm" disabled={busy} onPress={() => void run(() => logTracker(tr.id), bumpTracker(tr, TRACKER_TEMPLATES[tr.kind]?.step || 1))} />
+          <Button label={t.trackers.plusOne} icon="add" size="sm" onPress={() => log()} />
         )}
         {tr.month.some((v) => v > 0) ? <Button label={showMonth ? t.trackers.hideMonth : t.trackers.showMonth} kind="text" size="sm" icon="stats-chart-outline" onPress={() => setShowMonth((v) => !v)} /> : null}
-        {tr.total > 0 ? <Button label={t.trackers.undo} kind="text" size="sm" icon="arrow-undo-outline" disabled={busy} onPress={() => void run(() => undoTracker(tr.id))} /> : null}
+        {tr.total > 0 ? <Button label={t.trackers.undo} kind="text" size="sm" icon="arrow-undo-outline" disabled={waiting} onPress={() => run(() => undoTracker(tr.id))} /> : null}
       </View>
     </Card>
   );

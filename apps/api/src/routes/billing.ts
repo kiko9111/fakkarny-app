@@ -3,6 +3,7 @@ import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
 import type { BillingOffersResponse, MeResponse } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
 import { FOUNDERS_LIMIT, planFromEvent, planFromSubscriber, RevenueCatSubscriber, RevenueCatWebhook, type PlanState } from "../billing/plan";
+import { forgetCachedUserId } from "../plugins/auth";
 import { toWireUser } from "../serialize";
 
 export interface BillingOptions {
@@ -46,11 +47,14 @@ export const billingRoutes: FastifyPluginAsync<BillingOptions> = async (app, opt
       // Restoring on another account moves the purchase: the old account loses access.
       const from = e.transferred_from.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
       await prisma.user.updateMany({ where: { id: { in: from } }, data: { plan: "expired" } });
+      from.forEach(forgetCachedUserId);
     }
     if (next && ids.length) {
       const user = await prisma.user.findFirst({ where: { id: { in: ids } } });
       if (user) {
         await prisma.user.update({ where: { id: user.id }, data: planData(next) });
+        // A plan change arrives from the store, not from the phone: drop the saved row (plugins/auth.ts).
+        forgetCachedUserId(user.id);
         await prisma.event.create({ data: { userId: user.id, name: "subscription_event", propsJson: { type: e.type, plan: next.plan, tier: next.tier, product: next.productId, environment: e.environment ?? null } } });
       }
     }

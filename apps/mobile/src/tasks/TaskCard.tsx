@@ -11,15 +11,21 @@ import { track } from "@/lib/analytics";
 import { photosAvailable, pickPhotos } from "@/lib/photos";
 import { HomeworkPhotos } from "./HomeworkPhotos";
 import { Badge, Button, Card, Chip, confirm, DateTimePicker, Icon, notify, palette, space, Text, TextField } from "@/ui";
-import { firstLink, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
+import { firstLink, guessTask, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
+import { useGuess } from "@/lib/optimistic";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
 const TONE: Record<TaskStatus, "neutral" | "ok" | "warn" | "danger" | "primary"> = { pending: "warn", accepted: "primary", declined: "neutral", done: "ok", cancelled: "neutral" };
 const ACTION_ICON: Partial<Record<TaskAction, "checkmark" | "close" | "notifications-outline" | "checkmark-done">> = { accept: "checkmark", decline: "close", done: "checkmark-done", nudge: "notifications-outline" };
 
-/** One assigned task with the actions this person can take. `onChanged` reloads the list. */
-export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
+/**
+ * One assigned task with the actions this person can take. `onChanged` reloads the list.
+ * Yes, No, Done and Cancel show at once (the card's own guess, lib/optimistic.ts) while the
+ * server confirms; a nudge, a hand-in and a review wait for the server, because they are Zaki
+ * writing to someone else.
+ */
+export function TaskCard({ task: fromList, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
+  const { shown: task, busy, waiting, run: send } = useGuess(fromList);
   const [picking, setPicking] = useState(false);
   const [calendar, setCalendar] = useState(false);
   // Homework: the child's answer or link, or the parent's redo note, while typing.
@@ -41,10 +47,9 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
     }
   };
 
-  const work = async (fn: () => Promise<unknown>, after?: string) => {
-    setBusy(true);
+  const work = async (fn: () => Promise<CircleTask>, after?: string, guess?: CircleTask | null) => {
     try {
-      await fn();
+      await send(fn, { guess, adopt: (answer) => answer });
       // Accepting makes the task one of the user's reminders; cancelling/finishing closes it.
       void pullItems();
       if (after) notify(after);
@@ -55,17 +60,16 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
         notify(t.circles.extrasNeeded, "info");
         router.push("/paywall");
       } else notify(t.tasks.failed, "error");
-    } finally {
-      setBusy(false);
     }
   };
 
   const run = (action: TaskAction) => {
     if (busy) return;
-    if (action === "cancel") return confirm(t.tasks.cancelConfirm, t.tasks.yes, () => void work(() => cancelTask(task.id)), t.tasks.no);
+    const guess = guessTask(task, action, new Date());
+    if (action === "cancel") return confirm(t.tasks.cancelConfirm, t.tasks.yes, () => void work(() => cancelTask(task.id), undefined, guess), t.tasks.no);
     if (action === "nudge") return void work(() => nudgeTask(task.id), t.tasks.nudged);
-    if (action === "done") return void work(() => finishTask(task.id));
-    return void work(() => respondTask(task.id, action));
+    if (action === "done") return void work(() => finishTask(task.id), undefined, guess);
+    return void work(() => respondTask(task.id, action), undefined, guess);
   };
 
   const open = task.status === "pending" || task.status === "accepted";
@@ -73,7 +77,8 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
   const canRemind = (task.role === "assigner" && task.status === "pending") || (task.role === "assignee" && open);
   const pickRemind = (c: RemindChoice) => {
     setPicking(false);
-    void work(() => remindTask(task.id, remindAt(c, new Date(), task.due_at)), t.tasks.remindChanged);
+    const at = remindAt(c, new Date(), task.due_at);
+    void work(() => remindTask(task.id, at), t.tasks.remindChanged, { ...task, remind_at: at });
   };
   const link = firstLink(task.note);
 
@@ -99,7 +104,7 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
     setText("");
   };
   return (
-    <Card style={busy ? styles.dim : undefined}>
+    <Card style={waiting ? styles.dim : undefined}>
       <View style={styles.head}>
         <Text variant="bodyStrong" color={task.status === "done" ? palette.inkFaint : palette.ink} style={[styles.title, task.status === "done" && styles.struck]}>
           {task.title}
@@ -171,7 +176,7 @@ export function TaskCard({ task, showCircle, onChanged }: { task: CircleTask; sh
           onCancel={() => setCalendar(false)}
           onDone={(d) => {
             setCalendar(false);
-            void work(() => remindTask(task.id, d.toISOString()), t.tasks.remindChanged);
+            void work(() => remindTask(task.id, d.toISOString()), t.tasks.remindChanged, { ...task, remind_at: d.toISOString() });
           }}
         />
       ) : null}

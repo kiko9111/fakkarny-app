@@ -5,27 +5,56 @@ import type { ReplyLang } from "../pipeline/rules";
 import { matchTrackCommand, matchTrackerLog, titleMatchesKind } from "./match";
 import { TRACKER_LABEL, trackerLabel } from "./labels";
 import { trackerStats } from "./stats";
+import { inBackground } from "../lib/background";
 
 const STREAK_DAYS = 370;
 const kindOf = (t: Pick<Tracker, "kind">): TrackerKind => TrackerKind.catch("custom").parse(t.kind);
 
-/** A tracker with its numbers, in the user's local days. */
-export async function toWireTracker(prisma: PrismaClient, t: Tracker & { circle?: { name: string } | null }, tz: string, now: Date): Promise<WireTracker> {
+type TrackerRow = Tracker & { circle?: { name: string } | null };
+
+/** The wire shape from a tracker, its entries of the last STREAK_DAYS and its all-time total. Pure. */
+function wireTracker(t: TrackerRow, tz: string, now: Date, recent: { amount: number; at: Date }[], total: number): WireTracker {
   const kind = kindOf(t);
   const tpl = TRACKER_TEMPLATES[kind];
   const goal = t.goal === null ? null : Number(t.goal);
-  const [recent, all] = await Promise.all([
-    prisma.trackerEntry.findMany({ where: { trackerId: t.id, at: { gte: new Date(now.getTime() - STREAK_DAYS * 86_400_000) } }, select: { amount: true, at: true } }),
-    prisma.trackerEntry.aggregate({ where: { trackerId: t.id }, _sum: { amount: true } }),
-  ]);
-  const stats = trackerStats(recent.map((e) => ({ amount: Number(e.amount), at: e.at })), tz, now, { goal: tpl.cumulative ? null : goal, streaks: tpl.unit === "count" });
-  return { id: t.id, kind, name: t.name, unit: tpl.unit, goal, cumulative: tpl.cumulative, ...stats, total: Number(all._sum.amount ?? 0), pack: t.pack === "ramadan" ? "ramadan" : null,
+  const stats = trackerStats(recent, tz, now, { goal: tpl.cumulative ? null : goal, streaks: tpl.unit === "count" });
+  return { id: t.id, kind, name: t.name, unit: tpl.unit, goal, cumulative: tpl.cumulative, ...stats, total, pack: t.pack === "ramadan" ? "ramadan" : null,
     ask_times: t.askTimes,
     unit_label: t.unitLabel,
     circle_id: t.circleId,
     circle_name: t.circle?.name ?? null,
     created_at: t.createdAt.toISOString(),
   };
+}
+
+/** A tracker with its numbers, in the user's local days. */
+export async function toWireTracker(prisma: PrismaClient, t: TrackerRow, tz: string, now: Date): Promise<WireTracker> {
+  const [recent, all] = await Promise.all([
+    prisma.trackerEntry.findMany({ where: { trackerId: t.id, at: { gte: new Date(now.getTime() - STREAK_DAYS * 86_400_000) } }, select: { amount: true, at: true } }),
+    prisma.trackerEntry.aggregate({ where: { trackerId: t.id }, _sum: { amount: true } }),
+  ]);
+  return wireTracker(t, tz, now, recent.map((e) => ({ amount: Number(e.amount), at: e.at })), Number(all._sum.amount ?? 0));
+}
+
+/**
+ * Many trackers with their numbers in two queries, whatever their count (one by one it was two
+ * per tracker, and every database round trip is time the screen or the chat reply waits).
+ */
+export async function toWireTrackers(prisma: PrismaClient, trackers: TrackerRow[], tz: string, now: Date): Promise<WireTracker[]> {
+  if (!trackers.length) return [];
+  const ids = trackers.map((t) => t.id);
+  const [recent, totals] = await Promise.all([
+    prisma.trackerEntry.findMany({ where: { trackerId: { in: ids }, at: { gte: new Date(now.getTime() - STREAK_DAYS * 86_400_000) } }, select: { trackerId: true, amount: true, at: true } }),
+    prisma.trackerEntry.groupBy({ by: ["trackerId"], where: { trackerId: { in: ids } }, _sum: { amount: true } }),
+  ]);
+  const entries = new Map<string, { amount: number; at: Date }[]>();
+  for (const e of recent) {
+    const list = entries.get(e.trackerId) ?? [];
+    list.push({ amount: Number(e.amount), at: e.at });
+    entries.set(e.trackerId, list);
+  }
+  const total = new Map(totals.map((g) => [g.trackerId, Number(g._sum.amount ?? 0)]));
+  return trackers.map((t) => wireTracker(t, tz, now, entries.get(t.id) ?? [], total.get(t.id) ?? 0));
 }
 
 /** Trackers this user may keep: 1 on the free plan, no limit with Pro (own, earned or Family). */
@@ -76,19 +105,27 @@ export async function addRamadanPack(prisma: PrismaClient, user: User, now: Date
 }
 
 /** Log one entry. On a tracker shared with a circle, reaching today's goal is posted there. */
-export async function logEntry(prisma: PrismaClient, tracker: Tracker, amount: number, source: "tap" | "chat", now: Date, tz: string) {
+export async function logEntry(prisma: PrismaClient, tracker: TrackerRow, amount: number, source: "tap" | "chat", now: Date, tz: string) {
+  return (await logEntryWithStats(prisma, tracker, amount, source, now, tz)).entry;
+}
+
+/**
+ * Log one entry and return the tracker's numbers as of `now`, read once: the goal check and
+ * the caller's answer use the same read (they each read them before).
+ */
+export async function logEntryWithStats(prisma: PrismaClient, tracker: TrackerRow, amount: number, source: "tap" | "chat", now: Date, tz: string) {
   const entry = await prisma.trackerEntry.create({ data: { trackerId: tracker.id, amount: new Prisma.Decimal(amount), source, at: now } });
-  await postGoalIfMet(prisma, tracker, tz, amount, now);
-  return entry;
+  const wire = await toWireTracker(prisma, tracker, tz, now);
+  await postGoalIfMet(prisma, tracker, wire, amount, now);
+  return { entry, wire };
 }
 
 /** "Omar hit today's goal for «reading» 🎯 (5 days in a row)": once a day, the moment it is reached. */
-async function postGoalIfMet(prisma: PrismaClient, tracker: Tracker, tz: string, amount: number, now: Date) {
+async function postGoalIfMet(prisma: PrismaClient, tracker: Tracker, w: WireTracker, amount: number, now: Date) {
   const kind = kindOf(tracker);
   const tpl = TRACKER_TEMPLATES[kind];
   if (!tracker.circleId || tracker.goal === null || tpl.unit === "money" || tpl.cumulative) return;
   const goal = Number(tracker.goal);
-  const w = await toWireTracker(prisma, tracker, tz, now);
   if (w.today < goal || w.today - amount >= goal) return;
   await prisma.circlePost.create({ data: { circleId: tracker.circleId, event: "tracker_goal", actorId: tracker.userId, title: `${kind}|${tracker.name ?? ""}|${w.streak}`, createdAt: now } });
 }
@@ -135,16 +172,21 @@ export async function trackerFastPath(prisma: PrismaClient, user: User, text: st
     return { text: ar ? `تمام! بدأت أتابع معاك ${label} قولّي كل ما تعمل، أو دوس عليها في صفحة المتابعة 🌟` : `Done! I'm now following ${label} with you. Tell me each time, or tap it on the Trackers page 🌟`, upsell: false };
   }
   // Only kinds the user follows, so a kind they don't track can't hide one they do.
-  const followed = [...new Set((await prisma.tracker.findMany({ where: { userId: user.id }, select: { kind: true } })).map((t) => t.kind as TrackerKind))];
+  // One read: the user's trackers, oldest first (the first of a kind is the one a chat line logs to).
+  const mine = await prisma.tracker.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
+  const followed = [...new Set(mine.map((t) => t.kind as TrackerKind))];
   const hit = matchTrackerLog(text, followed);
   if (!hit) return null; // Not something they follow: let Zaki answer normally.
-  const tracker = await prisma.tracker.findFirst({ where: { userId: user.id, kind: hit.kind }, orderBy: { createdAt: "asc" } });
+  const tracker = mine.find((t) => t.kind === hit.kind);
   if (!tracker) return null;
-  await logEntry(prisma, tracker, hit.amount, "chat", now, user.timezone);
-  await prisma.event.create({ data: { userId: user.id, name: "tracker_logged", propsJson: { kind: hit.kind, via: "chat" } } });
+  // The open reminders are read while the entry is written (they don't depend on each other).
+  const [{ wire }, open] = await Promise.all([
+    logEntryWithStats(prisma, tracker, hit.amount, "chat", now, user.timezone),
+    prisma.item.findMany({ where: { userId: user.id, status: "open" }, select: { title: true }, take: 200 }),
+  ]);
+  inBackground(prisma.event.create({ data: { userId: user.id, name: "tracker_logged", propsJson: { kind: hit.kind, via: "chat" } } }));
   // "خدت الدوا" may also answer an open reminder about it: logged here, then Zaki (the model)
   // still sees the message so it can close that reminder.
-  const open = await prisma.item.findMany({ where: { userId: user.id, status: "open" }, select: { title: true }, take: 200 });
   if (open.some((i) => titleMatchesKind(i.title, hit.kind))) return { text: "", upsell: false, closesReminder: true };
-  return { text: loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), hit.amount), upsell: false };
+  return { text: loggedLine(lang, wire, hit.amount), upsell: false };
 }

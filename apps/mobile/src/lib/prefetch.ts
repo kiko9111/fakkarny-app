@@ -1,4 +1,4 @@
-import { getCircle, getCircleFeed, getCircleTrackers, getMe, getMoney, listCircles, listDaftar, listMemories, listSplits, listTasks, listTrackers } from "./api";
+import { getCircle, getCircleFeed, getCircleTrackers, getMe, getMoney, listCircles, listDaftar, listMemories, listSplits, listTasks, listTrackers, refreshAll } from "./api";
 import { PREFETCH_AT_ONCE, PREFETCH_AFTER_CHAT_MS, planPrefetch } from "./prefetch-plan";
 
 let last = 0;
@@ -12,9 +12,11 @@ let deferred = false;
  * screen opens at once from its saved copy with fresh numbers. Failures are quiet: the screen
  * still refreshes itself when opened.
  *
- * Chat comes first: the phone sends only a few requests to one server at a time, so twenty
- * background loads right after a reply used to make the next message wait behind them. Now they
- * go a couple at a time, never while a message is on its way, and stop as soon as one is sent.
+ * One request brings every tab (GET /bootstrap, lib/api.ts `refreshAll`). A server that does not
+ * have it yet gets the screens one by one, as before: chat comes first there, because the phone
+ * sends only a few requests to one server at a time, so twenty background loads right after a
+ * reply used to make the next message wait behind them. They go a couple at a time, never while
+ * a message is on its way, and stop as soon as one is sent.
  */
 export function prefetchAll(now = Date.now(), changed = false): void {
   if (chatBusy) {
@@ -26,6 +28,7 @@ export function prefetchAll(now = Date.now(), changed = false): void {
   running = true;
   const quiet = <T>(p: () => Promise<T>) => () => p().then((v) => v as T | null).catch(() => null);
   void (async () => {
+    if (await refreshAll()) return;
     const first = [quiet(listCircles), quiet(getMe), quiet(listTasks), quiet(listTrackers), quiet(listDaftar), quiet(getMoney), quiet(listSplits), quiet(listMemories)];
     const [circles] = (await inTurns(first)) as [Awaited<ReturnType<typeof listCircles>> | null];
     // Each circle the user is in (detail, feed and shared trackers).

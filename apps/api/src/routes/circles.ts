@@ -24,6 +24,7 @@ import {
 import { Prisma, type Invite, type PrismaClient, type User } from "../generated/prisma/client";
 import { canClaim } from "../billing/referral";
 import { rewardInviter } from "../billing/referral-store";
+import { forgetCachedUserId } from "../plugins/auth";
 import { postUpdate } from "../daftar/store";
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
@@ -322,6 +323,8 @@ export const circleRoutes: FastifyPluginAsync<CircleRoutesOptions> = async (app,
         await tx.event.create({ data: { userId: req.user.id, name: "invite_accepted", propsJson: { kind: invite.circle.kind } } });
         if (canClaim(req.user, invite.inviter, at).ok) await rewardInviter(tx, req.user.id, invite.inviter.id, at);
       });
+      // Committed: if the inviter earned Pro days, their next read must see them (plugins/auth.ts).
+      forgetCachedUserId(invite.inviter.id);
       // The others hear it in their chat (a repeat join posts nothing new: same client id).
       void pushNotices(prisma, opts.push, await announceJoin(prisma, invite.circleId, req.user, at), app.log);
     }

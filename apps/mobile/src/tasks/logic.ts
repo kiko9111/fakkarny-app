@@ -10,6 +10,20 @@ export function taskActions(t: Pick<CircleTask, "status" | "role" | "can_nudge">
   return t.can_nudge ? ["nudge", "cancel"] : ["cancel"];
 }
 
+/**
+ * What a task looks like right after a tap, drawn at once while the server confirms: its answer
+ * then replaces this guess, and a failure puts the old one back. Null when the tap has nothing to
+ * show before the server has really done it (a nudge is Zaki writing to someone).
+ */
+export function guessTask<T extends Pick<CircleTask, "status" | "responded_at" | "done_at">>(t: T, action: TaskAction, now: Date): T | null {
+  const at = now.toISOString();
+  if (action === "accept") return { ...t, status: "accepted", responded_at: at };
+  if (action === "decline") return { ...t, status: "declined", responded_at: at };
+  if (action === "done") return { ...t, status: "done", done_at: at };
+  if (action === "cancel") return { ...t, status: "cancelled" };
+  return null;
+}
+
 /** Needs my answer first, then open ones, then finished; newest first inside each group. */
 export function sortTasks<T extends Pick<CircleTask, "status" | "role" | "created_at">>(tasks: readonly T[]): T[] {
   const rank = (t: T) => (t.status === "pending" && t.role === "assignee" ? 0 : t.status === "pending" || t.status === "accepted" ? 1 : 2);

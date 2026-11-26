@@ -39,6 +39,8 @@ const Env = z.object({
   /** Google Play link shown on the invite page after the web confirm. */
   ANDROID_STORE_URL: z.string().url().optional().or(z.literal("").transform(() => undefined)),
   EXPO_ACCESS_TOKEN: z.string().optional().transform((v) => v || undefined),
+  /** How long a caller's user row is reused on reads, in ms (plugins/auth.ts). "0" turns it off. */
+  USER_CACHE_MS: z.coerce.number().int().min(0).max(60_000).default(15_000),
 });
 export type Env = z.infer<typeof Env>;
 

@@ -1,7 +1,7 @@
 import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
-import { getMe, listMessagesAfter, patchMe, postMessageRaw, writeOutbox } from "@/lib/api";
+import { getMe, listMessagesAfter, patchMe, postMessageRaw, screenCache, writeOutbox } from "@/lib/api";
 import { PostMessageResponse } from "@fakkarni/shared";
 import { sendWithBrain } from "@/brain/flow";
 import { phoneBrainReady, thinkOnPhone, warmBrain } from "@/brain/engine";
@@ -124,9 +124,12 @@ export function startSync() {
   const refresh = () => {
     void syncQueue.wake();
     // Shared-data taps made offline (tracker steps, check-ins) go out first, then screens reload.
+    // Only when something did wait: "changed" ends the freshness of every saved copy, and with
+    // nothing sent it would throw away the refresh that starts just below.
+    const waiting = writeOutbox.pending().length;
     void writeOutbox
       .flush()
-      .then((r) => (r === "done" ? dataChanged.emit() : undefined))
+      .then((r) => (r === "done" && waiting > 0 ? dataChanged.emit() : undefined))
       .catch(() => {});
     void pullMessages();
     // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
@@ -148,6 +151,8 @@ export function startSync() {
   });
   AppState.addEventListener("change", (state) => {
     if (state === "active") refresh();
+    // Leaving the app: write the saved copies that still wait (they are saved a moment after each answer).
+    else screenCache.flush();
   });
   // While the app is open, Zaki's own lines and news from other people arrive without a push
   // (push is not set up on every build) and without leaving and reopening the app.

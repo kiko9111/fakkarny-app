@@ -14,7 +14,9 @@ export async function referralDaysThisMonth(db: Db, userId: string, now: Date): 
 /**
  * Record who invited `inviteeId`, give the inviter their Pro days and the invitee their welcome days. Returns false when
  * the invitee already has an inviter (a double tap, or a second invite). Call inside a
- * transaction, after `canClaim` said yes.
+ * transaction, after `canClaim` said yes. Once the transaction is committed, the caller drops
+ * the inviter's saved row (`forgetCachedUserId`, plugins/auth.ts): their Pro days changed
+ * behind their back.
  */
 export async function rewardInviter(tx: Prisma.TransactionClient, inviteeId: string, inviterId: string, now: Date): Promise<boolean> {
   // Only the first claim sets referred_by_id.

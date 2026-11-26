@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueAt, dueChoices, firstLink, iftarDate, remindAt, remindChoices, sortTasks, taskActions } from "./logic";
+import { dueAt, dueChoices, firstLink, guessTask, iftarDate, remindAt, remindChoices, sortTasks, taskActions } from "./logic";
 
 describe("task logic", () => {
   const t = (status: "pending" | "accepted" | "declined" | "done" | "cancelled", role: "assigner" | "assignee" | "watcher", can_nudge = false) => ({ status, role, can_nudge });
@@ -11,6 +11,23 @@ describe("task logic", () => {
     expect(taskActions(t("declined", "assigner"))).toEqual([]);
     expect(taskActions(t("done", "assignee"))).toEqual([]);
     expect(taskActions(t("accepted", "watcher", true))).toEqual([]);
+  });
+  it("shows a tap's result at once, with the actions that follow from it", () => {
+    const now = new Date("2026-11-26T09:00:00.000Z");
+    const asked = { ...t("pending", "assignee"), responded_at: null, done_at: null };
+    const yes = guessTask(asked, "accept", now)!;
+    expect(yes).toMatchObject({ status: "accepted", responded_at: "2026-11-26T09:00:00.000Z" });
+    expect(taskActions(yes)).toEqual(["done"]);
+    expect(guessTask(asked, "decline", now)).toMatchObject({ status: "declined" });
+    const done = guessTask(yes, "done", now)!;
+    expect(done).toMatchObject({ status: "done", done_at: "2026-11-26T09:00:00.000Z" });
+    expect(taskActions(done)).toEqual([]);
+    const mine = { ...t("accepted", "assigner", true), responded_at: null, done_at: null };
+    expect(taskActions(guessTask(mine, "cancel", now)!)).toEqual([]);
+    // A nudge is Zaki writing to someone: nothing is shown before the server did it.
+    expect(guessTask(mine, "nudge", now)).toBeNull();
+    // The task handed in is left as it was.
+    expect(asked.status).toBe("pending");
   });
   it("puts what needs my answer first and finished work last", () => {
     const rows = [

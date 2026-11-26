@@ -20,6 +20,7 @@ import type { PushSender } from "../proactive/push";
 import type { preHandlerAsyncHookHandler } from "fastify";
 import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../serialize";
 import type { Message } from "../generated/prisma/client";
+import { inBackground } from "../lib/background";
 
 /**
  * Messages this server is answering right now, with the answer on its way. A restart empties it,
@@ -157,7 +158,9 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       return { needs_brain: result.needsBrain } satisfies NeedsBrainResponse;
     }
     if (result.notices?.length) void pushNotices(prisma, opts.push, result.notices, app.log);
-    await Promise.all([touched, countIntent(prisma, user.id, message.id, result).catch(() => {})]);
+    // The intent counter is for the dashboard: the reply doesn't wait for it.
+    inBackground(countIntent(prisma, user.id, message.id, result));
+    await touched;
     const res: PostMessageResponse = {
       message: toWireMessage(message, readsNewKinds(req)),
       replies: result.replies.map((m) => toWireMessage(m, readsNewKinds(req))),

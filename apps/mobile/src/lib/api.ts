@@ -82,7 +82,10 @@ import { accessToken } from "./supabase";
 import { isDemo } from "./demo";
 import { demoRequest } from "@/demo/server";
 import { createScreenCache, eachValid } from "./screen-cache";
+import { createSavedReads } from "./saved-reads";
+import { cacheRefreshed, dataChanged } from "./signals";
 import { overlayDetail, overlayOverview } from "@/money/logic";
+import { guessCommentRemoved } from "@/circles/logic";
 
 export const API_URL = resolveApiUrl({
   envUrl: process.env.EXPO_PUBLIC_API_URL,
@@ -91,31 +94,42 @@ export const API_URL = resolveApiUrl({
 
 const TIMEOUT_MS = 20_000;
 const REPLY_TIMEOUT_MS = 60_000;
+/** A copy the server confirmed this recently is used as it is (lib/saved-reads.ts). */
+const FRESH_MS = 8_000;
+/** Storage writes of saved copies wait this long, so a burst of answers is saved together. */
+const SAVE_AFTER_MS = 700;
 
 /** Last good copies of server-only screens (see screen-cache.ts). */
-export const screenCache = createScreenCache({
-  getItem: (k) => localStorage.getItem(k),
-  setItem: (k, v) => localStorage.setItem(k, v),
-  removeItem: (k) => localStorage.removeItem(k),
-});
+export const screenCache = createScreenCache(
+  {
+    getItem: (k) => localStorage.getItem(k),
+    setItem: (k, v) => localStorage.setItem(k, v),
+    removeItem: (k) => localStorage.removeItem(k),
+  },
+  { later: (save) => void setTimeout(save, SAVE_AFTER_MS) },
+);
 
-/** GET that also keeps the reply on the phone, so the screen can draw it at once next time (`peek`). */
-async function cachedGet<T>(path: string, parse: (raw: unknown) => T): Promise<T> {
-  const raw = await request(path);
-  const value = parse(raw);
-  screenCache.set(path, raw);
-  return value;
+interface Answer {
+  status: number;
+  /** The body as text ("" for none). */
+  text: string;
+  etag: string | null;
 }
-const peek = <T>(path: string, parse: (raw: unknown) => T): T | null => screenCache.get(path, parse);
 
-async function request(path: string, init: RequestInit = {}, timeoutMs = TIMEOUT_MS): Promise<unknown> {
+/** `quiet`: a write that changes nothing a screen shows (analytics, the push token). */
+type Init = RequestInit & { quiet?: boolean };
+
+/** One HTTP call as the signed-in user (or this install). Any status is an answer; only no answer throws. */
+async function send(path: string, init: Init = {}, timeoutMs = TIMEOUT_MS): Promise<Answer> {
   if (isDemo) {
     try {
-      return await demoRequest(path, init);
+      const body = await demoRequest(path, init);
+      return { status: body === null || body === undefined ? 204 : 200, text: body === null || body === undefined ? "" : JSON.stringify(body), etag: null };
     } catch (err) {
-      throw new HttpError((err as { status?: number }).status ?? 500);
+      return { status: (err as { status?: number }).status ?? 500, text: "", etag: null };
     }
   }
+  const { quiet: _quiet, ...rest } = init;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -126,23 +140,89 @@ async function request(path: string, init: RequestInit = {}, timeoutMs = TIMEOUT
       new Promise<never>((_, reject) => ctrl.signal.addEventListener("abort", () => reject(new HttpError(0)))),
     ]);
     const res = await fetch(`${API_URL}${path}`, {
-      ...init,
-      signal: init.signal ?? ctrl.signal,
+      ...rest,
+      signal: rest.signal ?? ctrl.signal,
       headers: {
         // Only with a body: Fastify rejects an empty body sent as JSON.
-        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...(rest.body ? { "content-type": "application/json" } : {}),
         [INSTALL_ID_HEADER]: await getInstallId(),
         // Tells the server this build reads the newer message kinds ("upsell", "update").
         "x-message-kinds": "2",
         ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...init.headers,
+        ...rest.headers,
       },
     });
-    if (!res.ok) throw new HttpError(res.status);
-    return res.status === 204 ? null : await res.json();
+    return { status: res.status, text: res.status === 204 || res.status === 304 ? "" : await res.text(), etag: res.headers.get("etag") };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Moves when this phone's data is wiped (the account was deleted): see `forgetSaved`. */
+let person = 0;
+
+async function request(path: string, init: Init = {}, timeoutMs = TIMEOUT_MS): Promise<unknown> {
+  // Anything this phone writes may change what any screen shows: no saved copy is fresh across it.
+  const write = (init.method ?? "GET") !== "GET" && !init.quiet;
+  const who = person;
+  if (write) reads.changed();
+  try {
+    const res = await send(path, init, timeoutMs);
+    // The phone was wiped while this was on its way: the answer is about someone who is no
+    // longer here, so it is not handed on (nothing of theirs is saved or drawn again).
+    if (who !== person) throw new HttpError(401);
+    if (res.status < 200 || res.status >= 300) throw new HttpError(res.status);
+    return res.text ? (JSON.parse(res.text) as unknown) : null;
+  } finally {
+    if (write) reads.changed();
+  }
+}
+
+const reads = createSavedReads({
+  cache: screenCache,
+  freshMs: FRESH_MS,
+  fetchText: async (path) => {
+    const res = await send(path);
+    if (res.status !== 200) throw new HttpError(res.status);
+    return res.text;
+  },
+});
+// A chat reply, pulled news, a card tap, offline taps sent: ask the server again for everything.
+dataChanged.subscribe(() => reads.changed());
+
+/** Signed out or the account deleted: drop every saved copy, and anything still on its way for that person. */
+export function forgetSaved(): void {
+  person++;
+  reads.forget();
+  allTag = null;
+  allMissingUntil = 0;
+}
+
+/**
+ * GET through the saved copy: the screen draws the copy at once (`peek`), this brings the
+ * server's answer. Callers that overlap share one request, a copy the server confirmed a moment
+ * ago is used as it is, and an unchanged answer gives back the very same object (no redraw).
+ */
+const cachedGet = <T>(path: string, parse: (raw: unknown) => T): Promise<T> => reads.get(path, parse);
+const peek = <T>(path: string, parse: (raw: unknown) => T): T | null => reads.peek(path, parse);
+
+/**
+ * A write's answer is the newest word on its thing: it goes into the saved copies that show it
+ * (`change` returns the copy in the server's own shape), so every screen drawing from its saved
+ * copy has it before the next read. Only a copy the phone already holds is touched.
+ */
+function saved<T>(path: string, parse: (raw: unknown) => T, change: (old: T) => unknown): void {
+  try {
+    const old = peek(path, parse);
+    const next = old === null ? null : change(old);
+    if (next !== null && next !== undefined) reads.set(path, next);
+  } catch {
+    // The saved copy is a convenience: the next read brings the server's answer anyway.
+  }
+}
+/** `next` in the place of the entry with its id in a saved list (a list that does not hold it is left alone). */
+function savedIn<T, E extends { id: string }>(path: string, parse: (raw: unknown) => T, list: (old: T) => E[], back: (old: T, list: E[]) => unknown, next: E): void {
+  saved(path, parse, (old) => (list(old).some((x) => x.id === next.id) ? back(old, list(old).map((x) => (x.id === next.id ? next : x))) : null));
 }
 
 /** Shared-data taps made offline wait here (localStorage) and go out on the next refresh, once each. */
@@ -210,6 +290,11 @@ export async function patchItem(id: string, body: PatchItemRequest): Promise<Ite
   return ItemResponse.parse(await request(`/items/${id}`, { method: "PATCH", body: JSON.stringify(body) })).item;
 }
 
+/** Mark an item done. With no connection it is kept on the phone (QueuedOffline) and sent later. */
+export async function completeItem(id: string): Promise<Item> {
+  return ItemResponse.parse(await writeOrQueue("PATCH", `/items/${id}`, { status: "done" })).item;
+}
+
 export async function deleteMemory(id: string): Promise<void> {
   await request(`/memories/${id}`, { method: "DELETE" });
 }
@@ -220,11 +305,11 @@ export async function listMessagesAfter(after: string | null): Promise<ListMessa
 }
 
 export async function registerDevice(body: RegisterDeviceRequest): Promise<void> {
-  await request("/devices", { method: "POST", body: JSON.stringify(body) });
+  await request("/devices", { method: "POST", body: JSON.stringify(body), quiet: true });
 }
 
 export async function unregisterDevice(pushToken: string): Promise<void> {
-  await request("/devices", { method: "DELETE", body: JSON.stringify({ push_token: pushToken }) });
+  await request("/devices", { method: "DELETE", body: JSON.stringify({ push_token: pushToken }), quiet: true });
 }
 
 export async function listMessagesPage(after: string | null, limit = 200): Promise<ListMessagesResponse> {
@@ -246,7 +331,7 @@ export const peekMe = () => peek("/me", parseMe);
 export async function patchMe(body: PatchMeRequest): Promise<User> {
   const raw = await request("/me", { method: "PATCH", body: JSON.stringify(body) });
   const user = parseMe(raw);
-  screenCache.set("/me", raw);
+  reads.set("/me", raw);
   return user;
 }
 
@@ -291,13 +376,21 @@ export async function createCircle(kind: CircleKind, name: string, familyType?: 
 
 /** A member's place in the family (your own, or anyone's when you own the circle). */
 export async function setFamilyRole(circleId: string, userId: string, role: FamilyRole | null): Promise<CircleDetail> {
-  return CircleResponse.parse(await request(`/circles/${circleId}/members/${userId}`, { method: "PATCH", body: JSON.stringify({ family_role: role }) })).circle;
+  return savedCircle(await request(`/circles/${circleId}/members/${userId}`, { method: "PATCH", body: JSON.stringify({ family_role: role }) }));
 }
 
 /** One-tap check-in, shared with the circle. */
 export async function checkIn(circleId: string, kind: CheckinKind): Promise<CircleDetail> {
-  return CircleResponse.parse(await writeOrQueue("POST", `/circles/${circleId}/checkins`, { kind })).circle;
+  return savedCircle(await writeOrQueue("POST", `/circles/${circleId}/checkins`, { kind }));
 }
+/** A circle as a write answered it: also the saved copy the circle screen opens from. */
+function savedCircle(raw: unknown): CircleDetail {
+  const circle = CircleResponse.parse(raw).circle;
+  reads.set(`/circles/${circle.id}`, raw);
+  return circle;
+}
+/** The circle as the phone guesses it after a check-in that waits for a connection. */
+export const saveCircle = (circle: CircleDetail) => reads.set(`/circles/${circle.id}`, { circle });
 
 /** Zaki asks a member to check in. Throws HttpError 409 when asked too recently. */
 export async function askCheckin(circleId: string, userId: string): Promise<void> {
@@ -360,12 +453,16 @@ export async function openDaftar(code: string): Promise<DaftarEntry> {
   return DaftarResponse.parse(await request(`/daftar/open/${encodeURIComponent(code)}`, { method: "POST" })).entry;
 }
 
+const savedEntry = (entry: DaftarEntry): DaftarEntry => {
+  savedIn("/daftar", parseDaftar, (entries) => entries, (_, entries) => ({ entries }), entry);
+  return entry;
+};
 export async function respondDaftar(id: string, answer: "confirm" | "dispute"): Promise<DaftarEntry> {
-  return DaftarResponse.parse(await request(`/daftar/${id}/respond`, { method: "POST", body: JSON.stringify({ answer }) })).entry;
+  return savedEntry(DaftarResponse.parse(await request(`/daftar/${id}/respond`, { method: "POST", body: JSON.stringify({ answer }) })).entry);
 }
 
 export async function settleDaftar(id: string): Promise<DaftarEntry> {
-  return DaftarResponse.parse(await request(`/daftar/${id}/settle`, { method: "POST" })).entry;
+  return savedEntry(DaftarResponse.parse(await request(`/daftar/${id}/settle`, { method: "POST" })).entry);
 }
 
 export async function cancelDaftar(id: string): Promise<void> {
@@ -389,28 +486,42 @@ export async function getCircleFeed(circleId: string): Promise<CircleFeedRespons
 export const peekCircleFeed = (circleId: string) => peek(`/circles/${circleId}/feed`, parseFeed);
 
 // The circle feed: reactions, short comments, and asking Zaki in front of the circle.
+const savedPost = (circleId: string, post: CirclePost): CirclePost => {
+  saved(`/circles/${circleId}/feed`, parseFeed, (feed) => ({ ...feed, posts: feed.posts.some((p) => p.id === post.id) ? feed.posts.map((p) => (p.id === post.id ? post : p)) : [post, ...feed.posts] }));
+  return post;
+};
 export async function reactPost(circleId: string, postId: string, key: ReactionKey | null): Promise<CirclePost> {
-  return PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/react`, { method: "POST", body: JSON.stringify({ key }) })).post;
+  return savedPost(circleId, PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/react`, { method: "POST", body: JSON.stringify({ key }) })).post);
 }
 export async function commentPost(circleId: string, postId: string, text: string): Promise<CirclePost> {
-  return PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/comments`, { method: "POST", body: JSON.stringify({ text }) })).post;
+  return savedPost(circleId, PostResponse.parse(await request(`/circles/${circleId}/posts/${postId}/comments`, { method: "POST", body: JSON.stringify({ text }) })).post);
 }
 export async function deleteComment(circleId: string, commentId: string): Promise<void> {
   await request(`/circles/${circleId}/comments/${commentId}`, { method: "DELETE" });
+  // Answered with nothing to save: take it out of the saved feed here, or the next draw from
+  // that copy brings the comment back.
+  saved(`/circles/${circleId}/feed`, parseFeed, (feed) => ({ ...feed, posts: feed.posts.map((p) => guessCommentRemoved(p, commentId)) }));
 }
 export async function askZakiInCircle(circleId: string, text: string): Promise<CirclePost> {
-  return PostResponse.parse(await request(`/circles/${circleId}/zaki`, { method: "POST", body: JSON.stringify({ text }) })).post;
+  return savedPost(circleId, PostResponse.parse(await request(`/circles/${circleId}/zaki`, { method: "POST", body: JSON.stringify({ text }) })).post);
 }
 
 export async function createTask(circleId: string, body: CreateTaskRequest): Promise<CircleTask> {
   return TaskResponse.parse(await request(`/circles/${circleId}/tasks`, { method: "POST", body: JSON.stringify(body) })).task;
 }
 
+/** A task as a write answered it: also in the saved lists (all tasks, its circle's feed). */
+function savedTask(raw: unknown): CircleTask {
+  const task = TaskResponse.parse(raw).task;
+  savedIn("/tasks", parseTasks, (tasks) => tasks, (_, tasks) => ({ tasks }), task);
+  savedIn(`/circles/${task.circle_id}/feed`, parseFeed, (feed) => feed.tasks, (feed, tasks) => ({ ...feed, tasks }), task);
+  return task;
+}
 export async function respondTask(id: string, answer: "accept" | "decline"): Promise<CircleTask> {
-  return TaskResponse.parse(await request(`/tasks/${id}/respond`, { method: "POST", body: JSON.stringify({ answer }) })).task;
+  return savedTask(await request(`/tasks/${id}/respond`, { method: "POST", body: JSON.stringify({ answer }) }));
 }
 
-const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Promise<CircleTask> => TaskResponse.parse(await request(`/tasks/${id}/${verb}`, { method: "POST" })).task;
+const taskAction = (verb: "done" | "cancel" | "nudge") => async (id: string): Promise<CircleTask> => savedTask(await request(`/tasks/${id}/${verb}`, { method: "POST" }));
 export const finishTask = taskAction("done");
 export const cancelTask = taskAction("cancel");
 export const nudgeTask = taskAction("nudge");
@@ -423,7 +534,7 @@ function slow(): AbortSignal {
 
 /** Homework: the child hands in an answer, a link or page photos; the parent says well done or redo. */
 export async function submitHomework(id: string, text: string, photos: PhotoUpload[] = []): Promise<CircleTask> {
-  return TaskResponse.parse(await request(`/tasks/${id}/submit`, { method: "POST", body: JSON.stringify({ text, photos }), ...(photos.length ? { signal: slow() } : {}) })).task;
+  return savedTask(await request(`/tasks/${id}/submit`, { method: "POST", body: JSON.stringify({ text, photos }), ...(photos.length ? { signal: slow() } : {}) }));
 }
 
 /** The AI reads a receipt photo (counts as one AI message; the photo is not kept). */
@@ -437,10 +548,10 @@ export async function photoSource(id: string): Promise<{ uri: string; headers: R
   return { uri: `${API_URL}/photos/${id}`, headers: { [INSTALL_ID_HEADER]: await getInstallId(), ...(token ? { authorization: `Bearer ${token}` } : {}) } };
 }
 export async function reviewHomework(id: string, verdict: "approved" | "redo", note?: string): Promise<CircleTask> {
-  return TaskResponse.parse(await request(`/tasks/${id}/review`, { method: "POST", body: JSON.stringify({ verdict, ...(note ? { note } : {}) }) })).task;
+  return savedTask(await request(`/tasks/${id}/review`, { method: "POST", body: JSON.stringify({ verdict, ...(note ? { note } : {}) }) }));
 }
 export async function remindTask(id: string, remind_at: string | null): Promise<CircleTask> {
-  return TaskResponse.parse(await request(`/tasks/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) })).task;
+  return savedTask(await request(`/tasks/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) }));
 }
 
 // Trackers dashboard. Needs a connection; chat messages feed it on the server too.
@@ -455,7 +566,15 @@ export async function createTracker(body: CreateTrackerRequest): Promise<Tracker
 
 /** One tap (no amount) adds the template's step; money trackers send the amount. */
 export async function updateTracker(id: string, body: UpdateTrackerRequest): Promise<Tracker> {
-  return TrackerResponse.parse(await request(`/trackers/${id}`, { method: "PATCH", body: JSON.stringify(body) })).tracker;
+  return saveTracker(TrackerResponse.parse(await request(`/trackers/${id}`, { method: "PATCH", body: JSON.stringify(body) })).tracker);
+}
+/**
+ * A tracker as a write answered it, or as the phone guesses it after a step that waits for a
+ * connection: also in the saved list, so Today and the trackers page agree at once.
+ */
+export function saveTracker(tracker: Tracker): Tracker {
+  savedIn("/trackers", ListTrackersResponse.parse, (all) => all.trackers, (all, trackers) => ({ ...all, trackers }), tracker);
+  return tracker;
 }
 
 const parseShared = (raw: unknown): SharedTracker[] => eachValid(SharedTrackersResponse.shape.trackers.element.safeParse, (raw as { trackers?: unknown } | null)?.trackers);
@@ -467,11 +586,11 @@ export const peekCircleTrackers = (circleId: string) => peek(`/circles/${circleI
 export async function logTracker(id: string, amount?: number): Promise<Tracker> {
   // Carries the tap's time, so a step that waited offline counts for the day it was logged.
   const at = new Date().toISOString();
-  return TrackerResponse.parse(await writeOrQueue("POST", `/trackers/${id}/entries`, amount === undefined ? { at } : { amount, at })).tracker;
+  return saveTracker(TrackerResponse.parse(await writeOrQueue("POST", `/trackers/${id}/entries`, amount === undefined ? { at } : { amount, at })).tracker);
 }
 
 export async function undoTracker(id: string): Promise<Tracker> {
-  return TrackerResponse.parse(await request(`/trackers/${id}/undo`, { method: "POST" })).tracker;
+  return saveTracker(TrackerResponse.parse(await request(`/trackers/${id}/undo`, { method: "POST" })).tracker);
 }
 
 export async function deleteTracker(id: string): Promise<void> {
@@ -521,6 +640,9 @@ export async function inviteToIftar(circleId: string, on: string): Promise<void>
 
 export async function answerInvite(circleId: string, postId: string, going: boolean): Promise<void> {
   await request(`/circles/${circleId}/posts/${postId}/rsvp`, { method: "POST", body: JSON.stringify({ going }) });
+  // The answer carries no post: the saved feed gets the user's answer here, so the screen's
+  // next draw from that copy doesn't flip the chip back.
+  saved(`/circles/${circleId}/feed`, parseFeed, (feed) => ({ ...feed, posts: feed.posts.map((p) => (p.id === postId ? { ...p, my_rsvp: going } : p)) }));
 }
 
 // Wider Daftar: expense / income sections and circle shared books. Local-first (2026-11-25):
@@ -559,7 +681,7 @@ export const peekMoney = (): MoneyOverview | null => {
   return o ? overlayOverview(o, waitingMoney()) : null;
 };
 export const peekMoneySaved = () => peek(MONEY_PATH, MoneyOverview.parse);
-export const saveMoney = (o: MoneyOverview) => screenCache.set(MONEY_PATH, o);
+export const saveMoney = (o: MoneyOverview) => reads.set(MONEY_PATH, o);
 const sectionPath = (id: string) => `/money/sections/${id}`;
 export async function getSection(id: string): Promise<SectionDetail> {
   return overlayDetail(await cachedGet(sectionPath(id), SectionDetail.parse), waitingMoney());
@@ -569,7 +691,7 @@ export const peekSection = (id: string): SectionDetail | null => {
   return d ? overlayDetail(d, waitingMoney()) : null;
 };
 export const peekSectionSaved = (id: string) => peek(sectionPath(id), SectionDetail.parse);
-export const saveSection = (d: SectionDetail) => screenCache.set(sectionPath(d.section.id), d);
+export const saveSection = (d: SectionDetail) => reads.set(sectionPath(d.section.id), d);
 export const forgetSection = (id: string) => screenCache.remove(sectionPath(id));
 
 /** Make a section with an id made on the phone. Throws QueuedOffline when it waits for a connection. */
@@ -607,7 +729,7 @@ export async function claimReferral(code: string): Promise<User> {
 
 /** Product analytics: counted events, never content (src/lib/analytics.ts). */
 export async function postEvents(body: PostEventsRequest): Promise<void> {
-  await request("/events", { method: "POST", body: JSON.stringify(body) });
+  await request("/events", { method: "POST", body: JSON.stringify(body), quiet: true });
 }
 
 // Split the check: needs a connection (the page everyone opens lives on the server).
@@ -631,4 +753,58 @@ export async function markSplitPaid(id: string, index: number, paid: boolean): P
 }
 export async function deleteSplit(id: string): Promise<void> {
   await request(`/splits/${id}`, { method: "DELETE" });
+}
+
+// Every tab in one answer (GET /bootstrap, servers from 2026-11-26). The server runs each screen's
+// own GET as this caller and returns their texts together; each is checked with its screen's
+// parser here, exactly like a single answer, before it replaces a saved copy.
+const PARSERS: [RegExp, (raw: unknown) => unknown][] = [
+  [/^\/me$/, parseMe],
+  [/^\/circles$/, parseCircles],
+  [/^\/tasks$/, parseTasks],
+  [/^\/trackers$/, ListTrackersResponse.parse],
+  [/^\/daftar$/, parseDaftar],
+  [/^\/money$/, MoneyOverview.parse],
+  [/^\/splits$/, parseSplits],
+  [/^\/memories$/, parseMemories],
+  [/^\/circles\/[^/]+$/, parseCircle],
+  [/^\/circles\/[^/]+\/feed$/, parseFeed],
+  [/^\/circles\/[^/]+\/trackers$/, parseShared],
+];
+const parserFor = (path: string) => PARSERS.find(([shape]) => shape.test(path))?.[1] ?? null;
+
+let allTag: string | null = null;
+/** A server without the route answers 404: not asked again for a while (it arrives with a deploy). */
+let allMissingUntil = 0;
+const ALL_RETRY_MS = 30 * 60_000;
+
+/**
+ * Refresh every saved copy with one request. True when that covered it (also when the phone is
+ * offline or was told to slow down: nothing else would get through either); false when each
+ * screen has to be loaded by itself (an older server, or the route failed).
+ */
+export async function refreshAll(now = Date.now()): Promise<boolean> {
+  if (isDemo || now < allMissingUntil) return false;
+  try {
+    const changed = await reads.all(async () => {
+      const res = await send("/bootstrap", allTag ? { headers: { "if-none-match": allTag } } : {});
+      if (res.status === 304) return "same";
+      if (res.status === 404) return null;
+      if (res.status !== 200) throw new HttpError(res.status);
+      const body = JSON.parse(res.text) as { parts?: Record<string, string> };
+      if (!body.parts || typeof body.parts !== "object") throw new HttpError(502);
+      allTag = res.etag;
+      return body.parts;
+    }, parserFor);
+    if (changed === null) {
+      allMissingUntil = now + ALL_RETRY_MS;
+      return false;
+    }
+    // Screens in view re-read their copies (from memory: they are fresh).
+    if (changed) cacheRefreshed.emit();
+    return true;
+  } catch (err) {
+    // Offline, or asked too often (429): loading each screen by itself would not help either.
+    return isOffline(err) || (err instanceof HttpError && err.status === 429);
+  }
 }

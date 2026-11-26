@@ -695,6 +695,84 @@ Rules:
   --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
   and attaches the APK to a GitHub pre-release.
 
+- Speed pass (2026-11-25, kareem: "super super super slow", target 10 times faster). The wait was
+  database round trips in a row (~0.1 s each while the API is in the US and Supabase in eu-west-1),
+  one request per tab, and the phone waiting for the server before it drew a tap; the model is only
+  part of a chat turn. Measure before and after any speed change:
+  `npm run perf -w @fakkarni/evals -- --label <name> [--rtt 100] [--only <group>]` (evals/perf/run.ts)
+  runs the real app in-process against a local Postgres through a delay proxy with a stand-in model,
+  prints time and round trips per screen, tap and chat turn, and writes evals/perf/out/<label>.json
+  (not committed); `--compare a,b` puts two runs side by side. It empties every table, so
+  PERF_DATABASE_URL must name a database with "perf" in it (default fakkarni_perf; migrate it first).
+  At 0.1 s a trip, before → after: every tab refreshed 3.7 s / 103 trips → 0.9 s / 46 in one request;
+  taps 0.6–2.1 s → 0.4–1.2 s; a chat turn besides the model 0.9–1.8 s → 0.5–1.3 s. At 0.02 s a trip
+  (the API in the database's region) the same code gives 0.2 s, 0.09–0.26 s and 0.11–0.29 s: the
+  region move is worth more than any code change, and it is a Railway dashboard setting.
+- Server speed rules (same pass):
+  - Count round trips, not queries: run independent lookups together, and never add a query in a
+    row to a hot path (auth, GET of a tab, POST /messages) without measuring it.
+  - Prisma `relationJoins` (preview feature in schema.prisma): an `include` / nested `select` is one
+    joined query instead of one per relation. No code sets `relationLoadStrategy`.
+  - Sign-in lookup (plugins/auth.ts): the caller's user row is reused for USER_CACHE_MS (15 s; "0"
+    turns it off) on GET and HEAD only. Every write looks the row up and drops the caller's copy
+    when it is answered; a route that changes someone else's user row calls `forgetCachedUserId`
+    (plan webhook, invite reward, referral code) once the change is committed, never inside its
+    transaction (a read in between would save the old row again). A read that was still looking
+    the row up when it was dropped does not save what it found. So a GET handler must not trust
+    `req.user` for a decision that writes (see `ensureCode`), and must never change the object.
+    Kept in the process: with more than one API instance, another instance's write shows up to
+    15 s late. Off unless buildApp gets `userCacheMs` (server.ts passes it; tests change rows
+    behind the API).
+  - `inBackground` (src/lib/background.ts): rows nobody reads in the answer (events for /admin)
+    are started and not awaited. Never for allowance counts, safety flags or anything a later
+    request reads.
+  - GET /bootstrap (routes/bootstrap.ts) answers every tab's GET in one request: it calls the
+    app's own routes as the caller (`app.inject`, a per-process header keeps them out of the rate
+    limit) and returns `{v: 1, parts: {"<path>": "<that route's JSON text>"}}` with an ETag (304
+    when nothing changed; the queries still run, only the bytes are saved). One call runs up to
+    32 GETs inside, so the route has its own limit, BOOTSTRAP_PER_MINUTE (30 per caller); the
+    phone treats a 429 there like being offline and does not fall back to one request per tab.
+    A new server-only screen goes into BOOTSTRAP_BASE or BOOTSTRAP_CIRCLE, the phone's `PARSERS`
+    (lib/api.ts) and `prefetchAll`.
+  - plugins/gzip.ts gzips text answers of 1.4 KB and more when the caller accepts it (the phone's
+    HTTP client does). Register it after any onSend hook that reads the answer as text.
+- Phone speed rules (same pass). The rule: nothing the user does waits for the server to be drawn.
+  - Saved copies live in memory (src/lib/screen-cache.ts: parsed once, the same object back while
+    the text is unchanged, written to storage a moment later and when the app is left). Reads go
+    through `createSavedReads` (src/lib/saved-reads.ts, pure + tested): one request per path at a
+    time, a copy confirmed in the last 8 s is used as it is, any write or `dataChanged` ends that
+    freshness, and an older answer never replaces a newer one. `refreshAll` (lib/api.ts) brings
+    every tab with GET /bootstrap and fires `cacheRefreshed` (src/lib/signals.ts), which makes the
+    screens in view re-read from memory; a server without the route (404) gets the old one-by-one
+    preload for 30 minutes before it is asked again. Wiping the phone (`resetLocalData`, after the
+    account is deleted) calls `forgetSaved()`: an answer still on its way for the last person is
+    never kept, and a write answered after the wipe is not handed on (`person` in `request`).
+  - A screen's `load` reads its `peek*()` first, then asks. A write's answer goes into every saved
+    copy that shows it (`reads.set` through `saved` / `savedIn` and the `saved*` helpers in
+    lib/api.ts), so another tab has it before its next read. A write answered with no body (an
+    RSVP, a deleted comment) changes the saved copy itself, or the next `load` draws the old state
+    for a moment. Do the same for any new write.
+  - Taps: `useGuess` (src/lib/optimistic.ts; logic in guess-row.ts, pure + tested) with a pure
+    `guess*` helper per feature (tasks, daftar, circles, trackers `bumpTracker`). The guess shows in
+    the same frame, sends go out in tap order, only the last answer of a row is drawn, a failure
+    falls back to the newest confirmed state, and `keep` holds a guess queued offline
+    (`QueuedOffline`). Honesty stays: anything that reaches other people (Yes / Send on a chat
+    card, "sent to the circle" toasts) shows as done only after the server says so; the user's own
+    Cancel, Undo, done, reaction, comment, check-in and tracker step show at once.
+  - Chat: a sent message is drawn before it is stored (`draftUserMessage` → `saveUserMessage`,
+    chat/useChat.ts) and stays until the store hands it back; `keepSame` (chat/list.ts) keeps
+    unchanged bubbles' objects so only what changed redraws. Marking a plan done is local first
+    (lib/useItems.ts): the row leaves at once, SQLite is updated with the same `updated_at`, the
+    server follows through `writeOrQueue`.
+  - Checking the app in a browser without a server: build `node scripts/build-web-preview.mjs
+    out.html`, then load it in Playwright with `page.route("https://zaki.preview/**", (r) =>
+    r.fulfill({ contentType: "text/html", body }))` and open https://zaki.preview/ (a file:// page
+    cannot route, and plain http has no `crypto.randomUUID`).
+- Railway stops reading railway.json (config as code, deprecated) on 2026-12-01
+  (docs.railway.com/config-as-code): before then the health check path, the 20 s overlap and the
+  60 s drain from #59 must be set in the service's settings in the dashboard, where the region is
+  set too. After that date the file is ignored and deploys run on the service settings.
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

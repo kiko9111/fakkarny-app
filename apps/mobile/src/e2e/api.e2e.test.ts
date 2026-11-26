@@ -23,6 +23,10 @@ let api: Api;
 const A = crypto.randomUUID();
 const B = crypto.randomUUID();
 const as = async <T>(who: string, work: () => Promise<T>): Promise<T> => {
+  // Another person on the same "phone": what the last one saved is wiped, as signing out does.
+  // (Without it a list read moments after the other person's would be answered from their copy.)
+  // Optional calls: this file also runs against the client of an older build (api-smoke.yml).
+  if (who !== installId) (api as Partial<Api> | undefined)?.forgetSaved?.();
   installId = who;
   return work();
 };
@@ -117,5 +121,26 @@ describe.skipIf(!URL_)("phone client against a live API", () => {
 
     // Back to the chat: B's chat carries Zaki's update lines with cards
     await as(B, () => api.listMessagesPage(null));
+
+    // Every tab in one answer. A server from before 2026-11-26 has no such route (false): the
+    // phone then loads the screens one by one, which is everything above.
+    const client = api as Partial<Api>;
+    if (client.refreshAll && (await as(A, () => api.refreshAll()))) {
+      expect(api.peekCircles()?.map((x) => x.id)).toContain(c.id);
+      expect(api.peekCircle(c.id)?.members).toHaveLength(2);
+      expect(api.peekCircleFeed(c.id)?.posts.length).toBeGreaterThan(0);
+      expect(api.peekTrackers()?.trackers.map((x) => x.id)).toContain(tr.id);
+      expect(api.peekDaftar()?.map((x) => x.id)).toContain(d.entry.id);
+      expect(api.peekMoneySaved()?.sections.map((x) => x.id)).toContain(sec.id);
+      expect(api.peekMe()?.name).toBe("Mona");
+      expect(api.peekTasks()?.map((x) => x.id)).toContain(task.id);
+      // Asked again with nothing changed: still covered, by "nothing new".
+      expect(await as(A, () => api.refreshAll())).toBe(true);
+    }
+    // What a tap's answer puts into the saved copy is what the server then says too.
+    await as(A, () => api.listTrackers());
+    const logged = await as(A, () => api.logTracker(tr.id));
+    if (client.saveTracker) expect(api.peekTrackers()?.trackers.find((x) => x.id === tr.id)?.today).toBe(logged.today);
+    expect((await as(A, () => api.listTrackers())).trackers.find((x) => x.id === tr.id)?.today).toBe(logged.today);
   }, 60_000);
 });

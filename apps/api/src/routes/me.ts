@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
 import { isValidTimeZone } from "../lib/time";
-import { linkInstallToAccount, type AuthConfig } from "../plugins/auth";
+import { forgetCachedUser, installAuthId, linkInstallToAccount, type AuthConfig } from "../plugins/auth";
 import { toWireEntry, withPeople as daftarPeople } from "../daftar/store";
 import { readsNewKinds, toWireItem, toWireMemory, toWireMessage, toWireUser } from "../serialize";
 
@@ -151,6 +151,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
     if (!req.user.authId.startsWith("supabase:")) return reply.code(400).send({ error: "sign_in_required" });
     if (!installId.success) return { user: toWireUser(req.user) } satisfies MeResponse;
     const user = await linkInstallToAccount(prisma, installId.data, req.user.authId);
+    // The phone's pre-sign-in user is gone (or became this account): nobody may be handed its old row.
+    forgetCachedUser(installAuthId(installId.data));
     const res: MeResponse = { user: toWireUser(user) };
     return res;
   });

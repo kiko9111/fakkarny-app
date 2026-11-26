@@ -1,15 +1,17 @@
 import { createHash } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
 import { registerIdempotency } from "./plugins/idempotency";
+import { registerGzip } from "./plugins/gzip";
 import Fastify, { type FastifyBaseLogger, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { INSTALL_ID_HEADER } from "@fakkarni/shared";
 import type { PrismaClient } from "./generated/prisma/client";
 import { createMetrics, type Metrics } from "./observability/metrics";
 import { Sentry } from "./observability/sentry";
 import { noopPipeline, type MessagePipeline } from "./pipeline/types";
-import { requireUser, type AuthConfig } from "./plugins/auth";
+import { forgetCachedUser, requireUser, type AuthConfig } from "./plugins/auth";
 import { adminRoutes } from "./routes/admin";
 import { billingRoutes } from "./routes/billing";
+import { bootstrapRoutes, isInternal } from "./routes/bootstrap";
 import { deviceRoutes } from "./routes/devices";
 import { healthRoutes } from "./routes/health";
 import { itemRoutes } from "./routes/items";
@@ -55,6 +57,8 @@ export interface AppDeps {
   push?: PushSender;
   /** FR-15 dashboard password (HTTP Basic, user "admin"). The dashboard is off without it. */
   adminPassword?: string;
+  /** Reuse a caller's user row for this long on reads (plugins/auth.ts). Off (0) by default. */
+  userCacheMs?: number;
   /** Requests per minute per caller (default 600); false disables rate limiting. */
   rateLimitPerMinute?: number | false;
   /** Send unhandled errors to Sentry (initSentry must have run). */
@@ -93,18 +97,26 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
       keyGenerator: callerKey,
       // Who hits the limit, and where (route and a short key hash; never content).
       onExceeded: (req, key) => req.log.warn({ route: req.routeOptions?.url ?? req.url.split("?")[0], key: key.slice(0, 8) }, "rate_limited"),
-      allowList: (req) => req.url === "/health",
+      // GET /bootstrap asks this same server for each tab: those inner requests are the one call.
+      allowList: (req) => req.url === "/health" || isInternal(req),
     });
   }
 
   // Offline taps replayed from the phone are applied once (plugins/idempotency.ts).
   registerIdempotency(app);
+  // After the hooks that read an answer as text: big text answers leave gzipped.
+  registerGzip(app);
   app.register(healthRoutes);
   app.register(legalRoutes, deps.legal ?? {});
   if (deps.prisma) {
     const prisma = deps.prisma;
     const auth = deps.auth ?? { allowInstallId: true };
-    const authenticate = requireUser(prisma, auth);
+    // Reads reuse the caller's user row for a few seconds; the caller's own write drops it
+    // the moment that write is answered (plugins/auth.ts).
+    const authenticate = requireUser(prisma, auth, undefined, deps.userCacheMs ?? 0);
+    app.addHook("onSend", async (req) => {
+      if (req.forgetUser) forgetCachedUser(req.forgetUser);
+    });
     const pipeline = deps.pipeline ?? deps.pipelineFactory?.(app.log) ?? noopPipeline;
     const billing = deps.billing ?? { requireSubscription: false };
     app.register(messageRoutes, { prisma, pipeline, now: deps.now, authenticate, requireSubscription: billing.requireSubscription, push: deps.push });
@@ -128,6 +140,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(cardRoutes, { prisma, publicUrl: deps.invites?.publicUrl });
     app.register(photoRoutes, { prisma, authenticate, model: deps.model, now: deps.now, requireSubscription: billing.requireSubscription });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
+    app.register(bootstrapRoutes, { authenticate });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });
   }
 
