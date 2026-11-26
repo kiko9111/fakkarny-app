@@ -15,6 +15,9 @@ export default function CirclesScreen() {
   const [failed, setFailed] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // What the phone holds first (the same object when nothing changed: no redraw), then the server.
+    const held = peekCircles();
+    if (held) setCircles(held);
     try {
       setCircles(await listCircles());
       setFailed(null);

@@ -4,6 +4,7 @@ import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
 import type { ReplyLang } from "../pipeline/rules";
 import { randomUUID } from "node:crypto";
+import { inBackground } from "../lib/background";
 import { LABEL, type StoredCard } from "../chat/cards";
 import { budgetCrossed, budgetLine, loggedMoneyLine, matchMoneyLog, monthOf, monthRange, pickSection, shareOf } from "./rules";
 
@@ -211,11 +212,12 @@ export const CATCH_ALL: Record<"expense" | "income", Record<ReplyLang, string>> 
 export async function moneyFastPath(prisma: PrismaClient, user: User, text: string, lang: ReplyLang, now: Date): Promise<{ text: string; notices: Notice[]; cards?: StoredCard[] } | null> {
   const hit = matchMoneyLog(text);
   if (!hit) return null;
-  const rows = await prisma.moneySection.findMany({ where: visibleTo(user.id), include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 200 });
+  // Both lookups at once: where this note went last time doesn't depend on the list of sections.
+  const [rows, last] = await Promise.all([
+    prisma.moneySection.findMany({ where: visibleTo(user.id), include: { circle: { select: { name: true } } }, orderBy: { createdAt: "asc" }, take: 200 }),
+    hit.note ? prisma.moneyEntry.findFirst({ where: { userId: user.id, note: hit.note, section: visibleTo(user.id) }, orderBy: { at: "desc" }, select: { sectionId: true } }) : null,
+  ]);
   const own = rows.filter((s) => !s.circleId);
-  const last = hit.note
-    ? await prisma.moneyEntry.findFirst({ where: { userId: user.id, note: hit.note, section: visibleTo(user.id) }, orderBy: { at: "desc" }, select: { sectionId: true } })
-    : null;
   const byName = pickSection(rows, hit, text, null);
   const picked = (byName && rows.find((s) => s.id === byName.id)) || rows.find((s) => s.id === pickSection(own, hit, text, last?.sectionId ?? null)?.id);
   const name = CATCH_ALL[hit.kind][lang];
@@ -237,7 +239,7 @@ export async function moneyFastPath(prisma: PrismaClient, user: User, text: stri
     return { text: SHARED_ASK[lang], notices: [], cards: [card] };
   }
   const added = await addEntry(prisma, section, user, { amount: hit.amount, note: hit.note, source: "chat" }, now);
-  await prisma.event.create({ data: { userId: user.id, name: "money_logged", propsJson: { via: "chat", shared: Boolean(section.circleId) } } });
+  inBackground(prisma.event.create({ data: { userId: user.id, name: "money_logged", propsJson: { via: "chat", shared: Boolean(section.circleId) } } }));
   // A done card with Undo, so "تراجع" (or the button) takes it back like any other chat change.
   const card: StoredCard = {
     id: randomUUID(),

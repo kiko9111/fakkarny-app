@@ -1,13 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLive } from "@/lib/live";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import type { CircleTask, Item, Tracker } from "@fakkarni/shared";
+import type { CircleTask, Item, ListTrackersResponse, Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { PlanRow } from "@/components/PlanRow";
 import { listUpcoming } from "@/db/items";
 import { t, dateLocale } from "@/i18n";
-import { getMe, listTasks, listTrackers, peekTasks, peekTrackers } from "@/lib/api";
+import { getMe, listTasks, listTrackers, peekMe, peekTasks, peekTrackers } from "@/lib/api";
 import { useItems } from "@/lib/useItems";
 import { TaskCard } from "@/tasks/TaskCard";
 import { canAdd } from "@/trackers/logic";
@@ -26,23 +26,30 @@ const greeting = () => {
  */
 export default function TodayScreen() {
   const { items, refresh, complete } = useItems(listUpcoming);
-  const [name, setName] = useState<string | null>(null);
-  const [asked, setAsked] = useState<CircleTask[]>(() => (peekTasks() ?? []).filter((task) => task.status === "pending" && task.role === "assignee"));
+  const [name, setName] = useState<string | null>(() => peekMe()?.name ?? null);
+  const [tasks, setTasks] = useState<CircleTask[]>(() => peekTasks() ?? []);
+  const asked = useMemo(() => tasks.filter((task) => task.status === "pending" && task.role === "assignee"), [tasks]);
   const [trackers, setTrackers] = useState<Tracker[] | null>(() => peekTrackers()?.trackers ?? null);
-  const [limit, setLimit] = useState<number | null>(1);
+  const [limit, setLimit] = useState<number | null>(() => peekTrackers()?.limit ?? 1);
 
   const loadOnline = useCallback(() => {
+    const showTrackers = (r: ListTrackersResponse) => {
+      setTrackers(r.trackers);
+      setLimit(r.limit);
+    };
+    // What the phone holds first (the same objects when nothing changed: no redraw), then the server.
+    const held = { me: peekMe(), tasks: peekTasks(), trackers: peekTrackers() };
+    if (held.me) setName(held.me.name);
+    if (held.tasks) setTasks(held.tasks);
+    if (held.trackers) showTrackers(held.trackers);
     getMe()
       .then((u) => setName(u.name))
       .catch(() => {});
     listTasks()
-      .then((all) => setAsked(all.filter((task) => task.status === "pending" && task.role === "assignee")))
+      .then(setTasks)
       .catch(() => {});
     listTrackers()
-      .then((r) => {
-        setTrackers(r.trackers);
-        setLimit(r.limit);
-      })
+      .then(showTrackers)
       .catch(() => {});
   }, []);
   useLive(loadOnline);

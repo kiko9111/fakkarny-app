@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLive } from "@/lib/live";
 import type { CircleTask } from "@fakkarni/shared";
 import { PlanRow } from "@/components/PlanRow";
 import { listUpcoming } from "@/db/items";
 import { t } from "@/i18n";
-import { listTasks } from "@/lib/api";
+import { listTasks, peekTasks } from "@/lib/api";
 import { groupUpcoming } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
 import { TaskCard } from "@/tasks/TaskCard";
@@ -15,10 +15,13 @@ export default function UpcomingScreen() {
   const { items, refresh, complete } = useItems(listUpcoming);
   const groups = groupUpcoming(items, new Date());
   // Requests from circle members that wait for a yes or no. Online only; quiet when offline.
-  const [asked, setAsked] = useState<CircleTask[]>([]);
+  const [tasks, setTasks] = useState<CircleTask[]>(() => peekTasks() ?? []);
+  const asked = useMemo(() => tasks.filter((task) => task.status === "pending" && task.role === "assignee"), [tasks]);
   const loadAsked = useCallback(() => {
+    const held = peekTasks();
+    if (held) setTasks(held);
     listTasks()
-      .then((all) => setAsked(all.filter((task) => task.status === "pending" && task.role === "assignee")))
+      .then(setTasks)
       .catch(() => {});
   }, []);
   useLive(loadAsked);

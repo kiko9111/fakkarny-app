@@ -16,6 +16,16 @@ export function entryActions(e: Pick<DaftarEntry, "status" | "mine" | "direction
   return actions;
 }
 
+/**
+ * What an entry looks like right after a tap, drawn at once while the server confirms (its
+ * answer replaces the guess; a failure puts the old one back). Null for taps that need the
+ * server first (the WhatsApp text, opening InstaPay).
+ */
+export function guessEntry<T extends Pick<DaftarEntry, "status">>(e: T, action: DaftarAction): T | null {
+  const status = ({ confirm: "confirmed", dispute: "disputed", settle: "settled", cancel: "cancelled" } as const)[action as "confirm" | "dispute" | "settle" | "cancel"];
+  return status ? { ...e, status } : null;
+}
+
 /** "200", "200.5", "٢٠٠", "1,200" → a positive number, or null. */
 export function parseAmount(text: string): number | null {
   const western = text.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[٬,\s]/g, "").replace("٫", ".");

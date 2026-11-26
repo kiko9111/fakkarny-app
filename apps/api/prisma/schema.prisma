@@ -3,8 +3,9 @@
 // Columns are snake_case in Postgres, camelCase in TypeScript.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

@@ -29,6 +29,8 @@ export default function MoneyScreen() {
   const [offline, setOffline] = useState<string | null>(null);
 
   const loadShared = useCallback(async () => {
+    const held = peekDaftar();
+    if (held) setShared(held);
     try {
       setShared(await listDaftar());
       setOffline(null);

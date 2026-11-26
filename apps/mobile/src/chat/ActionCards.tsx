@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import type { ChatAction } from "@fakkarni/shared";
@@ -40,17 +40,28 @@ const YES_KINDS = new Set(["task_answer", "daftar_answer", "homework_review", "c
  */
 export const ActionCards = memo(function ActionCards({ serverId, actions }: { serverId: string | null; actions: ChatAction[] }) {
   const [busy, setBusy] = useState<string | null>(null);
+  // Cancel and Undo are the user's own "no": the card shows it in the same frame. Yes and Send
+  // wait for the server, because a card says "sent" only when it is.
+  const [guess, setGuess] = useState<Record<string, ChatAction["status"]>>({});
+  // The stored cards changed (the server's answer is in): the guess has done its job.
+  useEffect(() => setGuess((g) => (Object.keys(g).length ? {} : g)), [actions]);
   if (!actions.length) return null;
 
   const answer = async (card: ChatAction, confirm: boolean | "undo") => {
     if (!serverId || busy) return;
     setBusy(card.id);
+    if (confirm !== true) setGuess((g) => ({ ...g, [card.id]: "cancelled" }));
     try {
       const updated = await actOnChatAction(serverId, card.id, confirm);
+      // The server's word takes the guess's place: when it changed nothing (an undo it no longer
+      // allows), the stored cards stay the same and the guess would never be cleared.
+      const said = updated.actions.find((a) => a.id === card.id)?.status;
+      setGuess(({ [card.id]: _guessed, ...rest }) => (said ? { ...rest, [card.id]: said } : rest));
       await setActions(serverId, updated.actions);
       messagesChanged.emit();
       dataChanged.emit();
     } catch {
+      setGuess(({ [card.id]: _back, ...rest }) => rest);
       notify(t.chat.actionOffline, "error");
     } finally {
       setBusy(null);
@@ -59,7 +70,9 @@ export const ActionCards = memo(function ActionCards({ serverId, actions }: { se
 
   return (
     <View style={styles.list}>
-      {actions.map((card) => {
+      {actions.map((stored) => {
+        const guessed = guess[stored.id];
+        const card = guessed ? { ...stored, status: guessed } : stored;
         const look = LOOK[card.status] ?? LOOK.done;
         const tappable = card.status === "done" && !!card.route;
         const content = (

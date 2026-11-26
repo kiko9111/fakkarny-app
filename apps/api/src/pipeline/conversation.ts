@@ -11,7 +11,8 @@ import { cleanPhoneReply, describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VE
 import { understandInput } from "./understand-input";
 import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
 import { summarizeIfNeeded } from "./summarize";
-import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
+import { inBackground } from "../lib/background";
+import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
@@ -70,9 +71,12 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // Every database round trip adds to the wait for the reply, so the lookups that don't
     // depend on each other run together, and the context for the model loads while the rule
-    // checks below run (most messages reach the model).
-    const ctxEarly = loadContext(prisma, user, now);
-    ctxEarly.catch(() => {});
+    // checks below run (most messages reach the model). A message the rules answer on their
+    // own words ("thanks", an emoji) never reaches the model: its context is not loaded at all
+    // (it was ~25 lookups that held the rule checks' own lookups back in the queue).
+    const canned = crisisKeyword ? null : fastReply(message.text, script);
+    let ctxEarly: ReturnType<typeof loadContext> | null = canned ? null : loadContext(prisma, user, now);
+    ctxEarly?.catch(() => {});
     const [today, lastFriend] = await Promise.all([
       crisisKeyword ? Promise.resolve(0) : prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } }),
       prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" } }),
@@ -91,14 +95,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 0a. "Yes" / "no" to a card Zaki is waiting on ("Ask Mona to buy bread?"): done by rules.
     const answered = crisisKeyword ? null : await answerPendingCards(prisma, user, message, lastFriend, script, now, requireSubscription ?? false);
     if (answered) {
-      await event(prisma, user.id, "reply_fast_path", { card: true });
+      counted(prisma, user.id, "reply_fast_path", { card: true });
       return answered;
     }
 
     // 0b. "Undo" / "تراجع": takes back Zaki's latest change of the user's own, by rules.
     const undone = crisisKeyword || !isUndo(message.text) ? null : await undoLatest(prisma, user, message, script, now);
     if (undone) {
-      await event(prisma, user.id, "reply_fast_path", { undo: true });
+      counted(prisma, user.id, "reply_fast_path", { undo: true });
       return undone;
     }
 
@@ -107,7 +111,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (home) {
       const ran = await runAppActions(prisma, user, [{ kind: "checkin", checkin_kind: home }], script, now, { requireSubscription: requireSubscription ?? false });
       if (ran.cards.some((c) => c.status === "pending")) {
-        await event(prisma, user.id, "reply_fast_path", { checkin: true });
+        counted(prisma, user.id, "reply_fast_path", { checkin: true });
         return withCards(prisma, await applyActions(prisma, { user, message, replies: [HOME_REPLY[script]], response: EMPTY_ACTIONS, now }), ran.cards);
       }
     }
@@ -119,9 +123,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const answersStatus = status?.pending === true;
 
     // 1. Rules fast path: no AI for messages that carry nothing to remember.
-    const canned = crisisKeyword ? null : fastReply(message.text, script);
     if (canned) {
-      await event(prisma, user.id, "reply_fast_path", {});
+      counted(prisma, user.id, "reply_fast_path", {});
       return applyActions(prisma, { user, message, replies: [canned], response: EMPTY_ACTIONS, now });
     }
 
@@ -129,14 +132,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const tracked = crisisKeyword ? null : await trackerFastPath(prisma, user, message.text, script, now);
     const closesReminder = tracked?.closesReminder === true;
     if (tracked && !closesReminder) {
-      await event(prisma, user.id, "reply_fast_path", { tracker: true });
+      counted(prisma, user.id, "reply_fast_path", { tracker: true });
       return applyActions(prisma, { user, message, replies: [tracked.text], response: EMPTY_ACTIONS, now, ...(tracked.upsell ? { replyKind: "upsell" as const } : {}) });
     }
 
     // 1a'. Expenses and income by rules: "دفعت 300 بنزين" goes to a Daftar section. No AI call.
     const money = crisisKeyword || tracked ? null : await moneyFastPath(prisma, user, message.text, script, now);
     if (money) {
-      await event(prisma, user.id, "reply_fast_path", { money: true });
+      counted(prisma, user.id, "reply_fast_path", { money: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now }), money.cards ?? []);
       return { ...result, notices: [...(result.notices ?? []), ...money.notices.filter((n) => n.userId !== user.id)] };
     }
@@ -173,6 +176,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 2. One model call with persona (cached) + context + recent chat.
     // A tracker step logged just above changes the numbers: load them again.
     mark("rules");
+    ctxEarly ??= loadContext(prisma, user, now);
     const ctx = closesReminder ? await loadContext(prisma, user, now) : await ctxEarly;
     mark("context");
     const history = historyUpTo(ctx.recent, message);
@@ -427,14 +431,19 @@ async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"
   const tracker = await prisma.tracker.findFirst({ where: { id: pending.id, userId: user.id } });
   const step = tracker ? TRACKER_TEMPLATES[tracker.kind as TrackerKind]?.step : 0;
   if (!tracker || !step) return { pending: true };
-  await logEntry(prisma, tracker, step, "chat", now, user.timezone);
+  const { wire } = await logEntryWithStats(prisma, tracker, step, "chat", now, user.timezone);
   await event(prisma, user.id, "status_answered", { subject: "tracker", via: "rules" });
-  const line = loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), step);
+  const line = loggedLine(lang, wire, step);
   return { pending: true, result: await applyActions(prisma, { user, message, replies: [line], response: EMPTY_ACTIONS, now }) };
 }
 
 async function event(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: string, name: string, props: Prisma.InputJsonObject) {
   await prisma.event.create({ data: { userId, name, propsJson: props } });
+}
+
+/** A counter for the dashboard only (nothing reads it back): written without making the reply wait. */
+function counted(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: string, name: string, props: Prisma.InputJsonObject) {
+  inBackground(prisma.event.create({ data: { userId, name, propsJson: props } }));
 }
 
 /**

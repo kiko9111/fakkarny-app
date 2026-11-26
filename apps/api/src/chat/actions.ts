@@ -11,7 +11,7 @@ import { monthOf, monthRange } from "../money/rules";
 import { assignTask, withPeople as taskPeople, type TaskWithPeople } from "../tasks/store";
 import { withPeople as daftarPeople, type EntryWithPeople } from "../daftar/store";
 import { trackerLabel } from "../trackers/labels";
-import { createTracker, logEntry, toWireTracker } from "../trackers/store";
+import { createTracker, logEntryWithStats, toWireTrackers } from "../trackers/store";
 import { LABEL, matchByName, storedCards, type PendingPayload, type StoredCard, type UndoPayload } from "./cards";
 import { planDaftar, runMore, runMorePending } from "./more-actions";
 
@@ -37,13 +37,9 @@ export interface AppNumbers {
 
 const NUMBERS_TRACKERS = 12;
 
-/** The numbers block: month totals, tracker streaks, open tasks, Daftar entries and recent splits. */
-export async function loadAppNumbers(prisma: PrismaClient, user: Pick<User, "id" | "timezone">, data: AppData, now: Date): Promise<AppNumbers> {
-  const { from, to } = monthRange(monthOf(now, user.timezone), user.timezone);
-  const [spend, tasks, daftar, splits, stats] = await Promise.all([
-    data.sections.length
-      ? prisma.moneyEntry.groupBy({ by: ["sectionId"], where: { sectionId: { in: data.sections.map((s) => s.id) }, at: { gte: from, lt: to } }, _sum: { amount: true } })
-      : Promise.resolve([]),
+/** The part of the numbers that needs no names first: open tasks, Daftar entries and recent splits. */
+export function loadPeopleNumbers(prisma: PrismaClient, user: Pick<User, "id">, now: Date): Promise<Pick<AppNumbers, "tasks" | "daftar" | "splits">> {
+  return Promise.all([
     prisma.circleTask.findMany({
       where: {
         OR: [
@@ -63,14 +59,27 @@ export async function loadAppNumbers(prisma: PrismaClient, user: Pick<User, "id"
       take: 20,
     }),
     prisma.split.findMany({ where: { userId: user.id, createdAt: { gte: new Date(now.getTime() - 30 * 86_400_000) } }, orderBy: { createdAt: "desc" }, take: 5 }),
-    Promise.all(data.trackers.slice(0, NUMBERS_TRACKERS).map(async (t) => [t.id, await toWireTracker(prisma, t, user.timezone, now)] as const)),
+  ]).then(([tasks, daftar, splits]) => ({ tasks, daftar, splits }));
+}
+
+/**
+ * The numbers block: month totals, tracker streaks, open tasks, Daftar entries and recent splits.
+ * `people` is the part already on its way (loadContext starts it with the first lookups, so the
+ * chat reply waits for two rounds of lookups, not three).
+ */
+export async function loadAppNumbers(prisma: PrismaClient, user: Pick<User, "id" | "timezone">, data: AppData, now: Date, people: ReturnType<typeof loadPeopleNumbers> = loadPeopleNumbers(prisma, user, now)): Promise<AppNumbers> {
+  const { from, to } = monthRange(monthOf(now, user.timezone), user.timezone);
+  const [spend, shared, stats] = await Promise.all([
+    data.sections.length
+      ? prisma.moneyEntry.groupBy({ by: ["sectionId"], where: { sectionId: { in: data.sections.map((s) => s.id) }, at: { gte: from, lt: to } }, _sum: { amount: true } })
+      : Promise.resolve([]),
+    people,
+    toWireTrackers(prisma, data.trackers.slice(0, NUMBERS_TRACKERS), user.timezone, now),
   ]);
   return {
     monthSpend: Object.fromEntries(spend.map((g) => [g.sectionId, Math.round(Number(g._sum.amount ?? 0) * 100) / 100])),
-    trackerStats: Object.fromEntries(stats.map(([id, w]) => [id, { today: w.today, streak: w.streak }])),
-    tasks,
-    daftar,
-    splits,
+    trackerStats: Object.fromEntries(stats.map((w) => [w.id, { today: w.today, streak: w.streak }])),
+    ...shared,
   };
 }
 
@@ -185,8 +194,7 @@ async function runOne(ctx: Ctx, a: AppAction): Promise<One> {
       const t = findTracker(ctx, a.tracker ?? a.name, a.tracker_kind);
       if (!t) return { card: card(lang, a.kind, "failed", LABEL.notFound(lang, "tracker", a.tracker ?? a.name), "/trackers") };
       const step = a.amount ?? (TRACKER_TEMPLATES[kindOf(t)].step || 1);
-      const entry = await logEntry(ctx.prisma, t, step, "chat", ctx.now, ctx.user.timezone);
-      const w = await toWireTracker(ctx.prisma, t, ctx.user.timezone, ctx.now);
+      const { entry, wire: w } = await logEntryWithStats(ctx.prisma, t, step, "chat", ctx.now, ctx.user.timezone);
       return { card: card(lang, a.kind, "done", LABEL.trackerLogged(lang, trackerLabel(w.kind, w.name, lang), w.today, w.goal), "/trackers", undefined, { kind: "tracker_entry", entryId: entry.id }) };
     }
     case "update_tracker": {

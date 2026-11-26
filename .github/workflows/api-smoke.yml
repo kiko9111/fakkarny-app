@@ -23,9 +23,14 @@ jobs:
         run: |
           U=$(cat /proc/sys/kernel/random/uuid)
           curl -s -m 30 -w "  /health %{http_code} %{time_total}s\n" "$API/health"
-          for p in /me /circles /tasks /trackers /daftar /money/sections /splits "/items?status=open" /me/referral; do
+          for p in /me /circles /tasks /trackers /daftar /money /splits "/items?status=open" /me/referral; do
             curl -s -m 30 -o /tmp/body -w "$p %{http_code} %{time_total}s " -H "x-install-id: $U" -H "x-message-kinds: 2" "$API$p"; head -c 300 /tmp/body; echo
           done
+          echo "--- every tab in one answer (404 until the server has the route), plain and gzipped, then asked again with its ETag"
+          curl -s -m 30 -o /dev/null -D /tmp/head -w "/bootstrap %{http_code} %{time_total}s %{size_download} bytes\n" -H "x-install-id: $U" -H "x-message-kinds: 2" "$API/bootstrap"
+          curl -s -m 30 -o /dev/null -w "/bootstrap gzip %{http_code} %{time_total}s %{size_download} bytes\n" -H "accept-encoding: gzip" -H "x-install-id: $U" -H "x-message-kinds: 2" "$API/bootstrap"
+          TAG=$(grep -i '^etag:' /tmp/head | cut -d' ' -f2- | tr -d '\r' || true)
+          if [ -n "$TAG" ]; then curl -s -m 30 -o /dev/null -w "/bootstrap unchanged %{http_code} %{time_total}s\n" -H "if-none-match: $TAG" -H "x-install-id: $U" -H "x-message-kinds: 2" "$API/bootstrap"; fi
           echo "--- 20 quick /circles calls (rate limit check)"
           for i in $(seq 1 20); do curl -s -m 30 -o /dev/null -w "%{http_code} " -H "x-install-id: $U" "$API/circles"; done; echo
       - name: Time a chat turn and one database round trip
