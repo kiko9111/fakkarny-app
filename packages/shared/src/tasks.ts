@@ -7,6 +7,10 @@ import { MAX_HOMEWORK_PHOTOS, PhotoUpload } from "./photos";
  */
 const Instant = z.iso.datetime({ offset: true });
 
+/** Largest pocket-money reward on one homework, in whole EGP. */
+export const MAX_REWARD = 1000;
+export const MAX_SUBJECT = 30;
+
 export const TaskStatus = z.enum(["pending", "accepted", "declined", "done", "cancelled"]);
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
@@ -25,6 +29,10 @@ export const CircleTask = z.object({
   /** Homework: a parent's description or link, opened by the child, who then taps done. */
   homework: z.boolean().default(false),
   note: z.string().nullable().default(null),
+  /** Homework: the school subject ("رياضيات", "English"), if the parent named one. */
+  subject: z.string().nullable().default(null),
+  /** Homework: pocket money (whole EGP) the child earns when the parent taps Well done. A record, never a payment. */
+  reward: z.number().int().nullable().default(null),
   /** Homework handed in: the child's answer or link (text only), and when. */
   submission: z.string().nullable().default(null),
   submitted_at: Instant.nullable().default(null),
@@ -37,6 +45,8 @@ export const CircleTask = z.object({
   role: TaskRole,
   assigner_name: z.string().nullable(),
   assignee_name: z.string().nullable(),
+  /** The person asked (2026-11-26: practice questions go to the same child). */
+  assignee_id: z.string().nullable().default(null),
   /** True when the assigner may ask Zaki to nudge right now. */
   can_nudge: z.boolean(),
   created_at: Instant,
@@ -52,6 +62,8 @@ export const CreateTaskRequest = z.object({
   remind_at: Instant.nullable().optional(),
   homework: z.boolean().optional(),
   note: z.string().trim().max(500).nullable().optional(),
+  subject: z.string().trim().max(MAX_SUBJECT).nullable().optional(),
+  reward: z.number().int().min(1).max(MAX_REWARD).nullable().optional(),
 });
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequest>;
 

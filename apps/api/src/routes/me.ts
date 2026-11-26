@@ -68,7 +68,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -87,6 +87,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.postComment.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" } }),
       prisma.split.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.photo.findMany({ where, include: { task: { select: { title: true } } }, orderBy: { createdAt: "asc" } }),
+      prisma.pocketMoneyEntry.findMany({ where: { OR: [{ childId: id }, { parentId: id }] }, orderBy: { createdAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -108,6 +109,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       money: money.map((s) => ({ name: s.name, kind: s.kind, budget: s.budget === null ? null : Number(s.budget), shared: Boolean(s.circleId), entries: s.entries.map((e) => ({ amount: Number(e.amount), note: e.note, at: e.at.toISOString() })) })),
       splits: splits.map((x) => ({ title: x.title, total: Number(x.total), currency: x.currency, people: (x.peopleJson as { name: string; share: number; paid: boolean }[]).map((p) => ({ name: p.name, share: p.share, paid: p.paid })), created_at: x.createdAt.toISOString() })),
       photos: photos.map((p) => ({ task: p.task?.title ?? null, mime: p.mime, data: Buffer.from(p.data).toString("base64"), created_at: p.createdAt.toISOString() })),
+      pocket_money: pocket.map((e) => ({ role: e.childId === id ? ("child" as const) : ("parent" as const), kind: e.kind, amount: e.amount, title: e.title, at: e.createdAt.toISOString() })),
     };
     return res;
   });

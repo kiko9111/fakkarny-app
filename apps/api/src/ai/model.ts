@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { APP_ACTION_KINDS, AppAction, FriendResponse, MAX_APP_ACTIONS, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
+import { APP_ACTION_KINDS, AppAction, FriendResponse, HomeworkCheck, HomeworkHelp, MAX_APP_ACTIONS, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
+import { HOMEWORK_CHECK_SYSTEM, HOMEWORK_HELP_SYSTEM } from "../persona/homework";
 import { friendTools, readToolCalls, RespondInput } from "./tools";
 import { createStreamModes, readToolTurn, ReplyStreamTimeout, streamModeFromEnv, type ReplyLive, type StreamLost, type StreamMode } from "./respond-stream";
 
@@ -118,7 +119,41 @@ export function toReceipt(raw: z.infer<typeof ModelReceipt>): Receipt | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** Homework help and answer checks (persona/homework.ts): non-nullable, "" / [] = nothing. */
+const ModelHomeworkHelp = z.object({ readable: z.boolean(), explain: z.string(), teach: z.string(), practice: z.array(z.string()), answers: z.array(z.string()) });
+const ModelHomeworkCheck = z.object({ readable: z.boolean(), praise: z.string(), hints: z.array(z.string()) });
+
+const clip = (s: string, n: number) => s.trim().slice(0, n);
+const lines = (a: string[], n: number, len: number) => a.map((x) => clip(x, len)).filter(Boolean).slice(0, n);
+
+/** Validate and tidy a homework explanation. Null when the page or question couldn't be read. */
+export function toHomeworkHelp(raw: z.infer<typeof ModelHomeworkHelp>): HomeworkHelp | null {
+  if (!raw.readable || !raw.explain.trim()) return null;
+  const practice = lines(raw.practice, 5, 300);
+  const parsed = HomeworkHelp.safeParse({ explain: clip(raw.explain, 2500), teach: clip(raw.teach, 1500), practice, answers: lines(raw.answers, practice.length, 300) });
+  return parsed.success ? parsed.data : null;
+}
+
+/** Validate and tidy an answer check. Null when the work couldn't be read. */
+export function toHomeworkCheck(raw: z.infer<typeof ModelHomeworkCheck>): HomeworkCheck | null {
+  if (!raw.readable || !raw.praise.trim()) return null;
+  const parsed = HomeworkCheck.safeParse({ praise: clip(raw.praise, 400), hints: lines(raw.hints, 5, 300) });
+  return parsed.success ? parsed.data : null;
+}
+
+/** What a homework call is given: the words typed, page photos (read once, never kept), and the homework itself. */
+export interface HomeworkInput {
+  text: string;
+  photos: PhotoUpload[];
+  language: "ar" | "en";
+  about: string;
+}
+
 export interface FriendModel {
+  /** Explain a lesson to the parent and make practice questions (persona/homework.ts). */
+  homeworkHelp?(input: HomeworkInput): Promise<{ help: HomeworkHelp | null; usage: Usage }>;
+  /** Hints for the child on their answers, never the answers. */
+  homeworkCheck?(input: HomeworkInput): Promise<{ check: HomeworkCheck | null; usage: Usage }>;
   /** Read a receipt photo (owner decision 2026-11-23: photos for receipts and homework only). */
   readReceipt?(input: { photo: PhotoUpload; language: "ar" | "en" }): Promise<{ receipt: Receipt | null; usage: Usage }>;
   /** True while `respond` passes a reply's words on as they are written (off by setting, after refusals, or paused). */
@@ -319,6 +354,12 @@ export function anthropicApiKey(): string | undefined {
 /** A streamed turn that has not finished by now is asked for again without a stream. */
 const STREAM_TIMEOUT_MS = 25_000;
 
+/** The user turn of a homework call: page photos first, then the homework and the words typed. */
+function homeworkContent(input: HomeworkInput, ask: string): Anthropic.ContentBlockParam[] {
+  const words = [input.about, input.text ? `TYPED:\n${input.text}` : "", `REPLY LANGUAGE: ${input.language === "en" ? "English" : "Egyptian Arabic"}`, ask].filter(Boolean).join("\n\n");
+  return [...input.photos.map((p) => ({ type: "image" as const, source: { type: "base64" as const, media_type: p.mime, data: p.data.replace(/\s+/g, "") } })), { type: "text" as const, text: words }];
+}
+
 export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; streamTimeoutMs?: number } = {}): FriendModel {
   // How streamed turns are asked for; steps down for good when the API refuses one (respond-stream.ts).
   const modes = createStreamModes(streamModeFromEnv(process.env["FAKKARNI_CHAT_STREAM"]));
@@ -471,6 +512,28 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; 
       });
       const usage = toUsage(res.usage);
       return { receipt: res.parsed_output ? toReceipt(res.parsed_output) : null, usage };
+    },
+
+    async homeworkHelp(input) {
+      const res = await client.messages.parse({
+        model: FRIEND_MODEL,
+        max_tokens: 2500,
+        system: [{ type: "text", text: HOMEWORK_HELP_SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: homeworkContent(input, "Explain this lesson to me and make practice questions for my child.") }],
+        output_config: { effort: FRIEND_EFFORT, format: zodOutputFormat(ModelHomeworkHelp) },
+      });
+      return { help: res.parsed_output ? toHomeworkHelp(res.parsed_output) : null, usage: toUsage(res.usage) };
+    },
+
+    async homeworkCheck(input) {
+      const res = await client.messages.parse({
+        model: FRIEND_MODEL,
+        max_tokens: 1500,
+        system: [{ type: "text", text: HOMEWORK_CHECK_SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: homeworkContent(input, "Please check my answers before I hand them in. Hints only.") }],
+        output_config: { effort: FRIEND_EFFORT, format: zodOutputFormat(ModelHomeworkCheck) },
+      });
+      return { check: res.parsed_output ? toHomeworkCheck(res.parsed_output) : null, usage: toUsage(res.usage) };
     },
 
     async complete({ system, prompt, maxTokens = 1000 }) {

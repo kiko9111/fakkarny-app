@@ -26,7 +26,7 @@ export function activityCard(lang: ReplyLang, kind: ChatAction["kind"], label: s
 
 export type PendingPayload =
   | { kind: "log_money"; sectionId: string; amount: number; note: string | null; moneyKind: "expense" | "income" }
-  | { kind: "assign_task"; circleId: string; assigneeId: string; title: string; dueAt: string | null; remindAt: string | null; homework: boolean; note: string | null }
+  | { kind: "assign_task"; circleId: string; assigneeId: string; title: string; dueAt: string | null; remindAt: string | null; homework: boolean; note: string | null; reward?: number | null }
   | { kind: "ask_circle"; circleId: string; text: string }
   | { kind: "delete_section"; sectionId: string }
   | { kind: "delete_tracker"; trackerId: string }
