@@ -1,4 +1,5 @@
 import { AppState } from "react-native";
+import { refreshPlaces } from "@/places/fire";
 import { addNetworkStateListener, getNetworkStateAsync } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
 import { getMe, listMessagesAfter, patchMe, postMessageRaw, screenCache, writeOutbox } from "@/lib/api";
@@ -176,10 +177,18 @@ export function startSync() {
     void tidyShade();
     // Items made or closed on the server outside the chat (circle tasks, Session steps).
     void pullItems();
+    // Place reminders: watch the saved places that have something to do, and look around once.
+    void refreshPlaces(() => messagesChanged.emit()).catch(() => {});
     // Every tab loads in the background, so each screen opens at once with fresh numbers.
     if (prefs.get("onboarded") === "1") prefetchAll();
   };
   refresh();
+  // A plan with a place came or went (a chat reply, a pull): watch or stop watching, a moment later.
+  let placesSoon: ReturnType<typeof setTimeout> | null = null;
+  itemsChanged.subscribe(() => {
+    if (placesSoon) clearTimeout(placesSoon);
+    placesSoon = setTimeout(() => void refreshPlaces(() => messagesChanged.emit()).catch(() => {}), 1500);
+  });
   dataChanged.subscribe(() => {
     if (prefs.get("onboarded") === "1") prefetchSoon();
   });

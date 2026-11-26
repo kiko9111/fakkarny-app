@@ -20,6 +20,7 @@ import { signature } from "./reconcile";
 import { createScheduler, listedAt, type NotificationHost } from "./scheduler";
 import { shownItemId, staleShown } from "./shade";
 import { readTaps, rememberTap, tapKey } from "./taps";
+import { answerPlaceTap, setupPlaceNotifications } from "@/places/fire";
 
 const CATEGORY = "reminder"; // no ":" or "-" in category ids
 const ACTION_DONE = "done";
@@ -69,6 +70,7 @@ export async function setupNotifications() {
     { identifier: ACTION_DONE, buttonTitle: t.notifications.done, options: { opensAppToForeground: false } },
     { identifier: ACTION_LATER, buttonTitle: t.notifications.later, options: { opensAppToForeground: false } },
   ]);
+  await setupPlaceNotifications();
 }
 
 /**
@@ -301,6 +303,16 @@ export function listenForNotifications(onMessage: () => void, say: (text: string
   const answer = async (res: Notifications.NotificationResponse, found: boolean) => {
     const data = res.notification.request.content.data as { type?: string; itemId?: string; title?: string; repeating?: boolean } | undefined;
     const quick = (res.actionIdentifier === ACTION_DONE || res.actionIdentifier === ACTION_LATER) && Boolean(data?.itemId);
+    // "Tell them I arrived" and a shop's list (places/fire.ts). The arrival button opens the app,
+    // so a tap found at start is answered too, once.
+    if ((data?.type === "arrival" || data?.type === "place") && firstAnswer(res)) {
+      try {
+        Notifications.clearLastNotificationResponse();
+      } catch {
+        // a build without it
+      }
+      if (await answerPlaceTap(res)) return;
+    }
     if (found && !quick) return;
     if (quick && !firstAnswer(res)) return;
     try {

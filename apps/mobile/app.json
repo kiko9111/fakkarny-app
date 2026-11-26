@@ -86,6 +86,17 @@
           "forceCxx20": true,
           "enableOpenCLAndHexagon": false
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Zaki checks whether you are at a place you saved, to remind you of things there. Your location stays on your phone.",
+          "locationAlwaysAndWhenInUsePermission": "Zaki reminds you of things when you arrive at a place you saved, even when the app is closed. Your location stays on your phone and is never sent.",
+          "locationAlwaysPermission": "Zaki reminds you of things when you arrive at a place you saved, even when the app is closed. Your location stays on your phone and is never sent.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false,
+          "motionUsagePermission": false
+        }
       ]
     ],
     "scheme": "fakkarni",

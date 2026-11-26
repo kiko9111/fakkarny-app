@@ -528,6 +528,17 @@ Rules:
   already in builds): tap the streak flame, or "Share as a picture" on a split.
 - Split to Daftar: "Put what's left in the Daftar" on a split creates Daftar entries from the
   creator's side (`daftarFromSplit`, mobile split/logic.ts; the creator is the first person).
+- Group splits (2026-11-26, kareem's "E7sebly" ask; the feature keeps its own name): splits.circle_id
+  and splits.member_ids (GIN index). `SplitInput.circle_id` + people `user_id` (kept only for members
+  of that circle, `groupOf` in apps/api/src/split/group.ts). Each member besides the creator sees the
+  split in GET /splits (wire `mine: false`, `me`, `owner_name`) and gets their share as a chat line
+  (kind "update", client_id `split:<id>:share:<user>`) with an "I paid" card (payload `split_i_paid`)
+  plus push. A member may tick only their own row; PUT / DELETE stay the creator's. Friends without
+  Zaki say "I paid my share" on GET /s/:code (POST /s/:code/paid; anyone with the link can, so the
+  creator is told and can untick). The payer's InstaPay link (`instapay`, only when the payer is the
+  creator: `payerIsCreator`) shows on the page, in the member's screen and in the WhatsApp text.
+  Chat: the split tool takes `circle`; that is a pending card (`split_circle`) because it reaches
+  others. DELETE /me removes the user from member_ids; /me/export includes splits they are in.
 - Photos (owner decision, 2026-11-23, the only exception to text-only): limits in
   packages/shared/src/photos.ts. Receipts: POST /receipts/read (apps/api/src/routes/photos.ts)
   sends the photo to `readReceipt` (src/ai/model.ts, RECEIPT_SYSTEM, non-nullable schema) once,
@@ -1172,6 +1183,36 @@ Rules:
   - Screens: app/homework/plan.tsx, help.tsx, check.tsx, app/pocket.tsx; entry points on the circle
     screen and on each homework card (parent: "Zaki, explain the lesson"; child: "Check with Zaki").
 
+- Place reminders (2026-11-26, kareem: "remind me to buy bread when I'm near the supermarket"; no live
+  tracking, location stays on the phone). Pure rules in packages/shared/src/places.ts: `parsePlaceTrigger`
+  reads "when I'm at / get to / leave X", "لما أوصل / أكون عند / أخرج من X", "lama awsal / a5rog men X"
+  (conservative: "when I'm free" is not a place), `titleWithoutPlace`, `placeKey`, `kindOfPlace`
+  ("the supermarket" → grocery), `placesFor` (same words first, else every saved place of that kind).
+  - Server: items.place (the user's words only) + place_on ("arrive" | "leave"), migration item_place, wire
+    `Item.place` / `place_on` (old servers omit them; zod defaults null), PATCH /items {place, place_on}.
+    The model's schemas are unchanged (structured output limits): the pipeline reads the place in code
+    (step 3b', pipeline/place.ts `withPlace`: on the turn's reminders/tasks, else the first list item
+    becomes the task, else a task from the message) and `setsReminder` counts a place. The rule engine
+    (understand) makes the task without asking for a time. The context shows "at place …" on open items.
+  - Phone: saved places are in localStorage "places:v1" only (src/places/store.ts; never synced, wiped by
+    db/reset.ts). Logic (pure + tested) in src/places/logic.ts: visits fire once per arrival (REFIRE_MS 2 h,
+    a departure only after an arrival), alerts per reminder (`item_<id>_place`, the reminder category so
+    Done / Later work), the shop's household lists (`peekShopLists`, the saved copy of GET /lists filtered
+    by `place` = the saved place's kind), and the "I've arrived" offer. Native: expo-location +
+    expo-task-manager, optional (`locationAvailable` / `geofenceAvailable`, src/places/native.ts):
+    geofencing (task "zaki-places", defined when the bundle loads via src/places/fire.ts imported by the root
+    layout) needs location "all the time"; otherwise a look with the app open on every refresh (2 min
+    throttle; all Expo Go and older builds get). Watching runs only when a saved place has something to do.
+    A reminder whose place is not saved yet gets one local Zaki line with an Open card to /places
+    (client_id `local:place:<key>`).
+  - "I've arrived": a saved place can offer it for one circle; the notification's button (category
+    "arrival", opens the app) sends check-in "arrived" with the place's name as the note. Words only,
+    sent only on the tap.
+  - Store rules: the build asks ACCESS_BACKGROUND_LOCATION (app.json expo-location plugin, foreground
+    service off). Play Console needs the location permissions declaration and a short video of the
+    disclosure → permission flow before a release with it; the in-app disclosure (places.tsx) comes
+    before the system question. Privacy text says what is kept (legal/content.ts).
+  - Needs a new Android build (native modules). Until then the screen says "needs a newer version".
 - Full-screen alarm (2026-11-26, Android, native): modules/zaki-alarm (local Expo module, Kotlin).
   `withNativeAlarms` (src/notifications/alarm.ts, pure + tested) sends every planned notification
   with `alarm` to it instead of expo-notifications (and cancels an expo copy of the same identifier,

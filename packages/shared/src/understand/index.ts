@@ -12,6 +12,7 @@
 import type { AppAction, CreateItemAction, SaveMemoryAction, UpdateItemAction } from "../index";
 import { addDays, addMinutes, clockStr, parseWhen, resolveTimes, type WhenResult } from "./when";
 import { FRANCO_WORDS, STOP, fold, numberAt, scriptOf, type Script } from "./text";
+import { parsePlaceTrigger, titleWithoutPlace } from "../places";
 
 export { fold, scriptOf, type Script } from "./text";
 export { parseWhen, resolveTimes, addDays, addMinutes } from "./when";
@@ -400,6 +401,14 @@ export function understand(input: UnderstandInput): Understood {
   // 1. Answers to Zaki's last question or card (yes / no / a missing time or amount).
   const answered = answerToLastTurn(input, text, lastAssistant, lastUser, out);
   if (answered) return out;
+
+  // 1b. A place reminder ("فكرني بالعيش لما أوصل السوبر ماركت"): one task that the phone fires
+  // at the place. No time is asked for.
+  const trigger = parsePlaceTrigger(text);
+  if (trigger && !has(tokenize(text), "خلصت|done|5alast|الغي|cancel|olghy")) {
+    out.create_items.push({ type: "task", title: titleWithoutPlace(text, trigger).slice(0, 200), place: trigger.place, place_on: trigger.on });
+    return out;
+  }
 
   // 2. Several requests in one message: "سجل ٢٠٠ أكل وفكرني بالدكتور بكرة ٦".
   const parts = splitRequests(text);

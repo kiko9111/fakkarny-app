@@ -7,6 +7,9 @@ import { formatAmount, type Lang } from "../daftar/rules";
 import { postUpdate } from "../daftar/store";
 import { splitShareText } from "../split/rules";
 import { computeSplit, inputOf, paidNamesOf, toWireSplit } from "../split/store";
+import { groupOf, instapayFor, markPaid, payerIsCreator, tellMembers } from "../split/group";
+import { pushNotices, type Notice } from "../proactive/notify";
+import type { PushSender } from "../proactive/push";
 import { esc, pickLang, renderShell } from "../web/shell";
 import { baseUrl } from "./circles";
 
@@ -19,33 +22,57 @@ export interface SplitRoutesOptions {
   prisma: PrismaClient;
   authenticate: preHandlerAsyncHookHandler;
   publicUrl?: string;
+  now?: () => Date;
+  /** Free push for the lines Zaki writes to the other members. Off when absent. */
+  push?: PushSender;
 }
 
 const IdParam = z.object({ id: z.uuid() });
 const langOf = (u: { language: string }): Lang => (u.language === "en" ? "en" : "ar");
 const validPayer = (b: { paid_by: number | null; people: unknown[] }) => b.paid_by === null || b.paid_by < b.people.length;
+/** The creator's own splits and the group splits they are one of the people in. */
+const visibleTo = (userId: string) => ({ OR: [{ userId }, { memberIds: { has: userId } }] });
 
 export const splitRoutes: FastifyPluginAsync<SplitRoutesOptions> = async (app, opts) => {
   const { prisma } = opts;
+  const now = opts.now ?? (() => new Date());
   app.addHook("preHandler", opts.authenticate);
   const base = (req: FastifyRequest) => baseUrl(req, opts.publicUrl);
-  const respond = (req: FastifyRequest, row: SplitRow): SplitResponse => {
-    const split = toWireSplit(row, base(req));
+  /** Creators of splits someone else made: name and InstaPay link. */
+  const creatorsOf = async (rows: SplitRow[], me: string) => {
+    const ids = [...new Set(rows.filter((r) => r.userId !== me).map((r) => r.userId))];
+    const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, instapayLink: true } }) : [];
+    return new Map(users.map((u) => [u.id, u]));
+  };
+  const wire = (req: FastifyRequest, row: SplitRow, creators: Map<string, { name: string | null; instapayLink: string | null }>) => {
+    const creator = row.userId === req.user.id ? req.user : creators.get(row.userId);
+    return toWireSplit(row, base(req), { id: req.user.id, ownerName: creator?.name ?? null, instapay: creator ? instapayFor(row, creator) : null });
+  };
+  const respond = async (req: FastifyRequest, row: SplitRow): Promise<SplitResponse> => {
+    const split = wire(req, row, await creatorsOf([row], req.user.id));
     return { split, share_text: splitShareText(split, langOf(req.user)) };
   };
-  const mine = async (req: FastifyRequest) => {
+  const visible = async (req: FastifyRequest) => {
     const p = IdParam.safeParse(req.params);
-    return p.success ? prisma.split.findFirst({ where: { id: p.data.id, userId: req.user.id } }) : null;
+    return p.success ? prisma.split.findFirst({ where: { id: p.data.id, ...visibleTo(req.user.id) } }) : null;
   };
+  const mine = async (req: FastifyRequest) => {
+    const row = await visible(req);
+    return row && row.userId === req.user.id ? row : null;
+  };
+  const tell = (notices: Notice[]) => void pushNotices(prisma, opts.push, notices, app.log);
 
   app.post("/splits", async (req, reply) => {
     const body = SplitInput.safeParse(req.body);
     if (!body.success || !validPayer(body.data) || (!body.data.items.length && !body.data.subtotal)) return reply.code(400).send({ error: "invalid_body" });
-    const data = computeSplit(body.data);
+    const group = await groupOf(prisma, req.user.id, body.data);
+    if (!group) return reply.code(404).send({ error: "not_found" });
+    const data = computeSplit(group.input);
     for (let attempt = 0; ; attempt++) {
       try {
-        const row = await prisma.split.create({ data: { ...data, code: newInviteCode(), userId: req.user.id } });
-        return reply.code(201).send(respond(req, row));
+        const row = await prisma.split.create({ data: { ...data, code: newInviteCode(), userId: req.user.id, circleId: group.circleId, memberIds: group.memberIds } });
+        tell(await tellMembers(prisma, row, req.user, now()));
+        return reply.code(201).send(await respond(req, row));
       } catch (err) {
         if (attempt < 4 && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
         throw err;
@@ -54,13 +81,14 @@ export const splitRoutes: FastifyPluginAsync<SplitRoutesOptions> = async (app, o
   });
 
   app.get("/splits", async (req) => {
-    const rows = await prisma.split.findMany({ where: { userId: req.user.id }, orderBy: { createdAt: "desc" }, take: 50 });
-    const res: ListSplitsResponse = { splits: rows.map((r) => toWireSplit(r, base(req))) };
+    const rows = await prisma.split.findMany({ where: visibleTo(req.user.id), orderBy: { createdAt: "desc" }, take: 50 });
+    const creators = await creatorsOf(rows, req.user.id);
+    const res: ListSplitsResponse = { splits: rows.map((r) => wire(req, r, creators)) };
     return res;
   });
 
   app.get("/splits/:id", async (req, reply) => {
-    const row = await mine(req);
+    const row = await visible(req);
     return row ? respond(req, row) : reply.code(404).send({ error: "not_found" });
   });
 
@@ -70,18 +98,30 @@ export const splitRoutes: FastifyPluginAsync<SplitRoutesOptions> = async (app, o
     if (!row) return reply.code(404).send({ error: "not_found" });
     const body = UpdateSplitRequest.safeParse(req.body);
     if (!body.success || !validPayer(body.data) || (!body.data.items.length && !body.data.subtotal)) return reply.code(400).send({ error: "invalid_body" });
-    const updated = await prisma.split.update({ where: { id: row.id }, data: computeSplit({ ...body.data, title: row.title }, paidNamesOf(row)) });
+    // The creator left the circle since: it stays a plain split.
+    const g = (await groupOf(prisma, req.user.id, { ...body.data, title: row.title, circle_id: row.circleId })) ?? (await groupOf(prisma, req.user.id, { ...body.data, title: row.title, circle_id: null }))!;
+    const updated = await prisma.split.update({ where: { id: row.id }, data: { ...computeSplit(g.input, paidNamesOf(row)), circleId: g.circleId, memberIds: g.memberIds } });
+    // Members added by this change hear about it (the others were told once already).
+    tell(await tellMembers(prisma, updated, req.user, now()));
     return respond(req, updated);
   });
 
-  /** The creator ticks who has paid them back. */
+  /** The creator ticks who has paid them back; a member ticks their own row ("I paid"). */
   app.post("/splits/:id/paid", async (req, reply) => {
     const body = MarkSplitPaidRequest.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_body" });
-    const row = await mine(req);
+    const row = await visible(req);
     if (!row) return reply.code(404).send({ error: "not_found" });
     const people = toWireSplit(row, "").people;
     if (body.data.index >= people.length) return reply.code(400).send({ error: "invalid_body" });
+    if (row.userId !== req.user.id) {
+      if (people[body.data.index]!.user_id !== req.user.id) return reply.code(403).send({ error: "not_allowed" });
+      if (body.data.paid) {
+        const done = await markPaid(prisma, row, body.data.index, now(), "member");
+        if (done) tell(done.notices);
+        return respond(req, done?.row ?? row);
+      }
+    }
     people[body.data.index]!.paid = body.data.paid;
     const updated = await prisma.split.update({ where: { id: row.id }, data: { peopleJson: people } });
     return respond(req, updated);
@@ -126,6 +166,14 @@ const COPY = {
     soon: "زكي نازل قريب على Google Play.",
     gone: "الحساب ده مش موجود.",
     ai: "زكي ذكاء اصطناعي، مش إنسان.",
+    pay: (n: string) => `ادفع لـ${esc(n)} بـ InstaPay`,
+    payHint: "هيفتح InstaPay، واكتب نصيبك هناك.",
+    paidTitle: "دفعت نصيبك؟",
+    paidBody: (n: string) => `اختار اسمك و${esc(n)} هيعرف من زكي.`,
+    paidBtn: "دفعت نصيبي ✓",
+    paidOk: "اتسجّل إنك دفعت 🎉 شكراً!",
+    paidAlready: "متسجّل إنه اتدفع خلاص.",
+    recordOnly: "زكي بيسجّل بس، ومش بيمسك أو يحوّل فلوس.",
   },
   en: {
     title: "The bill is split 🧾",
@@ -157,6 +205,14 @@ const COPY = {
     soon: "Zaki is coming to Google Play soon.",
     gone: "This bill doesn't exist.",
     ai: "Zaki is an AI, not a person.",
+    pay: (n: string) => `Pay ${esc(n)} with InstaPay`,
+    payHint: "Opens InstaPay. Type your share there.",
+    paidTitle: "Paid your share?",
+    paidBody: (n: string) => `Pick your name and Zaki tells ${esc(n)}.`,
+    paidBtn: "I paid my share ✓",
+    paidOk: "Marked as paid 🎉 Thank you!",
+    paidAlready: "That share is already marked paid.",
+    recordOnly: "Zaki only keeps the record; it never holds or moves money.",
   },
 } as const;
 
@@ -184,10 +240,23 @@ export function renderSplitPage(split: Split | null, lang: Lang, opts: { storeUr
 <p><label><input type="checkbox" name="shared" value="1"> ${t.sharedLabel}</label></p>
 <button class="btn" type="submit">${t.add}</button>
 </form>`;
+  // The payer's InstaPay link and "I paid" only make sense while someone still owes the payer.
+  const owing = split.paid_by === null ? [] : split.people.map((p, i) => ({ p, i })).filter(({ p, i }) => i !== split.paid_by && !p.paid && p.share > 0);
+  const pay = payer && split.instapay && owing.length ? `<a class="btn pay" href="${esc(split.instapay)}">${t.pay(payer)}</a><p class="small">${t.payHint}</p>` : "";
+  const paidForm =
+    payer && owing.length
+      ? `<h2>${t.paidTitle}</h2><p class="small">${t.paidBody(payer)}</p>
+<form method="post" action="/s/${esc(split.code)}/paid?lang=${lang}">
+<p><select name="who">${owing.map(({ p, i }) => `<option value="${i}">${esc(p.name)} · ${money(p.share)}</option>`).join("")}</select></p>
+<button class="btn quiet" type="submit">${t.paidBtn}</button>
+</form><p class="small">${t.recordOnly}</p>`
+      : "";
   const body = `${opts.notice ? `<p><strong>${esc(opts.notice)}</strong></p>` : ""}<h1>${t.heading(split.title)}</h1>
 <p>${t.total(money(split.total))}</p>
 <ul>${people}</ul>
 ${payer ? `<p>${t.payer(payer)}</p>` : ""}
+${pay}
+${paidForm}
 ${items}
 ${form}
 <h2>${t.cta}</h2>
@@ -209,7 +278,7 @@ const toNumber = (raw: string) => {
   return Number.isFinite(n) && n > 0 && n <= 1_000_000 ? n : null;
 };
 
-export const splitPageRoutes: FastifyPluginAsync<{ prisma: PrismaClient; publicUrl?: string; storeUrl?: string }> = async (app, opts) => {
+export const splitPageRoutes: FastifyPluginAsync<{ prisma: PrismaClient; publicUrl?: string; storeUrl?: string; push?: PushSender }> = async (app, opts) => {
   const { prisma } = opts;
   // Plain HTML forms post url-encoded bodies (scoped to this plugin).
   app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 2048 }, (_req, body, done) => {
@@ -220,18 +289,38 @@ export const splitPageRoutes: FastifyPluginAsync<{ prisma: PrismaClient; publicU
     const code = normalizeInviteCode(raw);
     return /^[A-Z0-9]{4,20}$/.test(code) ? prisma.split.findUnique({ where: { code } }) : null;
   };
-  const send = (reply: FastifyReply, req: FastifyRequest, row: SplitRow | null, lang: Lang, notice?: string) =>
-    reply
+  const send = async (reply: FastifyReply, req: FastifyRequest, row: SplitRow | null, lang: Lang, notice?: string) => {
+    const creator = row && payerIsCreator(row) ? await prisma.user.findUnique({ where: { id: row.userId }, select: { instapayLink: true } }) : null;
+    const split = row ? toWireSplit(row, baseUrl(req, opts.publicUrl), { id: row.userId, instapay: creator?.instapayLink ?? null }) : null;
+    return reply
       .code(row ? 200 : 404)
       .type("text/html; charset=utf-8")
       .header("cache-control", "no-store")
-      .send(renderSplitPage(row ? toWireSplit(row, baseUrl(req, opts.publicUrl)) : null, lang, { storeUrl: opts.storeUrl, notice }));
+      .send(renderSplitPage(split, lang, { storeUrl: opts.storeUrl, notice }));
+  };
 
   app.get<{ Params: { code: string }; Querystring: { lang?: string } }>("/s/:code", rateLimit, async (req, reply) => {
     const lang = pickLang(req.query.lang, req.headers["accept-language"]);
     const row = await load(req.params.code);
     if (row) await prisma.split.update({ where: { id: row.id }, data: { webViews: { increment: 1 } } });
     return send(reply, req, row, lang);
+  });
+
+  /**
+   * A friend says they paid their share (a POST form, so a link preview can never answer). The
+   * creator hears it in their chat and can untick it: anyone with the link can tap it.
+   */
+  app.post<{ Params: { code: string }; Querystring: { lang?: string } }>("/s/:code/paid", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const lang = pickLang(req.query.lang, req.headers["accept-language"]);
+    const t = COPY[lang];
+    const row = await load(req.params.code);
+    if (!row) return send(reply, req, null, lang);
+    const who = Number(z.object({ who: z.string().max(4) }).safeParse(req.body).data?.who ?? NaN);
+    if (!Number.isInteger(who) || who < 0 || row.paidBy === null) return send(reply, req, row, lang, t.bad);
+    const done = await markPaid(prisma, row, who, new Date(), "web");
+    if (!done) return send(reply, req, row, lang, t.paidAlready);
+    void pushNotices(prisma, opts.push, done.notices, app.log);
+    return send(reply, req, done.row, lang, t.paidOk);
   });
 
   /** A friend at the table adds what they ordered: nothing to install, nothing to sign in to. */
