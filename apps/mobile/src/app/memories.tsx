@@ -4,7 +4,7 @@ import { StyleSheet } from "react-native";
 import type { Memory } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { deleteMemory, listMemories, peekMemories } from "@/lib/api";
-import { Card, confirm, EmptyState, IconButton, IconTile, ListRow, notify, palette, plain, Screen, space } from "@/ui";
+import { confirm, EmptyState, IconButton, IconTile, ListRow, LoadingCards, notify, palette, plain, Screen, space } from "@/ui";
 
 /** FR-4: the user can view and delete any memory. */
 export default function MemoriesScreen() {
@@ -35,24 +35,21 @@ export default function MemoriesScreen() {
   return (
     <Screen onRefresh={load} contentStyle={styles.content}>
       {loaded && memories.length === 0 ? <EmptyState title={plain(t.memories.empty)} /> : null}
-      {memories.length ? (
-        <Card style={styles.list}>
-          {memories.map((m) => (
-            <ListRow
-              key={m.id}
-              leading={<IconTile name="bookmark-outline" size={40} />}
-              title={m.subject}
-              meta={m.content}
-              trailing={<IconButton name="trash-outline" label={t.memories.remove} color={palette.inkSoft} onPress={() => remove(m)} />}
-            />
-          ))}
-        </Card>
-      ) : null}
+      {!loaded ? <LoadingCards /> : null}
+      {/* Each memory is its own row on the page (a card around the rows drew two edges). */}
+      {memories.map((m) => (
+        <ListRow
+          key={m.id}
+          leading={<IconTile name="bookmark-outline" size={40} />}
+          title={m.subject}
+          meta={m.content}
+          trailing={<IconButton name="trash-outline" label={t.memories.remove} color={palette.inkSoft} onPress={() => remove(m)} />}
+        />
+      ))}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   content: { padding: space.lg, gap: space.md },
-  list: { paddingVertical: space.xs, paddingHorizontal: 0 },
 });

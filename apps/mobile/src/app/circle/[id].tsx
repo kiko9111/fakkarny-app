@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLive } from "@/lib/live";
 import { QueuedOffline } from "@/sync/writes";
-import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
+import { Linking, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
 import { fill, guessCheckin, whatsappShareUrl } from "@/circles/logic";
@@ -13,8 +13,8 @@ import { failText } from "@/lib/errors";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
 import { AskZakiBox, FeedPost } from "@/circles/FeedPost";
-import { TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
-import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { TrackerStreak, TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
+import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, LoadingCards, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
 const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -146,18 +146,17 @@ export default function CircleScreen() {
     ]);
 
   if (!circle) {
-    return (
+    return failed ? (
       <View style={styles.center}>
         <Stack.Screen options={{ title: "" }} />
-        {failed ? (
-          <>
-            <Note icon="cloud-offline-outline">{failed}</Note>
-            <Button label={t.circles.retry} kind="tonal" onPress={() => void load()} />
-          </>
-        ) : (
-          <ActivityIndicator color={palette.primary} />
-        )}
+        <Note icon="cloud-offline-outline">{failed}</Note>
+        <Button label={t.circles.retry} kind="tonal" onPress={() => void load()} />
       </View>
+    ) : (
+      <Screen>
+        <Stack.Screen options={{ title: "" }} />
+        <LoadingCards count={4} />
+      </Screen>
     );
   }
 
@@ -296,7 +295,7 @@ export default function CircleScreen() {
                   {[tr.is_mine ? t.trackers.mine : tr.owner_name ?? t.circles.noName, tr.goal ? fill(t.trackers.ofGoalToday, { n: tr.today, goal: tr.goal }) : fill(t.trackers.today, { n: tr.today })].join(" · ")}
                 </Text>
               </View>
-              {tr.streak >= 2 ? <Badge label={fill(t.ui.streakDays, { n: tr.streak })} tone="ok" /> : null}
+              {tr.streak >= 2 ? <TrackerStreak days={tr.streak} /> : null}
             </View>
           ))}
         </Card>

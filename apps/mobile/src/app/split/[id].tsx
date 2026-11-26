@@ -1,17 +1,17 @@
 import { useCallback, useState } from "react";
 import { useLive } from "@/lib/live";
-import { ActivityIndicator, Linking, Pressable, Share, StyleSheet, View } from "react-native";
+import { Linking, Pressable, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { SplitResponse } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
-import { t } from "@/i18n";
+import { listComma, t } from "@/i18n";
 import { createDaftar, deleteSplit, getSplit, markSplitPaid, peekSplit } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
 import { track } from "@/lib/analytics";
 import { daftarFromSplit } from "@/split/logic";
 import { shareSplitCard } from "@/share/card";
-import { Badge, Button, Card, confirm, EmptyState, Icon, notify, palette, Screen, space, Text } from "@/ui";
+import { Badge, Button, Card, confirm, EmptyState, Icon, LoadingCards, notify, palette, Screen, space, Text } from "@/ui";
 
 /** One split: everyone's share, what friends added from the link, and who has paid back. */
 export default function SplitScreen() {
@@ -31,17 +31,15 @@ export default function SplitScreen() {
   useLive(load);
 
   if (!data)
-    return (
+    return failed ? (
       <View style={styles.center}>
-        {failed ? (
-          <>
-            <EmptyState title={t.split.offline} />
-            <Button label={t.book.retry} kind="tonal" onPress={load} />
-          </>
-        ) : (
-          <ActivityIndicator color={palette.primary} />
-        )}
+        <EmptyState title={t.split.offline} />
+        <Button label={t.book.retry} kind="tonal" onPress={load} />
       </View>
+    ) : (
+      <Screen>
+        <LoadingCards tile={false} />
+      </Screen>
     );
   const { split, share_text } = data;
   const resend = () => void Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
@@ -126,7 +124,7 @@ export default function SplitScreen() {
           {split.items.map((it, i) => (
             <View key={i} style={styles.row}>
               <Text variant="small" style={styles.flex}>
-                {it.name} · {it.eaters.length ? it.eaters.map((e) => split.people[e]?.name ?? "").join("، ") : t.split.everyone}
+                {it.name} · {it.eaters.length ? it.eaters.map((e) => split.people[e]?.name ?? "").join(listComma) : t.split.everyone}
               </Text>
               <Text variant="small">{formatMoney(it.price)}</Text>
             </View>

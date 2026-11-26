@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { dataChanged, useLive } from "@/lib/live";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { SectionDetail } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
@@ -10,7 +10,7 @@ import { deleteSection, forgetSection, getSection, peekMoney, peekMoneySaved, pe
 import { findMovedSection, logAmount, realSectionId, removeAmount } from "@/money/actions";
 import { budgetState, detailFromSection, monthLabel, toggleSplit, withoutSection, withSection } from "@/money/logic";
 import { HttpError } from "@/sync/queue";
-import { Badge, Button, Card, Chip, confirm, IconButton, Note, notify, palette, ProgressBar, Screen, SectionHeader, space, Text, TextField } from "@/ui";
+import { Badge, Button, Card, Chip, confirm, IconButton, LoadingCards, Note, notify, palette, ProgressBar, Screen, SectionHeader, space, Text, TextField } from "@/ui";
 
 /** The row the Daftar list already has for this section, shown while its entries load. */
 const fromList = (id: string): SectionDetail | null => {
@@ -102,7 +102,7 @@ export default function SectionScreen() {
             <Button label={t.book.retry} kind="tonal" onPress={() => void load()} />
           </>
         ) : (
-          <ActivityIndicator color={palette.primary} />
+          <LoadingCards tile={false} />
         )}
       </Screen>
     );

@@ -29,7 +29,7 @@ export function zakiReply(text: string, ctx: { name: string | null; upcoming: It
 
   if (/انتحر|اموت نفسي|أموت نفسي|kill myself|suicide/.test(t)) {
     return {
-      texts: [L("أنا معاك ومهتم بيك جداً 💛 لو حاسس إنك ممكن تأذي نفسك، كلّم دلوقتي الخط الساخن ١٦٣٢٨ (مجاني) أو حد قريب منك.", "I'm here and I care about you 💛 If you might hurt yourself, please call 16328 (free, Egypt) or someone close to you right now.")],
+      texts: [L("أنا معاك ومهتم بيك جداً 💛 لو حاسس إنك ممكن تأذي نفسك، كلّم دلوقتي الخط الساخن 16328 (مجاني) أو حد قريب منك.", "I'm here and I care about you 💛 If you might hurt yourself, please call 16328 (free, Egypt) or someone close to you right now.")],
       items: [],
     };
   }

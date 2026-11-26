@@ -74,7 +74,7 @@ export function SectionHeader({ title, action, onAction }: { title: string; acti
       {action && onAction ? (
         <Pressable onPress={onAction} accessibilityRole="button" hitSlop={10} style={styles.sectionAction}>
           <Text variant="smallStrong" color={palette.primaryInk}>
-            {action}
+            {plain(action)}
           </Text>
         </Pressable>
       ) : null}

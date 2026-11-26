@@ -9,5 +9,6 @@ export { plain } from "./plain";
 export { TextField } from "./TextField";
 export { ThemePicker } from "./ThemePicker";
 export { Backdrop, GlassHeader, glassBar, withGround } from "./glass";
+export { Appear, LoadingCards } from "./motion";
 export { ChatTabButton } from "./ChatTabButton";
 export { DateTimePicker, formatPick } from "./DateTimePicker";
