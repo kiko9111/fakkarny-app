@@ -118,7 +118,7 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     const body = CreateTaskRequest.safeParse(req.body);
     if (!params.success) return reply.code(404).send({ error: "not_found" });
     if (!body.success || body.data.assignee_id === req.user.id) return reply.code(400).send({ error: "invalid_body" });
-    const made = await assignTask(prisma, { circleId: params.data.id, assignerId: req.user.id, assigneeId: body.data.assignee_id, title: body.data.title, dueAt: body.data.due_at ? new Date(body.data.due_at) : null, remindAt: body.data.remind_at ? new Date(body.data.remind_at) : null, homework: body.data.homework ?? false, note: body.data.note || null }, now());
+    const made = await assignTask(prisma, { circleId: params.data.id, assignerId: req.user.id, assigneeId: body.data.assignee_id, title: body.data.title, dueAt: body.data.due_at ? new Date(body.data.due_at) : null, remindAt: body.data.remind_at ? new Date(body.data.remind_at) : null, homework: body.data.homework ?? false, note: body.data.note || null, subject: body.data.subject ?? null, reward: body.data.reward ?? null }, now());
     if (made === "not_members") return reply.code(404).send({ error: "not_found" });
     if (made === "too_many") return reply.code(409).send({ error: "too_many" });
     return reply.code(201).send(done(made, req.user.id));

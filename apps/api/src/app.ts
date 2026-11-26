@@ -24,6 +24,7 @@ import { referralPageRoutes } from "./routes/referral-page";
 import { splitPageRoutes, splitRoutes } from "./routes/splits";
 import { cardRoutes } from "./routes/cards";
 import { photoRoutes } from "./routes/photos";
+import { homeworkRoutes } from "./routes/homework";
 import { circleRoutes } from "./routes/circles";
 import { invitePageRoutes } from "./routes/invite-page";
 import { daftarRoutes } from "./routes/daftar";
@@ -149,6 +150,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(splitPageRoutes, { prisma, publicUrl: deps.invites?.publicUrl, storeUrl: deps.invites?.storeUrl });
     app.register(cardRoutes, { prisma, publicUrl: deps.invites?.publicUrl });
     app.register(photoRoutes, { prisma, authenticate, model: deps.model, now: deps.now, requireSubscription: billing.requireSubscription });
+    app.register(homeworkRoutes, { prisma, authenticate, model: deps.model, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
     app.register(bootstrapRoutes, { authenticate });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });

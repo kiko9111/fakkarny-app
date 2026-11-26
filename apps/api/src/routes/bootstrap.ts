@@ -28,7 +28,7 @@ const internalToken = randomBytes(18).toString("hex");
 export const isInternal = (req: FastifyRequest): boolean => req.headers[INTERNAL_HEADER] === internalToken;
 
 /** The same screens the phone preloads, in the same order. */
-export const BOOTSTRAP_BASE = ["/circles", "/me", "/tasks", "/trackers", "/daftar", "/money", "/splits", "/memories"] as const;
+export const BOOTSTRAP_BASE = ["/circles", "/me", "/tasks", "/trackers", "/daftar", "/money", "/splits", "/memories", "/pocket-money"] as const;
 export const BOOTSTRAP_CIRCLE = ["", "/feed", "/trackers"] as const;
 /** Circles covered (the phone preloads the first 8 of its list). */
 export const BOOTSTRAP_MAX_CIRCLES = 8;
@@ -63,7 +63,7 @@ const circleIds = (payload: string): string[] => {
 };
 
 /**
- * Calls a minute per caller. One call runs up to 32 inner GETs that the general limit does not
+ * Calls a minute per caller. One call runs up to 33 inner GETs that the general limit does not
  * count, so it gets its own, tighter one: the phone asks once on start and return, and a few
  * seconds after a change (a handful a minute at most).
  */

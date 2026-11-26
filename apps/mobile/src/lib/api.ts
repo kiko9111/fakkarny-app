@@ -1,5 +1,14 @@
 import Constants from "expo-constants";
 import {
+  PocketMoneyResponse,
+  HomeworkBatchResponse,
+  HomeworkHelpResponse,
+  HomeworkCheckResponse,
+  type PocketAccount,
+  type PocketPaidRequest,
+  type HomeworkBatchRequest,
+  type HomeworkHelpRequest,
+  type HomeworkCheckRequest,
   ReadReceiptResponse,
   type PhotoUpload,
   Message as WireMessage,
@@ -637,6 +646,33 @@ export async function photoSource(id: string): Promise<{ uri: string; headers: R
 export async function reviewHomework(id: string, verdict: "approved" | "redo", note?: string): Promise<CircleTask> {
   return savedTask(await request(`/tasks/${id}/review`, { method: "POST", body: JSON.stringify({ verdict, ...(note ? { note } : {}) }) }));
 }
+// Homework, grown up (2026-11-26): pocket money, a week at once, and Zaki helping.
+const parsePocket = (raw: unknown): PocketAccount[] => eachValid(PocketMoneyResponse.shape.accounts.element.safeParse, (raw as { accounts?: unknown } | null)?.accounts);
+export async function getPocketMoney(): Promise<PocketAccount[]> {
+  return cachedGet("/pocket-money", parsePocket);
+}
+export const peekPocketMoney = () => peek("/pocket-money", parsePocket);
+/** The parent marks pocket money as handed over; the answer is every record, fresh. */
+export async function markPocketPaid(body: PocketPaidRequest): Promise<PocketAccount[]> {
+  const raw = await request("/pocket-money/paid", { method: "POST", body: JSON.stringify(body) });
+  saved("/pocket-money", parsePocket, () => raw);
+  return parsePocket(raw);
+}
+/** A week's homework for one child in one go. */
+export async function sendHomeworkBatch(circleId: string, body: HomeworkBatchRequest): Promise<CircleTask[]> {
+  const { tasks } = HomeworkBatchResponse.parse(await request(`/circles/${circleId}/homework`, { method: "POST", body: JSON.stringify(body) }));
+  saved("/tasks", parseTasks, (old) => ({ tasks: [...tasks, ...old] }));
+  return tasks;
+}
+/** Zaki explains a lesson to the parent (one AI message; words and photos are not kept). */
+export async function homeworkHelp(body: HomeworkHelpRequest): Promise<HomeworkHelpResponse> {
+  return HomeworkHelpResponse.parse(await request("/homework/help", { method: "POST", body: JSON.stringify(body), signal: slow() }));
+}
+/** Zaki gives the child hints on their answers, never the answers. */
+export async function checkHomework(id: string, body: HomeworkCheckRequest): Promise<HomeworkCheckResponse> {
+  return HomeworkCheckResponse.parse(await request(`/tasks/${id}/check`, { method: "POST", body: JSON.stringify(body), signal: slow() }));
+}
+
 export async function remindTask(id: string, remind_at: string | null): Promise<CircleTask> {
   return savedTask(await request(`/tasks/${id}/remind`, { method: "POST", body: JSON.stringify({ remind_at }) }));
 }
@@ -854,6 +890,7 @@ const PARSERS: [RegExp, (raw: unknown) => unknown][] = [
   [/^\/money$/, MoneyOverview.parse],
   [/^\/splits$/, parseSplits],
   [/^\/memories$/, parseMemories],
+  [/^\/pocket-money$/, parsePocket],
   [/^\/circles\/[^/]+$/, parseCircle],
   [/^\/circles\/[^/]+\/feed$/, parseFeed],
   [/^\/circles\/[^/]+\/trackers$/, parseShared],
