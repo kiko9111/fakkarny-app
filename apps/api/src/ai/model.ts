@@ -118,6 +118,8 @@ export function toReceipt(raw: z.infer<typeof ModelReceipt>): Receipt | null {
 export interface FriendModel {
   /** Read a receipt photo (owner decision 2026-11-23: photos for receipts and homework only). */
   readReceipt?(input: { photo: PhotoUpload; language: "ar" | "en" }): Promise<{ receipt: Receipt | null; usage: Usage }>;
+  /** True while `respond` passes a reply's words on as they are written (off by setting, after refusals, or paused). */
+  readonly streams?: boolean;
   /**
    * One chat turn. With `live`, the words of the reply are passed on while they are written
    * (ai/respond-stream.ts); the returned answer is the same either way and is the one that counts.
@@ -327,6 +329,9 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; 
   });
 
   return {
+    get streams() {
+      return CHAT_TOOLS && modes.mode !== "off";
+    },
     async respond(input, live) {
       let usage = zeroUsage;
       // One retry if the output doesn't validate. The first try uses tools; when that turn has

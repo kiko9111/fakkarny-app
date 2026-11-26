@@ -781,6 +781,12 @@ Rules:
     `error {status}`. The stream opens with its first words (routes/live-reply.ts), so a turn
     the rules answer, a failure before any words, a resend, a retry that joins a turn in flight,
     phone-brain mode and a phone that did not ask all get the plain JSON answer as before.
+  - The switch that needs no app update: a server that streams says so on every answer
+    (`x-reply-stream: 1`, REPLY_STREAM_HEADER; app.ts `liveReplies`, true while the model's
+    `streams` is), and the phone asks for a stream only from a server that says so (it keeps
+    what the server last said in localStorage `pref:reply_stream`). FAKKARNI_CHAT_STREAM=0 on
+    Railway takes the line away, and every phone is back on the plain POST with its next
+    answer. A server from before streams never says it, so an app update alone changes nothing.
   - Model: `respond(input, live)` asks for the same tool turn as a stream (ai/respond-stream.ts;
     ai/reply-stream.ts picks the reply's words out of the `respond` tool's JSON as it arrives).
     `eager_input_streaming` goes on `respond` on streamed requests only. FAKKARNI_CHAT_STREAM: "0"
@@ -804,10 +810,13 @@ Rules:
     readystatechange / progress, never at DONE because RN puts an error's words in responseText).
     The draft is memory only (chat/writing.ts, `replyWriting` in sync/index.ts): rows named like
     the stored reply (`<client_id>:reply:<n>`), so the stored bubbles take their place without a
-    jump; dots under the last bubble; the message being answered stops saying "Sending…". A
-    stream cut after it began turns streaming off on that phone for 10 minutes
-    (`createStreamSwitch`); the outbox sends the message again and the server answers from what
-    it stored.
+    jump; dots under the last bubble; the message being answered stops saying "Sending…".
+    When a streamed send ends with no answer (cut after it began, or nothing at all), the same
+    message goes out again at once the plain way (`sendForReply`; the server answers it from the
+    turn in flight or from what it stored): a phone whose stream reading fails is answered as it
+    always was. A cut, or a plain send that works right after a streamed one got nothing, turns
+    streaming off on that phone for 10 minutes (`createStreamSwitch`). None of this was run on a
+    real phone before it shipped (the opener was run on a browser's XMLHttpRequest).
   - Tests: apps/api/test/anthropic-standin.ts is a stand-in Messages API on a real socket, so
     model-stream.test.ts and messages-live.test.ts run the SDK's own stream code. The e2e test
     sends one streamed message; E2E_EXPECT_WORDS=1 makes it require the words (against a local

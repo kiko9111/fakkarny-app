@@ -52,6 +52,7 @@ import {
   type FamilyType,
   HealthResponse,
   INSTALL_ID_HEADER,
+  REPLY_STREAM_HEADER,
   ExportResponse,
   ItemResponse,
   ListItemsResponse,
@@ -76,7 +77,7 @@ import {
 import { getInstallId } from "@/db/kv";
 import { HttpError, isRetryable } from "@/sync/queue";
 import { createWriteOutbox, isOffline, QueuedOffline, type PendingWrite } from "@/sync/writes";
-import { createStreamSwitch, postForReply, type ReplyHandlers } from "@/sync/stream";
+import { createStreamSwitch, postForReply, sendForReply, type ReplyHandlers } from "@/sync/stream";
 import { openReply } from "@/sync/opener";
 import { randomUUID } from "expo-crypto";
 import { resolveApiUrl } from "./api-url";
@@ -155,9 +156,42 @@ async function send(path: string, init: Init = {}, timeoutMs = TIMEOUT_MS): Prom
         ...rest.headers,
       },
     });
+    // The server says on its answers whether it sends chat replies while they are written.
+    if (res.status < 500) serverStreams(res.headers.get(REPLY_STREAM_HEADER) === "1");
     return { status: res.status, text: res.status === 204 || res.status === 304 ? "" : await res.text(), etag: res.headers.get("etag") };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Whether a chat reply is asked for as it is written (sync/stream.ts): only from a server that
+ * says it sends one. What it last said is kept across app starts, so the first message after a
+ * start does not have to wait for another answer to find out.
+ */
+const STREAM_KEY = "pref:reply_stream";
+const replyStream = createStreamSwitch();
+let streamKeyRead = false;
+function streamSwitch() {
+  // Read on first use, not when this file loads: the phone's storage may not be set up by then.
+  if (!streamKeyRead) {
+    streamKeyRead = true;
+    try {
+      if (localStorage.getItem(STREAM_KEY) === "1") replyStream.offer(true);
+    } catch {
+      // No storage here (a test run): the next answer says.
+    }
+  }
+  return replyStream;
+}
+function serverStreams(yes: boolean): void {
+  const sw = streamSwitch();
+  if (sw.offered === yes) return;
+  sw.offer(yes);
+  try {
+    localStorage.setItem(STREAM_KEY, yes ? "1" : "0");
+  } catch {
+    // Kept for this run only.
   }
 }
 
@@ -274,56 +308,61 @@ export async function postMessage(body: PostMessageRequest): Promise<PostMessage
   return PostMessageResponse.parse(await postMessageRaw(body));
 }
 
-/** Asking for a reply as a stream pauses for a while after one broke on the way (sync/stream.ts). */
-const replyStream = createStreamSwitch();
-
 /**
  * POST /messages, unparsed: with the phone brain on, the server may answer 202 (NeedsBrainResponse).
- * With `live`, the reply is asked for as a stream: its words are handed on while Zaki writes
- * them, and the returned answer is the same one a plain POST gives. A server that does not
- * stream (an older one, or a turn it answers at once) answers plainly and nothing changes.
+ * With `live`, and a server that says it sends replies while they are written, the reply is
+ * asked for as a stream: its words are handed on while Zaki writes them, and the returned
+ * answer is the same one a plain POST gives. Every other send is the plain POST it always was,
+ * and so is the second try of a streamed send that got no answer (`sendForReply`).
  */
 export async function postMessageRaw(body: PostMessageRequest, live?: ReplyHandlers): Promise<unknown> {
   // Zaki's reply is an AI call: give it longer than a screen load, or a slow reply is cut off,
   // retried, and the message sits there looking unsent.
   const text = JSON.stringify(body);
+  const plain = () => request("/messages", { method: "POST", body: text }, REPLY_TIMEOUT_MS);
   // Not when the phone's own model writes the reply.
-  if (!live || isDemo || body.brain === "phone" || !replyStream.wanted(Date.now())) {
-    const answer = await request("/messages", { method: "POST", body: text }, REPLY_TIMEOUT_MS);
+  if (!live || isDemo || body.brain === "phone") {
+    const answer = await plain();
     // The sample data has no server to stream from: its answer is shown as a stream would show it.
     if (live && isDemo) await replayReply(answer, live);
     return answer;
   }
 
   const who = person;
-  const started = Date.now();
-  reads.changed();
-  try {
-    // As in `send`: the sign-in lookup counts against the same wait.
-    let giveUp: ReturnType<typeof setTimeout> | undefined;
-    const token = await Promise.race([accessToken(), new Promise<never>((_, reject) => (giveUp = setTimeout(() => reject(new HttpError(0)), REPLY_TIMEOUT_MS)))]).finally(() => clearTimeout(giveUp));
-    const { json } = await postForReply(
-      openReply,
-      {
-        url: `${API_URL}/messages`,
-        headers: { "content-type": "application/json", [INSTALL_ID_HEADER]: await getInstallId(), "x-message-kinds": "2", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-        body: text,
-        timeoutMs: Math.max(1_000, REPLY_TIMEOUT_MS - (Date.now() - started)),
-      },
-      {
-        // Words for someone who is no longer on this phone (it was wiped meanwhile) are not drawn.
-        onDraft: (bubble, delta) => (who === person ? live.onDraft(bubble, delta) : undefined),
-        onReset: () => (who === person ? live.onReset() : undefined),
-      },
-    );
-    if (who !== person) throw new HttpError(401);
-    return json;
-  } catch (err) {
-    replyStream.failed(err, Date.now());
-    throw err;
-  } finally {
-    reads.changed();
-  }
+  return sendForReply({
+    switch: streamSwitch(),
+    now: Date.now,
+    limitMs: REPLY_TIMEOUT_MS,
+    plain,
+    // Words for someone who is no longer on this phone (it was wiped meanwhile) are not drawn.
+    onGiveUp: () => (who === person ? live.onReset() : undefined),
+    stream: async () => {
+      const started = Date.now();
+      reads.changed();
+      try {
+        // As in `send`: the sign-in lookup counts against the same wait.
+        let giveUp: ReturnType<typeof setTimeout> | undefined;
+        const token = await Promise.race([accessToken(), new Promise<never>((_, reject) => (giveUp = setTimeout(() => reject(new HttpError(0)), REPLY_TIMEOUT_MS)))]).finally(() => clearTimeout(giveUp));
+        const { json } = await postForReply(
+          openReply,
+          {
+            url: `${API_URL}/messages`,
+            headers: { "content-type": "application/json", [INSTALL_ID_HEADER]: await getInstallId(), "x-message-kinds": "2", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+            body: text,
+            timeoutMs: Math.max(1_000, REPLY_TIMEOUT_MS - (Date.now() - started)),
+          },
+          {
+            onDraft: (bubble, delta) => (who === person ? live.onDraft(bubble, delta) : undefined),
+            onReset: () => (who === person ? live.onReset() : undefined),
+          },
+        );
+        if (who !== person) throw new HttpError(401);
+        return json;
+      } finally {
+        reads.changed();
+      }
+    },
+  });
 }
 
 /** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */

@@ -26,6 +26,7 @@ const app = buildApp(
     push,
     model,
     userCacheMs: env.USER_CACHE_MS,
+    liveReplies: model ? () => model.streams === true : undefined,
     sessionEnabled: env.SESSION_ENABLED === "1" && Boolean(model),
     pipelineFactory: model ? (log) => createConversationPipeline({ model, log }) : undefined,
     auth: { supabaseUrl, supabaseJwtSecret: env.SUPABASE_JWT_SECRET, allowInstallId: env.ALLOW_INSTALL_ID === "1" },

@@ -90,9 +90,12 @@ describe("a chat turn read while it is written", () => {
   it("stops asking for a stream when every stream is refused", async () => {
     const { asked, model } = await api((a) => (a.stream ? refuse(400) : whole));
     const m = model();
+    expect(m.streams).toBe(true);
     for (let n = 0; n < 3; n++) expect(await m.respond(input, watch().live)).toMatchObject({ ok: true });
     // eager refused, plain refused, then no stream is asked for at all.
     expect(asked.map((a) => a.stream)).toEqual([true, false, true, false, false]);
+    // And the server stops telling phones to ask for one (app.ts `liveReplies`).
+    expect(m.streams).toBe(false);
   });
 
   it("asks again without a stream when the stream is cut off", async () => {
@@ -115,6 +118,8 @@ describe("a chat turn read while it is written", () => {
     expect(await m.respond(input, third.live)).toMatchObject({ ok: true, output: { reply: RESPOND.reply } });
     expect(asked.map((a) => a.stream)).toEqual([true, false, true, false, false]);
     expect(third.log).toEqual([]);
+    // While they pause, phones are not told to ask.
+    expect(m.streams).toBe(false);
   });
 
   it("forgets a broken stream once one works", async () => {

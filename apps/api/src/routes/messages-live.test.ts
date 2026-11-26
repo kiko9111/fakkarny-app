@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { INSTALL_ID_HEADER, PostMessageResponse, type FriendResponse } from "@fakkarni/shared";
+import { INSTALL_ID_HEADER, PostMessageResponse, REPLY_STREAM_HEADER, type FriendResponse } from "@fakkarni/shared";
 import { buildApp } from "../app";
 import type { FriendModel, FriendModelResult } from "../ai/model";
 import type { ReplyLive } from "../ai/respond-stream";
@@ -61,6 +61,21 @@ function drawn(list: { event: string; data: any }[]): string[] {
   }
   return bubbles;
 }
+
+describe("the line that tells phones to ask for a stream", () => {
+  it("is on every answer while the server sends replies as they are written, and only then", async () => {
+    let sends = true;
+    const app = buildApp({ logger: false }, { liveReplies: () => sends });
+    expect((await app.inject({ url: "/health" })).headers[REPLY_STREAM_HEADER]).toBe("1");
+    // Also on an answer that is not a success: a phone must not read a 404 as "streams are off".
+    expect((await app.inject({ url: "/nothing-here" })).headers[REPLY_STREAM_HEADER]).toBe("1");
+    // Switched off, refused by the model's API or paused: phones stop asking.
+    sends = false;
+    expect((await app.inject({ url: "/health" })).headers[REPLY_STREAM_HEADER]).toBeUndefined();
+    // A server that was never told (no model): never there.
+    expect((await buildApp({ logger: false }).inject({ url: "/health" })).headers[REPLY_STREAM_HEADER]).toBeUndefined();
+  });
+});
 
 describe.skipIf(!hasTestDb)("POST /messages as a stream", () => {
   const prisma = testPrisma();

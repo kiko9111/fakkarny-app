@@ -38,8 +38,8 @@ jobs:
           U=$(cat /proc/sys/kernel/random/uuid)
           H=(-H "x-install-id: $U" -H "x-message-kinds: 2" -H "content-type: application/json")
           curl -s -o /dev/null "${H[@]}" "$API/me"
-          echo "--- where the server runs (Railway edge header)"
-          curl -s -o /dev/null -D - "$API/health" | grep -i -E "^(x-railway|server|via)" || true
+          echo "--- where the server runs (Railway edge header), and whether it tells phones to ask for replies as they are written (x-reply-stream)"
+          curl -s -o /dev/null -D - "$API/health" | grep -i -E "^(x-railway|server|via|x-reply-stream)" || true
           echo "--- 5x /health (network only, no database)"
           for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total} " "$API/health"; done; echo
           echo "--- 5x /splits (sign-in lookup + one query)"
