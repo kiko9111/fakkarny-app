@@ -8,6 +8,10 @@ name: Live API smoke test
 on:
   push:
   workflow_dispatch:
+    inputs:
+      quiet:
+        description: "Seconds the server is left quiet before the timed chat turn (35 is one person between two messages; up to 280 checks that the server's kept database connections last)"
+        default: "35"
 
 jobs:
   smoke:
@@ -22,6 +26,8 @@ jobs:
       - name: Time the screens' requests
         run: |
           U=$(cat /proc/sys/kernel/random/uuid)
+          # /health says the server's process id: "pid":1 means it is the container's first
+          # process, the one a deploy's stop signal goes to (Dockerfile).
           curl -s -m 30 -w "  /health %{http_code} %{time_total}s\n" "$API/health"
           for p in /me /circles /tasks /trackers /daftar /money /splits "/items?status=open" /me/referral; do
             curl -s -m 30 -o /tmp/body -w "$p %{http_code} %{time_total}s " -H "x-install-id: $U" -H "x-message-kinds: 2" "$API$p"; head -c 300 /tmp/body; echo
@@ -34,12 +40,16 @@ jobs:
           echo "--- 20 quick /circles calls (rate limit check)"
           for i in $(seq 1 20); do curl -s -m 30 -o /dev/null -w "%{http_code} " -H "x-install-id: $U" "$API/circles"; done; echo
       - name: Time a chat turn and one database round trip
+        env:
+          QUIET: ${{ inputs.quiet || '35' }}
         run: |
           U=$(cat /proc/sys/kernel/random/uuid)
           H=(-H "x-install-id: $U" -H "x-message-kinds: 2" -H "content-type: application/json")
           curl -s -o /dev/null "${H[@]}" "$API/me"
-          echo "--- where the server runs (Railway edge header), and whether it tells phones to ask for replies as they are written (x-reply-stream)"
-          curl -s -o /dev/null -D - "$API/health" | grep -i -E "^(x-railway|server|via|x-reply-stream)" || true
+          # x-railway-edge is the edge nearest this runner, not where the server runs. Sending
+          # x-railway-debug asks Railway to add x-railway-upstream-zone: the zone that served it.
+          echo "--- the edge nearest this runner (x-railway-edge), the zone the server runs in (x-railway-upstream-zone), and whether it tells phones to ask for replies as they are written (x-reply-stream)"
+          curl -s -o /dev/null -D - -H "x-railway-debug: 1" "$API/health" | grep -i -E "^(x-railway|server|via|x-reply-stream)" || true
           echo "--- 5x /health (network only, no database)"
           for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total} " "$API/health"; done; echo
           echo "--- 5x /splits (sign-in lookup + one query)"
@@ -54,13 +64,20 @@ jobs:
           # without streaming, or a turn the rules answer, answers in one piece as before.
           stream() {
             body=$(printf '{"client_id":"%s","text":"%s","created_at":"%s","timezone":"Africa/Cairo"}' "$(cat /proc/sys/kernel/random/uuid)" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
-            curl -sN -m 90 -o /tmp/stream -w "$2 %{http_code} %{content_type} | first byte %{time_starttransfer}s | all %{time_total}s\n" "${H[@]}" -H "accept: text/event-stream, application/json" -X POST -d "$body" "$API/messages"
+            curl -sN -m 90 -o /tmp/stream --trace-ascii /tmp/trace --trace-time -w "$2 %{http_code} %{content_type} | first byte %{time_starttransfer}s | all %{time_total}s\n" "${H[@]}" -H "accept: text/event-stream, application/json" -d "$body" "$API/messages"
             node -e '
-              const t = require("fs").readFileSync("/tmp/stream", "utf8");
+              const fs = require("fs");
+              const t = fs.readFileSync("/tmp/stream", "utf8");
               if (!/^event: /m.test(t)) { console.log("   answered in one piece"); process.exit(0); }
               const ev = t.split("\n\n").map((b) => { const e = /^event: (.*)$/m.exec(b), d = /^data: (.*)$/m.exec(b); return e && d ? { e: e[1], d: JSON.parse(d[1]) } : null; }).filter(Boolean);
               const done = ev.find((x) => x.e === "done");
               console.log("   pieces shown:", ev.filter((x) => x.e === "draft").length, "| taken back:", ev.filter((x) => x.e === "reset").length, "| ended with:", ev.at(-1)?.e, "| server ms:", JSON.stringify(done?.d.timing ?? null), "| replies:", (done?.d.body?.replies || []).length);
+              // When each part of the answer reached this runner, in seconds after the first part
+              // (curl stamps them in its trace). Spread out: the words left the server as the model
+              // wrote them. Bunched at the start with one gap before the last part: the reply
+              // reached the server in one go.
+              const at = fs.readFileSync("/tmp/trace", "utf8").split("\n").map((l) => /^(\d\d):(\d\d):(\d\d\.\d+) <= Recv data,/.exec(l)).filter(Boolean).map((m) => m[1] * 3600 + m[2] * 60 + Number(m[3]));
+              console.log("   parts arrived at (s after the first):", at.map((x) => (x - at[0]).toFixed(2)).join(" "));
             ' || true
           }
           echo "--- chat turns"
@@ -73,6 +90,17 @@ jobs:
           stream "احكيلي حاجة حلوة عن النهارده" "small talk (AI)"
           stream "يومي كان طويل اوي ومحتاج افصل شوية" "small talk 2 (AI)"
           stream "فكرني بكره الساعة 9 الصبح اكلم الدكتور" "reminder with a time (AI: the line that says it is set comes with the answer)"
+          # One person using the app leaves the server quiet for more than half a minute all the
+          # time. Until 2026-11-26 the API's database pool let a connection go after 30 idle
+          # seconds, and the turn after such a pause opened connections again, several round
+          # trips each: its first words came about 0.9 s later than the next turn's. The pool
+          # now keeps a connection five minutes (apps/api/src/db-pool.ts), so the two turns
+          # below should take the same: compare "first byte", and "context" in "server ms".
+          case "$QUIET" in '' | *[!0-9]*) QUIET=35 ;; esac
+          echo "--- after $QUIET quiet seconds: a chat turn, then the same kind of turn again"
+          sleep "$QUIET"
+          stream "قولي حاجة تفرحني" "small talk after the quiet (AI)"
+          stream "وقولي حاجة كمان" "small talk right after (AI)"
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -276,6 +276,13 @@ export default function CircleScreen() {
       {sortTasks(feed.tasks).map((task) => (
         <TaskCard key={task.id} task={task} onChanged={() => void load()} />
       ))}
+      {others ? (
+        <View style={styles.chips}>
+          <Button label={plain(t.homework.planOpen)} kind="tonal" size="sm" icon="school-outline" onPress={() => router.push({ pathname: "/homework/plan", params: { circle: id } })} />
+          <Button label={plain(t.homework.pocketOpen)} kind="text" size="sm" icon="wallet-outline" onPress={() => router.push("/pocket")} />
+          <Button label={plain(t.homework.helpOpen)} kind="text" size="sm" icon="bulb-outline" onPress={() => router.push("/homework/help")} />
+        </View>
+      ) : null}
 
       <SectionHeader title={t.trackers.circleTitle} action={t.trackers.circleAdd} onAction={() => router.push({ pathname: "/tracker/new", params: { circle: id } })} />
       {trackers.length === 0 ? (

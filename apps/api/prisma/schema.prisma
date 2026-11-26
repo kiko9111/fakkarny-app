@@ -169,6 +169,8 @@ model User {
   daftarOther     DaftarEntry[]    @relation("DaftarOther")
   tasksGiven      CircleTask[]     @relation("TaskAssigner")
   tasksTaken      CircleTask[]     @relation("TaskAssignee")
+  pocketAsChild   PocketMoneyEntry[] @relation("PocketChild")
+  pocketAsParent  PocketMoneyEntry[] @relation("PocketParent")
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
@@ -322,6 +324,7 @@ model Circle {
   invites       Invite[]
   daftar        DaftarEntry[]
   tasks         CircleTask[]
+  pocketMoney   PocketMoneyEntry[]
   posts         CirclePost[]
   trackers      Tracker[]
   moneySections MoneySection[]
@@ -412,6 +415,10 @@ model CircleTask {
   // Homework (simple version): a description or link the child opens, then taps done.
   homework    Boolean    @default(false)
   note        String?
+  /// Homework: the school subject, if the parent named one.
+  subject     String?
+  /// Homework: pocket money (whole EGP) the child earns on Well done. A record only.
+  reward      Int?
   status      TaskStatus @default(pending)
   // The assignee's own item, created when they accept. Marking it done finishes the task.
   itemId      String?    @unique @map("item_id") @db.Uuid
@@ -431,6 +438,7 @@ model CircleTask {
   assigner User    @relation("TaskAssigner", fields: [assignerId], references: [id], onDelete: Cascade)
   assignee User    @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
   photos   Photo[]
+  pocket   PocketMoneyEntry?
 
   @@index([circleId, status])
   @@index([assigneeId, status])
@@ -667,4 +675,28 @@ model Photo {
   @@index([taskId])
   @@index([expiresAt])
   @@map("photos")
+}
+
+/// A child's pocket-money record with one parent in one circle (2026-11-26). "earned" rows come
+/// from homework marked Well done (one per task); "paid" rows are what the parent handed over.
+/// Records only: no money is ever held or moved.
+model PocketMoneyEntry {
+  id        String     @id @default(uuid()) @db.Uuid
+  circleId  String     @map("circle_id") @db.Uuid
+  childId   String     @map("child_id") @db.Uuid
+  parentId  String     @map("parent_id") @db.Uuid
+  kind      String // "earned" | "paid"
+  amount    Int
+  taskId    String?    @unique @map("task_id") @db.Uuid
+  title     String?
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  circle Circle      @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  child  User        @relation("PocketChild", fields: [childId], references: [id], onDelete: Cascade)
+  parent User        @relation("PocketParent", fields: [parentId], references: [id], onDelete: Cascade)
+  task   CircleTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([childId, createdAt])
+  @@index([parentId, createdAt])
+  @@map("pocket_money")
 }

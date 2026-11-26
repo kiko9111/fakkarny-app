@@ -202,6 +202,8 @@ function seed(): State {
     remind_at: null,
     homework: false,
     note: null,
+    subject: null,
+    reward: null,
     submission: null,
     submitted_at: null,
     review: null,
@@ -210,6 +212,7 @@ function seed(): State {
     status: "pending",
     assigner_name: null,
     assignee_name: null,
+    assignee_id: null,
     can_nudge: false,
     created_at: inHours(-2),
     responded_at: null,
@@ -269,7 +272,7 @@ function seed(): State {
     ],
     tasks: [
       task({ title: L("هات عيش وانت راجع", "Grab bread on your way home"), role: "assignee", assigner_name: L("ماما", "Mum"), assignee_name: null, due_at: atLocal(0, 21) }),
-      task({ title: L("واجب العربي: تعبير عن الشتا", "Arabic homework: a short essay on winter"), role: "assigner", assigner_name: null, assignee_name: L("عمر", "Omar"), status: "accepted", responded_at: inHours(-1), homework: true, note: L("صفحة 40 في الكتاب https://example.com/hw", "Page 40 in the book https://example.com/hw"), remind_at: atLocal(0, 18), due_at: atLocal(0, 21) }),
+      task({ title: L("واجب العربي: تعبير عن الشتا", "Arabic homework: a short essay on winter"), role: "assigner", assigner_name: null, assignee_name: L("عمر", "Omar"), status: "accepted", responded_at: inHours(-1), homework: true, subject: L("عربي", "Arabic"), reward: 10, assignee_id: OMAR, note: L("صفحة 40 في الكتاب https://example.com/hw", "Page 40 in the book https://example.com/hw"), remind_at: atLocal(0, 18), due_at: atLocal(0, 21) }),
       task({ title: L("تحجز ميعاد الدكتور لبابا", "Book Dad's doctor appointment"), role: "assigner", assigner_name: null, assignee_name: L("سارة", "Sara"), status: "accepted", responded_at: inHours(-3), can_nudge: true }),
       task({
         title: L("يحجز الملعب يوم الجمعة", "Book the pitch for Friday"), role: "watcher", circle_id: friends.id, circle_name: friends.name,
@@ -766,6 +769,9 @@ on("POST", "/circles/([^/]+)/tasks", (m, b) => {
     remind_at: (b.remind_at as string | null) ?? null,
     homework: Boolean(b.homework),
     note: (b.note as string | null) ?? null,
+    subject: b.homework ? ((b.subject as string | null) ?? null) : null,
+    reward: b.homework ? ((b.reward as number | null) ?? null) : null,
+    assignee_id: (b.assignee_id as string | null) ?? null,
     submission: null,
     submitted_at: null,
     review: null,
@@ -856,6 +862,91 @@ const findTask = (tid: string) => {
   return t;
 };
 on("GET", "/tasks", () => ({ tasks: state.tasks }));
+// Homework extras (2026-11-26): sample pocket money, a week at once, and Zaki's help (canned words).
+let pocketPaid = 0;
+const pocket = () => {
+  const earned = 30;
+  return {
+    accounts: [
+      {
+        circle_id: "c-family",
+        circle_name: L("البيت", "Home"),
+        child_id: OMAR,
+        child_name: L("عمر", "Omar"),
+        parent_id: ME,
+        parent_name: L("كريم", "Kareem"),
+        role: "parent",
+        earned,
+        paid: pocketPaid,
+        balance: earned - pocketPaid,
+        week_earned: 20,
+        entries: [
+          ...(pocketPaid ? [{ id: "pm-paid", kind: "paid", amount: pocketPaid, title: null, created_at: iso(now()) }] : []),
+          { id: "pm-1", kind: "earned", amount: 10, title: L("واجب الحساب صفحة 12", "Math homework page 12"), created_at: inHours(-20) },
+          { id: "pm-2", kind: "earned", amount: 10, title: L("حفظ النشيد", "Learn the poem"), created_at: inHours(-44) },
+          { id: "pm-3", kind: "earned", amount: 10, title: L("تعبير عن المدرسة", "Essay about school"), created_at: inHours(-24 * 9) },
+        ],
+      },
+    ],
+  };
+};
+on("GET", "/pocket-money", () => pocket());
+on("POST", "/pocket-money/paid", (_m, b) => {
+  pocketPaid = Math.min(30, pocketPaid + Number(b.amount ?? 0));
+  return pocket();
+});
+on("POST", "/circles/([^/]+)/homework", (m, b) => {
+  const c = findCircle(m[1]!);
+  const who = c.members.find((x) => x.user_id === b.assignee_id);
+  const items = (b.items as { title: string; subject?: string | null; due_at?: string | null; reward?: number | null }[]) ?? [];
+  const tasks = items.map((i) => ({
+    ...state.tasks[0]!,
+    id: id(),
+    circle_id: c.id,
+    circle_name: c.name,
+    title: i.title,
+    due_at: i.due_at ?? null,
+    remind_at: null,
+    homework: true,
+    note: null,
+    subject: i.subject ?? null,
+    reward: i.reward ?? null,
+    submission: null,
+    submitted_at: null,
+    review: null,
+    review_note: null,
+    photo_ids: [],
+    status: "pending" as const,
+    role: "assigner" as const,
+    assigner_name: null,
+    assignee_name: who?.name ?? null,
+    assignee_id: (b.assignee_id as string) ?? null,
+    can_nudge: false,
+    created_at: iso(now()),
+    responded_at: null,
+    done_at: null,
+  }));
+  state.tasks.unshift(...tasks);
+  return { tasks };
+});
+const allowance = { limit: null, used: 1 };
+on("POST", "/homework/help", () => ({
+  help: {
+    explain: L("الكسر يعني جزء من حاجة كاملة. لما نجمع كسرين لازم المقامات (اللي تحت) تبقى زي بعض الأول، وبعدين نجمع اللي فوق بس.", "A fraction is part of a whole. To add two fractions, the bottom numbers must match first; then add only the top numbers."),
+    teach: L("هاتي رغيف عيش وقسّميه نصين، وبعدين كل نص لنصين: النص بقى ربعين. كده الطفل يشوف ليه بنوحّد المقامات.", "Cut a loaf in half, then each half in two: a half is now two quarters. Your child sees why the bottoms must match."),
+    practice: ["1/2 + 1/4 = ?", "1/3 + 1/6 = ?", "3/4 − 1/2 = ?"],
+    answers: ["3/4", "1/2", "1/4"],
+  },
+  error: null,
+  helpline: null,
+  ai_allowance: allowance,
+}));
+on("POST", "/tasks/([^/]+)/check", () => ({
+  check: { praise: L("خطك واضح وخطواتك مرتبة 👏", "Your steps are neat and clear 👏"), hints: [L("في سؤال 2: قبل ما تجمع، المقامات بقت زي بعض؟", "Question 2: before adding, are the bottom numbers the same?")] },
+  error: null,
+  helpline: null,
+  ai_allowance: allowance,
+}));
 on("POST", "/tasks/([^/]+)/respond", (m, b) => {
   const t = findTask(m[1]!);
   t.status = b.answer === "accept" ? "accepted" : "declined";

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import rateLimit from "@fastify/rate-limit";
 import { registerIdempotency } from "./plugins/idempotency";
 import { registerGzip } from "./plugins/gzip";
+import { registerClosing } from "./plugins/closing";
 import Fastify, { type FastifyBaseLogger, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { INSTALL_ID_HEADER, REPLY_STREAM_HEADER } from "@fakkarni/shared";
 import type { PrismaClient } from "./generated/prisma/client";
@@ -24,6 +25,7 @@ import { referralPageRoutes } from "./routes/referral-page";
 import { splitPageRoutes, splitRoutes } from "./routes/splits";
 import { cardRoutes } from "./routes/cards";
 import { photoRoutes } from "./routes/photos";
+import { homeworkRoutes } from "./routes/homework";
 import { circleRoutes } from "./routes/circles";
 import { invitePageRoutes } from "./routes/invite-page";
 import { daftarRoutes } from "./routes/daftar";
@@ -89,6 +91,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
 
   if (deps.sentry) Sentry.setupFastifyErrorHandler(app);
   app.addHook("onResponse", async (_req, reply) => metrics.record(reply.statusCode));
+  // The stop (server.ts): every reply in flight arrives whole, and its connection closes after it.
+  registerClosing(app);
   // A phone asks for a reply as it is written only from a server that says it sends one
   // (apps/mobile/src/sync/stream.ts), so this line is also the way to stop the asking.
   const liveReplies = deps.liveReplies;
@@ -149,6 +153,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(splitPageRoutes, { prisma, publicUrl: deps.invites?.publicUrl, storeUrl: deps.invites?.storeUrl });
     app.register(cardRoutes, { prisma, publicUrl: deps.invites?.publicUrl });
     app.register(photoRoutes, { prisma, authenticate, model: deps.model, now: deps.now, requireSubscription: billing.requireSubscription });
+    app.register(homeworkRoutes, { prisma, authenticate, model: deps.model, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
     app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
     app.register(bootstrapRoutes, { authenticate });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });

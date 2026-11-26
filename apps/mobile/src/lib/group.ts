@@ -4,21 +4,29 @@ export type UpcomingBucket = "today" | "tomorrow" | "later" | "noDate";
 
 const localDay = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
-/** Upcoming tab sections, in the phone's local time. Overdue open items show under today. */
+/**
+ * Upcoming tab sections, in the phone's local time, soonest first within each. Overdue open items
+ * show under today. A plan with only a reminder time is placed by it (it used to sit under "No
+ * date", as if Zaki would never remind).
+ */
 export function groupUpcoming(items: Item[], now: Date): { bucket: UpcomingBucket; items: Item[] }[] {
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
   const buckets: Record<UpcomingBucket, Item[]> = { today: [], tomorrow: [], later: [], noDate: [] };
+  const timeOf = (item: Item) => item.due_at || item.remind_at;
   for (const item of items) {
-    if (!item.due_at) {
+    const at = timeOf(item);
+    if (!at) {
       buckets.noDate.push(item);
       continue;
     }
-    const due = new Date(item.due_at);
+    const due = new Date(at);
     if (due <= now || localDay(due) === localDay(now)) buckets.today.push(item);
     else if (localDay(due) === localDay(tomorrow)) buckets.tomorrow.push(item);
     else buckets.later.push(item);
   }
+  const soonest = (a: Item, b: Item) => Date.parse(timeOf(a)!) - Date.parse(timeOf(b)!);
+  for (const bucket of ["today", "tomorrow", "later"] as const) buckets[bucket].sort(soonest);
   return (["today", "tomorrow", "later", "noDate"] as const).filter((b) => buckets[b].length).map((bucket) => ({ bucket, items: buckets[bucket] }));
 }
 

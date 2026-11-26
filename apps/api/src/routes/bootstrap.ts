@@ -28,7 +28,7 @@ const internalToken = randomBytes(18).toString("hex");
 export const isInternal = (req: FastifyRequest): boolean => req.headers[INTERNAL_HEADER] === internalToken;
 
 /** The same screens the phone preloads, in the same order. */
-export const BOOTSTRAP_BASE = ["/circles", "/me", "/tasks", "/trackers", "/daftar", "/money", "/splits", "/memories"] as const;
+export const BOOTSTRAP_BASE = ["/circles", "/me", "/tasks", "/trackers", "/daftar", "/money", "/splits", "/memories", "/pocket-money"] as const;
 export const BOOTSTRAP_CIRCLE = ["", "/feed", "/trackers"] as const;
 /** Circles covered (the phone preloads the first 8 of its list). */
 export const BOOTSTRAP_MAX_CIRCLES = 8;
@@ -63,7 +63,7 @@ const circleIds = (payload: string): string[] => {
 };
 
 /**
- * Calls a minute per caller. One call runs up to 32 inner GETs that the general limit does not
+ * Calls a minute per caller. One call runs up to 33 inner GETs that the general limit does not
  * count, so it gets its own, tighter one: the phone asks once on start and return, and a few
  * seconds after a change (a handful a minute at most).
  */
@@ -79,8 +79,11 @@ export const bootstrapRoutes: FastifyPluginAsync<{ authenticate: preHandlerAsync
     const turn = limiter(AT_ONCE);
     const get = (path: string) =>
       turn(async () => {
-        const res = await app.inject({ method: "GET", url: path, headers });
-        return res.statusCode === 200 ? res.payload : null;
+        // Once the server is stopping (a deploy), Fastify refuses requests to itself: a part that
+        // had not started by then is left out, as a part that failed is, and the phone keeps its
+        // saved copy of that tab.
+        const res = await app.inject({ method: "GET", url: path, headers }).catch(() => null);
+        return res?.statusCode === 200 ? res.payload : null;
       });
 
     // The circle list decides which circles follow; they start as soon as it is in, while the

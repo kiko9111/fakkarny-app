@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { fill } from "@/circles/logic";
-import { getMessage, setSaved, upsertItem } from "@/db/messages";
+import { getMessage, setSaved } from "@/db/messages";
 import type { SavedSummary } from "@/db/saved";
 import { t, dateLocale } from "@/i18n";
 import { deleteMemory, patchItem } from "@/lib/api";
 import { failText } from "@/lib/errors";
-import { scheduleItem } from "@/notifications";
+import { saveItem } from "@/sync/save-item";
 import { messagesChanged } from "@/sync";
 import { Button, Card, IconTile, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
@@ -80,7 +80,7 @@ export default function SavedScreen() {
                   onPress={() =>
                     guard(async () => {
                       const updated = await patchItem(item.id, { title: draft.trim() });
-                      await upsertItem(updated);
+                      await saveItem(updated);
                       await persist({ ...saved, items: saved.items.map((i) => (i.id === item.id ? { ...i, title: updated.title } : i)) });
                       setEditing(null);
                     })
@@ -101,8 +101,7 @@ export default function SavedScreen() {
                       if (!item.alarm && !(item.remind_at ?? item.due_at)) return notify(t.saved.alarmNoTime, "error");
                       void guard(async () => {
                         const updated = await patchItem(item.id, { alarm: !item.alarm });
-                        await upsertItem(updated);
-                        await scheduleItem(updated).catch(() => {});
+                        await saveItem(updated);
                         await persist({ ...saved, items: saved.items.map((i) => (i.id === item.id ? { ...i, alarm: updated.alarm, remind_at: updated.remind_at, due_at: updated.due_at } : i)) });
                       });
                     }}
@@ -116,7 +115,8 @@ export default function SavedScreen() {
                   onPress={() =>
                     guard(async () => {
                       const updated = await patchItem(item.id, { status: "cancelled" });
-                      await upsertItem(updated);
+                      // Also clears its notifications (a removed reminder used to keep ringing).
+                      await saveItem(updated);
                       await persist({ ...saved, items: saved.items.filter((i) => i.id !== item.id) });
                     })
                   }

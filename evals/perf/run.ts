@@ -66,7 +66,7 @@ process.env["DISABLE_JOBS"] = "1";
 
 const { buildApp } = await import("../../apps/api/src/app");
 const { PrismaClient } = await import("../../apps/api/src/generated/prisma/client");
-const { PrismaPg } = await import("@prisma/adapter-pg");
+const { pgAdapter } = await import("../../apps/api/src/db-pool");
 const { createConversationPipeline } = await import("../../apps/api/src/pipeline/conversation");
 type FriendModel = import("../../apps/api/src/ai/model").FriendModel;
 type FriendModelResult = import("../../apps/api/src/ai/model").FriendModelResult;
@@ -83,10 +83,10 @@ const model: FriendModel = {
   },
 };
 
-// The app's own pool settings (apps/api/src/db.ts), plus a query log for --trace.
+// The app's own pool (apps/api/src/db-pool.ts), plus a query log for --trace.
 const TRACE = arg("--trace");
 const queries: { at: number; sql: string }[] = [];
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env["DATABASE_URL"]!, max: Number(process.env["DB_POOL_MAX"] ?? 8) }), log: [{ emit: "event", level: "query" }] });
+const prisma = new PrismaClient({ adapter: pgAdapter(process.env["DATABASE_URL"]!), log: [{ emit: "event", level: "query" }] });
 prisma.$on("query", (e) => void queries.push({ at: performance.now(), sql: e.query.replace(/\s+/g, " ").slice(0, 150) }));
 const app = buildApp({ logger: false }, { prisma, model, rateLimitPerMinute: false, userCacheMs: 15_000, pipelineFactory: (log) => createConversationPipeline({ model, log }), auth: { allowInstallId: true }, billing: { requireSubscription: false } });
 await app.ready();

@@ -8,6 +8,11 @@ export const HealthResponse = z.object({
   service: z.literal("fakkarni-api"),
   version: z.string(),
   time: z.iso.datetime({ offset: true }),
+  /**
+   * The server's process id. In a container, 1 is the first process: the one a deploy's stop
+   * signal goes to, so the server hears it and can finish what it is doing.
+   */
+  pid: z.number().int().positive().optional(),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;
 
@@ -169,5 +174,7 @@ export const ExportResponse = z.object({
   splits: z.array(z.object({ title: z.string(), total: z.number(), currency: z.string(), people: z.array(z.object({ name: z.string(), share: z.number(), paid: z.boolean() })), created_at: z.string() })).default([]),
   /** Homework pages the user handed in as photos (base64), kept 90 days. */
   photos: z.array(z.object({ task: z.string().nullable(), mime: z.string(), data: z.string(), created_at: z.string() })).default([]),
+  /** Pocket-money records the user is part of, as child or parent (homework rewards and what was handed over). */
+  pocket_money: z.array(z.object({ role: z.enum(["child", "parent"]), kind: z.string(), amount: z.number(), title: z.string().nullable(), at: z.string() })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

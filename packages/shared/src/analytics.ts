@@ -28,6 +28,11 @@ export const APP_EVENTS = [
   "receipt_logged",
   "receipt_split",
   "homework_photos", // props.count
+  "homework_help", // the parent asked Zaki to explain a lesson: props.ok, props.photos (count)
+  "homework_check", // the child asked Zaki to look at their answers: props.ok, props.hints (count)
+  "homework_plan_sent", // a week's homework from one message: props.count, props.rewards (count)
+  "homework_practice_sent", // practice questions sent to the child as homework
+  "pocket_paid", // a parent marked pocket money as handed over
   "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);

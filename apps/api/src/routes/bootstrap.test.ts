@@ -89,6 +89,24 @@ describe.skipIf(!hasTestDb)("GET /bootstrap", () => {
     expect(refused).toBeGreaterThan(0);
   });
 
+  it("still answers when the server begins to stop while it runs, without the parts that had not started", async () => {
+    // Its own app: this one is closed in the middle of a call.
+    const stopping = buildApp({ logger: false }, { prisma, rateLimitPerMinute: false });
+    let closed: Promise<void> | undefined;
+    stopping.addHook("onRequest", async (req) => {
+      // The first inner request: the stop (SIGTERM, server.ts) begins while the rest wait their turn.
+      if (req.url === "/circles" && !closed) closed = stopping.close();
+    });
+    const res = await stopping.inject({ method: "GET", url: "/bootstrap", headers: { [INSTALL_ID_HEADER]: mona } });
+    await closed;
+    expect(res.statusCode).toBe(200);
+    const got = res.json().parts as Parts;
+    expect(Object.keys(got)).toContain("/circles"); // under way at the signal: finished
+    expect(Object.keys(got).length).toBeGreaterThan(0);
+    expect(Object.keys(got).length).toBeLessThan(BOOTSTRAP_BASE.length);
+    for (const json of Object.values(got)) expect(() => JSON.parse(json)).not.toThrow();
+  });
+
   it("leaves gzipped when the caller accepts it", async () => {
     await call(mona, "POST", "/trackers", { kind: "water" });
     await call(mona, "POST", "/circles", { kind: "family", name: "البيت" });

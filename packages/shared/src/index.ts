@@ -6,6 +6,7 @@ export * from "./repeat";
 export * from "./circles";
 export * from "./daftar";
 export * from "./tasks";
+export * from "./homework";
 export * from "./trackers";
 export * from "./session";
 export * from "./money";

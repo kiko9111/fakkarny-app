@@ -58,7 +58,7 @@ export default function TodayScreen() {
     return refresh();
   };
 
-  const { soon, repeating, more } = comingUp(items);
+  const { soon, repeating, more } = comingUp(items, new Date());
   const own = (trackers ?? []).filter((x) => !x.pack).length;
   const replace = (next: Tracker) => setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
   const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { MAX_SECTIONS, TRACKER_TEMPLATES, type AppAction, type TrackerKind } from "@fakkarni/shared";
+import { MAX_REWARD, MAX_SECTIONS, TRACKER_TEMPLATES, type AppAction, type TrackerKind } from "@fakkarni/shared";
+import { rewardTag } from "../homework/rules";
 import { Prisma, type PrismaClient, type Split, type Tracker, type User } from "../generated/prisma/client";
 import { askZaki } from "../circles/ask";
 import { MAX_CIRCLES_PER_USER } from "../circles/rules";
@@ -345,8 +346,10 @@ async function planTask(ctx: Ctx, a: AppAction): Promise<One> {
   const dueAt = safeLocalToUtc(a.due_at_local, tz);
   const remindAt = safeLocalToUtc(a.remind_at_local, tz);
   const who = match.member.name ?? a.person;
+  // Pocket money for homework ("20 pounds if he finishes it"): whole EGP, records only.
+  const reward = a.homework && a.amount ? Math.min(MAX_REWARD, Math.max(1, Math.round(a.amount))) : null;
   return {
-    card: card(lang, a.kind, "pending", LABEL.taskAsk(lang, who, title, match.circle.name), `/circle/${match.circle.id}`, {
+    card: card(lang, a.kind, "pending", LABEL.taskAsk(lang, who, title, match.circle.name) + (reward ? rewardTag(lang === "english" ? "en" : "ar", reward) : ""), `/circle/${match.circle.id}`, {
       kind: "assign_task",
       circleId: match.circle.id,
       assigneeId: match.member.userId,
@@ -355,6 +358,7 @@ async function planTask(ctx: Ctx, a: AppAction): Promise<One> {
       remindAt: remindAt?.toISOString() ?? null,
       homework: a.homework ?? false,
       note: a.note ?? null,
+      reward,
     }),
   };
 }
@@ -393,7 +397,7 @@ export async function answerCard(prisma: PrismaClient, user: User, c: StoredCard
     return { card: done(LABEL.moneyLogged(lang, p.moneyKind, p.amount, section.name, added.monthTotal), `/money/${section.id}`), notices: added.notices.filter((n) => n.userId !== user.id) };
   }
   if (p.kind === "assign_task") {
-    const made = await assignTask(prisma, { circleId: p.circleId, assignerId: user.id, assigneeId: p.assigneeId, title: p.title, dueAt: p.dueAt ? new Date(p.dueAt) : null, remindAt: p.remindAt ? new Date(p.remindAt) : null, homework: p.homework, note: p.note }, now);
+    const made = await assignTask(prisma, { circleId: p.circleId, assignerId: user.id, assigneeId: p.assigneeId, title: p.title, dueAt: p.dueAt ? new Date(p.dueAt) : null, remindAt: p.remindAt ? new Date(p.remindAt) : null, homework: p.homework, note: p.note, reward: p.reward ?? null }, now);
     if (made === "not_members") return { card: fail(LABEL.notFound(lang, "person")), notices: [] };
     if (made === "too_many") return { card: fail(LABEL.tooMany(lang)), notices: [] };
     return { card: done(LABEL.taskSent(lang, made.task.assignee.name ?? "?", p.title), `/circle/${p.circleId}`), notices: made.notices };

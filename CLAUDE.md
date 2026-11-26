@@ -61,9 +61,20 @@ Rules:
 - Production API: Railway project `mellow-reverence`, service `@fakkarni/api`, built
   from the root Dockerfile and deployed from branch `claude/new-session-60jlqv` on
   every push: https://fakkarniapi-production.up.railway.app (health check /health).
-  railway.json (config as code): traffic moves to a new deploy only after its /health answers, the old
-  one keeps serving 20 s more, then gets SIGTERM and 60 s to finish replies in flight. Deploys used to
-  drop chat for a minute (messages sat on "Sending…").
+  Every deploy needs the owner's yes. How: check the deploy branch out, `git merge --no-ff
+  origin/main -F <message file>` (no workflow tag in the message), settle a conflict with main's
+  side (`git checkout --theirs <file>`: the branch once carried a cherry-pick of #60), confirm
+  `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
+  builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
+  (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
+  server answers, a 404 that the old one still does. Live by 2026-11-26 07:52Z: main at
+  8f054e7 (through #64; the branch's tree equals main's).
+  railway.json (#59, on the deploy branch only since that deploy) asks that traffic moves to a new
+  deploy only after its /health answers, that the old one keeps serving 20 s more, then gets
+  SIGTERM and 60 s to finish replies in flight. Deploys used to drop chat for a minute (messages
+  sat on "Sending…"). Whether Railway reads the file for this service is not confirmed: see
+  "Railway stops reading railway.json" below. The server itself did not hear SIGTERM until the
+  Dockerfile started it with `exec node` (see "Kept database connections").
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
@@ -300,7 +311,7 @@ Rules:
   circles left empty, and deletes circle_posts by or about the user (no FK on those ids).
 - The phone pulls items changed on the server outside the chat (accepted tasks, Session steps,
   cancelled tasks) on every foreground with `pullItems` (apps/mobile/src/sync/items.ts) and
-  re-plans their notifications.
+  re-plans their notifications in the background (see "Local notifications in the background").
 - Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
   keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
   still saved, user told once), Sentry on API and app with all content collection off,
@@ -571,8 +582,13 @@ Rules:
   (src/ui/DateTimePicker.tsx, pure JS on purpose so it reaches builds over the air; logic in
   src/lib/calendar.ts) besides the quick picks.
 - Live server check: the cloud session can't reach the Railway URL. .github/workflows/api-smoke.yml
-  (a pushed commit message containing "[api-smoke]") times the screens' GETs and runs the e2e test
-  against production, with this commit's phone client and with the client of the installed build.
+  (a pushed commit message containing "[api-smoke]", or started by hand: it has `workflow_dispatch`,
+  which is the way after a deploy because nothing needs pushing) times the screens' GETs and runs
+  the e2e test against production, with this commit's phone client and with the client of the
+  installed build. The log of a running job cannot be read; it is there when the job ends (~3 min).
+  Its last two streamed chat turns come after a quiet pause (35 s; started by hand, the `quiet`
+  input sets the seconds, up to 280): they show what a message costs after the server sat idle
+  (see "Kept database connections").
 - Rate limit: 600 requests a minute per caller (120 refused whole screens while chat, which has its
   own 30/min bucket, kept working). 429s are logged as "rate_limited". The phone shows busy / server /
   sign-in text from `failText` (src/lib/errors.ts) instead of always "no connection".
@@ -663,7 +679,8 @@ Rules:
   are refused and old twins merged into the oldest on GET /money (`mergeDuplicateSections`). Money
   routes answer 422 (not 409) for writes that will never pass, because the phone resends 409s. GET
   /money reads every section's month in one query (`toWireSections`). DB pools: API 8
-  (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all.
+  (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all
+  (what the API's pool does when that is used up: "Kept database connections").
 - OTA fixes apply without a restart: src/lib/updates.ts checks on start and on return (at most every
   10 min), downloads in the background and reloads when the user leaves the app.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
@@ -708,6 +725,15 @@ Rules:
   taps 0.6–2.1 s → 0.4–1.2 s; a chat turn besides the model 0.9–1.8 s → 0.5–1.3 s. At 0.02 s a trip
   (the API in the database's region) the same code gives 0.2 s, 0.09–0.26 s and 0.11–0.29 s: the
   region move is worth more than any code change, and it is a Railway dashboard setting.
+  Live after the deploy of 2026-11-26 (smoke test, a fresh account, a US runner, the API still in
+  US East; the run before the deploy → the run after): every tab's data, nine GETs adding up to
+  4.1 s → one GET /bootstrap of 0.30 s (0.76 s the first time after the restart; the nine GETs one
+  by one now add up to 2.7 s); one tab's GET 0.28–0.78 s → 0.20–0.30 s; sign-in plus one query
+  0.27–0.38 s → 0.19–0.22 s (the runner's own trip to Railway was 0.08 s of the first and
+  0.11–0.13 s of the second, so one database round trip is still ~0.09 s); a turn the rules
+  answer 0.88 s → 0.57 s; an AI turn 2.3–5.0 s → 2.7–3.5 s (the model: `rules` and `context` end
+  at 0.27–0.30 s in the turn's timing). An account with circles has more in its /bootstrap than
+  the fresh one measured here.
 - Server speed rules (same pass):
   - Count round trips, not queries: run independent lookups together, and never add a query in a
     row to a hot path (auth, GET of a tab, POST /messages) without measuring it.
@@ -769,9 +795,22 @@ Rules:
     r.fulfill({ contentType: "text/html", body }))` and open https://zaki.preview/ (a file:// page
     cannot route, and plain http has no `crypto.randomUUID`).
 - Railway stops reading railway.json (config as code, deprecated) on 2026-12-01
-  (docs.railway.com/config-as-code): before then the health check path, the 20 s overlap and the
-  60 s drain from #59 must be set in the service's settings in the dashboard, where the region is
-  set too. After that date the file is ignored and deploys run on the service settings.
+  (docs.railway.com/config-as-code): files "continue to work for services that already use them"
+  until then, and "new services cannot opt into" it. Ours first had the file on its deploy branch
+  with the deploy of 2026-11-26, so it may not be read at all (a deployment's details page marks
+  the settings that came from a file; not looked at). Either way the health check path (/health),
+  the 20 s overlap and the 60 s drain from #59 belong in the service's Settings in the dashboard
+  (the last two also as the service variables RAILWAY_DEPLOYMENT_OVERLAP_SECONDS and
+  RAILWAY_DEPLOYMENT_DRAINING_SECONDS), where the region is set too: EU West (Amsterdam,
+  `europe-west4-drams3a`), beside the database, and a service without a volume moves with no
+  downtime. The owner was asked for both on 2026-11-26. The region has moved when the smoke
+  test's `/splits` time minus its `/health` time (one database round trip, ~0.09 s on that day)
+  falls to about 0.02 s, and when its `x-railway-upstream-zone` line (the zone the server runs
+  in, which Railway adds because the test sends `x-railway-debug`) no longer says
+  `railway/us-east4-eqdc4a`. The `x-railway-edge` line only names the edge nearest the runner
+  (iad1 and lax1 on that day's two runs). During an overlap two servers run: the DB pools are
+  sized for one (8 + 3 of the session pooler's ~15), so the new server waits its turn on the
+  few connections it gets until the old one is gone ("Kept database connections").
 - Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
   words show changes: the stored answer and everything a turn decides are as before.
   - Wire: the phone POSTs /messages with `Accept: text/event-stream, application/json`
@@ -794,9 +833,16 @@ Rules:
     passes without the stream steps the mode down for the life of the process (eager → plain →
     off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
     the API takes the eager flag on a strict tool was not checked with a real key before this
-    shipped: after a deploy read /admin, "How replies were read from the model" (the `stream`
-    and `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout /
-    cut for a streamed try that was lost and read whole instead) and "first words".
+    shipped. It does, live since the deploy of 2026-11-26: the smoke test's streamed small-talk
+    turns showed their words in 12 to 20 `draft` events, none taken back, and the parts reached
+    the runner spread over 0.6–0.7 s of the model's writing (the test prints when each part
+    arrived; a reply read without the eager flag arrives bunched). First words at 1.5–2.4 s, the
+    whole answer at 2.3–3.9 s (`first` 1.1–2.0 s in the turn's timing). The turn that sets a
+    reminder came whole, as it does when the reply opens by saying it is set, and the e2e walk
+    read a stream to its end. /admin, "How replies were read from the model" (the `stream` and
+    `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout / cut
+    for a streamed try that was lost and read whole instead) and "first words" show the same
+    for every turn.
   - Cost of a lost stream: it is paid for as far as it got. What it read is known from its
     start and added to the turn's usage; what it had written is only told at a stream's end,
     so the turn's cost is a floor. The eager flag changes the tools, which come before the
@@ -874,6 +920,232 @@ Rules:
     in the Daftar are laid out like `DaftarCard`). A streak beside a title is a flame and the
     number (`TrackerStreak`), with the words read out.
   - The browser preview has sample split bills (demo/server.web.ts, the shared `splitBill` math).
+- Kept database connections (2026-11-26, same speed thread; apps/api/src/db-pool.ts). Opening a
+  connection to the database is several round trips in a row (TCP, TLS, sign-in: about 0.5 s
+  from US East). The pool let a connection go after 30 idle seconds, and one person using the
+  app leaves the server quiet that long all the time, so most of their messages opened
+  connections before anything else. Measured live before the fix (smoke run of 08:12Z, the last
+  two streamed turns): first words 2.61 s after 35 quiet seconds, 1.46 s on the turn right after
+  it; with the model's own time to its first words taken out, 1.54 s against 0.59 s.
+  - Now a connection stays 5 minutes after its last use (DB_POOL_IDLE_MS, in ms, at most
+    2^31-1: Node fires a longer timer at once), with a TCP sign of life every 10 s, so an idle one
+    that died without a word is dropped within about 20 s. A query sent on a connection whose
+    other end vanished still waits for TCP to give up (minutes), as before. The proactive tick goes through the same pool every minute, so a running server always has a
+    few warm ones. `poolSettings()` holds the numbers; the server (db.ts), the API's tests
+    (test/db.ts) and the speed harnesses all open their pool with `openPool` / `pgAdapter`.
+  - Kept connections count against the pooler's ~15. `PatientPool` is pg's pool with one change:
+    when a new connection is refused for lack of room (`isNoRoom`: Postgres 53300, Supabase's
+    "max clients reached", PgBouncer's "no more connections allowed"), the pool stops growing
+    at the connections it has and the query queues for one of them (pg's own queue; a refused
+    query joins it at the back) instead of failing with a 500. Three seconds later it lets one
+    more attempt through; the first connection that is let in lifts the limit and opens
+    connections for the queries still waiting (pg only does that when its queue is stirred: they
+    stayed on the few old connections; `#serveWaiting` calls pg's private `_pulseQueue`, and a
+    test fails if it goes). Those that the pooler refuses on the way queue again too: while the
+    pool has connections, a refused query waits for one for what is left of its 15 s
+    (`#ask` cuts pg's timeout to it), however long it had already waited (second review,
+    2026-11-26: one that had waited past 10 s failed with a 500). A transaction waits for a
+    connection as long as a query does (`PRISMA_OPTIONS` in db.ts, `transactionOptions.maxWait`
+    15 s, also used by test/db.ts; Prisma's own 2 s turned a full pooler into 500s for every write
+    in a transaction; a test fails without it). With no connection at all a
+    query tries again for 10 s, then fails with the server's own words. Any other failure to
+    connect passes through at once. The server's log says "db: no room for another connection
+    at the pooler" (at most every 30 s) when it happens. Tests: db-pool.test.ts, with a
+    stand-in client and on the real Postgres through a role that may hold two connections (the
+    whole app runs on those two).
+  - The pool counts its connections with pg's "connect" and "remove" events, because pg's own
+    `totalCount` includes attempts that are still on their way, and pg starts the next queued
+    query's attempt before it reports a failed one.
+  - `PatientPool.connect(callback)` calls the callback in the same turn as pg's own, as pg's
+    plain pool does: `pool.query()` puts its 'error' listener on the connection there. The first
+    version went through a promise in between; a FATAL read together with the end of the last
+    answer (a database restart or failover, 57P01) then reached a connection with no listener,
+    was thrown out of the socket's handler and would have stopped the server (independent
+    review, 2026-11-26; db-pool.test.ts runs both cases on a stand-in server on a real socket).
+    Never put an `await` or `.then` between pg's callback and the caller's. The promise form
+    (`await pool.connect()`, which Prisma uses for every transaction and adds its own listener
+    only after) gets the connection with a listener already on it, kept until `setImmediate`
+    (second review: a plain pg pool crashes the same way there); the transaction then fails
+    with "not queryable" and its release drops the connection.
+  - `pg` is a direct dependency of the API now. There must be one copy of it in the tree: the
+    Prisma adapter takes a pool only if it is `instanceof` its own `pg.Pool` (the "is the pool
+    Prisma runs on" test fails otherwise).
+  - Measure: `npm run perf:quiet -w @fakkarni/evals -- [--rtt 100] [--quiet 35000] [--idle <ms>]`
+    (evals/perf/quiet.ts; same database rule as `perf`) times a request after a quiet pause and
+    the same one right after. At a 0.1 s round trip and 35 quiet seconds, the old pool
+    (`--idle 30000`) → the new one: every tab's data 1.26 s → 0.74 s (0.63 s right after), one
+    tab 0.53 s → 0.21 s (0.10 s), a chat turn besides the model 1.57 s → 0.74 s (0.74 s). The
+    0.1 s that is left on a GET is the sign-in row (USER_CACHE_MS is 15 s) being looked up
+    again. A local connection has no TLS (3 round trips, about 5 live): the live gain is larger.
+  - The server hears a deploy's stop signal (same day). The container ran `sh -c "npx prisma
+    migrate deploy && npx tsx src/server.ts"`: its first process was the shell, a stop signal
+    (SIGTERM) goes to the first process only, and the shell does not pass it on. Seen in a
+    process namespace (`unshare --pid --fork --mount-proc`, which gives the command a
+    container's process 1): six seconds after the signal the server still answered. So
+    `shutdown` in server.ts never ran in production, and an old server kept its connections
+    until it was killed. The Dockerfile now ends in `exec node --import tsx src/server.ts` (tsx
+    as the loader; no shell, npm or tsx command in front). In the same namespace, from an
+    install made the way the image is: the stop signal came 1.2 s into a reply that takes 4 s,
+    the reply arrived whole (streamed and plain), the server closed its connections and exited
+    0 a tenth of a second later; a new connection after the signal is refused, which is what
+    the deploy's overlap is for. GET /health says `pid`: 1 on the live server means the server
+    is the first process (a start command set in Railway's dashboard would replace the
+    Dockerfile's), and `version` now comes from apps/api/package.json (no npm in front, so no
+    npm_package_version). server.test.ts keeps the command and the clean stop.
+  - The stop (server.ts `shutdown`, after the independent reviews of 2026-11-26). Node's close()
+    only closes connections that are idle at that moment: a reply in flight at the signal ended
+    with `Connection: keep-alive`, and a caller that keeps its connections (the deploy's proxy)
+    held the server open for Fastify's 72 s keep-alive, past the 60 s drain, so it was killed
+    still holding its database connections; the first measurement above had a caller that
+    closed its own. Now: the signal handlers go in before the first wait (a first process with
+    no handler drops the signal); then the HTTP close and pg-boss's stop (20 s for a running
+    tick) together, every connection closed at 40 s; then up to 10 s for chat turns whose phone
+    has gone (Fastify waits for connections, not handlers) and pushes and dashboard rows the
+    last requests started (`track` in lib/background.ts: messages.ts `answer`, `pushNotices`,
+    `inBackground`); then the pool closes and the process exits 0, and at 55 s it exits
+    whatever still hangs, logging "shutdown gave up" with the step it was on.
+    How the HTTP close treats connections is plugins/closing.ts: Node's close() takes a
+    connection whose reply has ended for idle and destroys it while the end of that reply still
+    waits to be written, so the close first waits (up to 5 s) for ended replies to be written
+    out; after that, each connection is closed as soon as its reply has been handed to the
+    network ('finish', which streamed replies reach too). A sweep of idle connections every
+    250 ms, the first version, cut big answers to slow callers in 4 of 4 runs (second review).
+    GET /bootstrap leaves out the parts it had not started when the close began (Fastify
+    refuses requests to itself from then on; it used to answer 500). Tests: plugins/closing.test.ts
+    (8 MB answers to a caller that stops reading, plain and streamed), and server.test.ts runs
+    a reply through a slow proxy to the database with SIGTERM in the middle and a caller that
+    keeps its connection: exit within 5 s of the answer, and every database connection ended
+    with pg's goodbye (Terminate), which only a pool that closes itself sends (a count of the
+    database's sessions after the exit could not fail: the system closes them anyway). Still
+    deaf: a signal during module loading, and during `prisma migrate deploy` (sh is the first
+    process then); a deploy superseded while it starts runs until it is killed.
+  - Live: neither is deployed when this is written. After the deploy, the smoke test's turn
+    "after the quiet" and the one "right after" should show the same "first byte" and the same
+    "context" in "server ms" (they were 483 ms against 279 ms), and its /health line `"pid":1`;
+    run it once with `quiet` 240 to see that a connection kept for minutes still answers. The
+    deploy that brings this in still replaces a server that does not hear the signal.
+  - More API instances, or a longer deploy overlap, need more room first: each instance holds up
+    to 8 + 3. The pooler's pool size is a Supabase dashboard setting (Database settings,
+    connection pooling); nobody has changed it.
+
+- Local notifications in the background (2026-11-26, kareem: "the today tab changes are somehow
+  late", always on the Pixel). On Android every expo-notifications schedule or cancel is a round
+  trip through the system (node_modules/expo-notifications/android: a package-manager lookup and
+  `sendBroadcast` to NotificationsService, `onReceive` on the main thread, a new thread for the
+  SharedPreferences write and AlarmManager, the answer posted back on the main looper). The old
+  `scheduleItem` cancelled 19 identifiers one by one before planning, for every item type, and it
+  was awaited: after a chat reply before `dataChanged` and the next outbox message, inside
+  `pullItems` before the next item's SQLite write, in `complete()` before the PATCH, and
+  `refresh()` re-planned every timed reminder on every return to the app and network change.
+  The browser build has no notifications (index.web.ts), which is why no browser run showed it.
+  - Now notifications/scheduler.ts (pure, tested with a stand-in phone) works in the background,
+    one native call at a time, and makes only the calls that change something
+    (notifications/reconcile.ts): a record identifier → signature (time | kind | alarm | hash of
+    the words) in localStorage `notif:scheduled`, and the phone's own list read once per launch
+    (`getAllScheduledNotificationsAsync`). Scheduling an identifier again replaces it, so a changed
+    time is one call. Each item's first pass after a launch schedules everything planned again (a
+    force stop drops alarms the record can't see). Repeats have one identifier per occurrence
+    (`item_<id>_r<minute>`), so a moving window only adds the new ones; "Later" is
+    `item_<id>_snooze` (left alone while the item is open, cleared when it closes); one whose time
+    has come is left to ring; a call with no answer counts as failed after 15 s; `soon` puts a reminder
+    just made ahead of a bulk top-up. First launch after this change: the old slot identifiers
+    (`_r0`…`_r15`) are cancelled once.
+  - Rules: never await `scheduleItem` / `scheduleItems` on the user's path. Write SQLite first,
+    fire `itemsChanged` (lib/signals.ts: every list of plans re-reads SQLite, also a tab not in
+    view), then plan notifications. An item a route answered with goes through `saveItem`
+    (sync/save-item.ts), which also clears a cancelled item's notifications (the Saved screen's
+    Remove used to leave them ringing). `pullItems` writes each change (`upsertItems`), fires
+    `itemsChanged`, then plans; a call made while a pull is on its way gets one more pull after it
+    (`oneAtATime`, lib/one-at-a-time.ts), so "accept" followed by a pull sees the new plan.
+    `useItems.complete` sends the PATCH right after the local write, and a reload that read SQLite
+    a moment before the write can't bring the ticked row back.
+  - No new `withTransactionAsync`: expo-sqlite shares one connection, a transaction begun while
+    another is open (a chat reply being saved, `markSynced`) fails with "cannot start a transaction
+    within a transaction", and statements from elsewhere run inside whichever one is open. Pulled
+    items are written one statement each for that reason (one pull wrapped in a transaction was
+    lost whole when a reply arrived during it); one that fails waits for the next pull.
+  - Answers that change plans without carrying them: a card's answer (POST /messages/:id/actions),
+    a reply with cards (a chat yes/no to a card, "undo", an app action such as a moved task
+    reminder) and a resend answered from what the server stored (only the plans the message made).
+    The phone pulls items after each (ActionCards, `markSynced` in sync/index.ts), so Today has the
+    change before it is opened. Network events refresh only when the phone comes back online:
+    Android reports every change of signal strength as one.
+  - Today's "Coming up" (`comingUp`, lib/coming-up.ts) lists plans from the last hour onward
+    soonest first, then plans with no time, then plans whose times have all passed (the latest
+    first). One-off reminders stay open after they ring, and old ones used to fill the five places
+    so a new plan only raised the "+N". A plan sorts by the next of its times (Zaki's reminder until
+    it has passed, then the plan's own time) and counts as passed only when both have: the persona
+    reminds an hour or a day before, and sorting by the reminder alone dropped tomorrow's dentist
+    behind the plans with no time an hour after the reminder. A row shows when Zaki reminds beside
+    the plan's own time when the two differ (`planTimes`, lib/plan-time.ts): a change to the
+    reminder alone used to show nothing. Upcoming places a plan with only a reminder time by that
+    time, not under "No date".
+  - Android rings late: without the exact-alarm permission (this app has none) Android 12 and later
+    may ring an alarm up to about an hour after its time, and the library keeps it scheduled until
+    it rings. So a record is forgotten only 3 hours past its time (`FIRED_GRACE_MS`): until then a
+    closed plan's is cancelled and an open plan's is left to ring. The phone's list gives each
+    notification's time on Android (`listedAt`), so one with no record is judged the same way. iOS
+    lists no time but rings on time, so at a launch a record whose time has passed for one it still
+    lists is taken as unknown (`launchSignature`): cancelled if not wanted, never forgotten.
+  - Leftovers: only open plans are planned again on a return to the app, so after them
+    `planTheRest` plans every other item the record or the phone's list still holds notifications
+    of (`scheduler.tracked()`): a plan closed while the app was stopped before its notifications
+    went, or whose cancel failed ("stop reminding me" left an hourly reminder ringing all day), and
+    a task with only a deadline (its alarm comes back after a force stop).
+  - The notification shade (notifications/shade.ts, pure): Android keeps a notification there after
+    Done or Later on it, and each occurrence of a repeating reminder has its own identifier, so an
+    hourly reminder stacked up and a plan ticked off in Today kept its reminder. Done / Later
+    dismiss the tapped one; `tidyShade` takes out every reminder of a closed plan and all but the
+    newest of an open one (follow-ups and Zaki's messages are left alone), on every refresh, when
+    a plan closes (`scheduleItems`) and when a reminder arrives with the app open.
+  - Later is two things: the local snooze (`item_<id>_snooze`, an hour on) and a chat line that asks
+    the server to move the plan an hour on. The snooze gives way when one of the plan's own
+    reminders rings from 15 minutes before it to an hour after it (`SNOOZE_BEFORE_MS`,
+    `SNOOZE_AFTER_MS`; never a follow-up): read at once, the moved reminder rang seconds after the
+    snooze; read late (Later tapped offline), up to an hour after. The
+    signature includes the plan's title, because Done and Later send it to the chat: a renamed plan
+    is scheduled again. The record is written after every item that changed it, and at a launch a
+    time the phone lists beats a record that says another time (a run stopped before writing).
+    The wipe (`clearScheduled`) drops plans enqueued while it runs (`reset` until `reopen`: they are
+    the last person's) and clears the shade.
+  - Done / Later tapped while the app was stopped: the buttons don't open the app
+    (`opensAppToForeground: false`), and with no JavaScript running Android only keeps the tap in
+    the app's process. `listenForNotifications` reads it at start (`getLastNotificationResponse`)
+    and answers it then: Done as usual, Later with its chat line only (the server moves the plan an
+    hour on from then). Each tap is answered once (notifications/taps.ts, localStorage
+    `notif:taps`), and the last answer is cleared after each, because an update that reloads the
+    app would find it again. A tap whose process ended before the app opened is lost: catching it
+    needs a background task (expo-task-manager, `Notifications.registerTaskAsync`, a new build
+    with the module optional) or buttons that open the app, which is the owner's call.
+  - Never roll the app back over the air to a bundle from before this scheduler (b62a7e2 or older):
+    its `scheduleItem` cancels only the old slot identifiers, so the per-occurrence repeats
+    (`item_<id>_r<minute>`) and the snooze it can't see would ring twice, and "stop reminding me"
+    would not stop them. Fix forward instead.
+
+- Homework, grown up (2026-11-26, kareem: "attach pocket money to homework, enhance it, and Zaki
+  helps the mom"). Shared rules and wire types in packages/shared/src/homework.ts (pure + tested),
+  routes apps/api/src/routes/homework.ts, writes apps/api/src/homework/store.ts, wording
+  homework/rules.ts, prompts apps/api/src/persona/homework.ts.
+  - circle_tasks.subject / reward (whole EGP, ≤ MAX_REWARD, homework only). "Well done" adds one
+    `earned` row to table pocket_money (unique task_id, so a second Well done adds nothing; redo earns
+    nothing) and tells the child their total. The parent marks money handed over (POST
+    /pocket-money/paid, never more than is owed, 422 otherwise; a phone-made id makes resends
+    harmless). GET /pocket-money = every record the caller is in, as child or parent (in /bootstrap,
+    the phone's PARSERS and prefetchAll). Records only: Zaki never holds or moves money. In /me/export.
+  - A week at once: the phone parses the school's pasted WhatsApp text with `parseHomeworkMessage`
+    (subjects, day headers, "بكرة", greetings skipped) and POSTs /circles/:id/homework (≤ 15). The
+    child gets ONE chat line for all of them; each is a normal pending homework; due 08:00 local and
+    Zaki reminds the evening before (`remindBefore`).
+  - Zaki helps: POST /homework/help (the parent who set the homework, or free text) explains the
+    lesson, how to teach it, 3-5 practice questions and their answers (parent only; "Send as homework"
+    makes a new homework for the same child). POST /tasks/:id/check (the child, open homework only,
+    5 a day per homework) gives praise and hints, never answers. One AI call each, counted like a chat
+    message (`ai_call` purpose "chat", `aiAllowanceToday` in billing/allowance.ts, shared with
+    receipts); words and up to 3 page photos are read once and never stored. The crisis keyword net
+    runs first and answers with the helpline, no AI call.
+  - Chat: the task tool takes `amount` on homework as the reward; the confirm card shows it.
+  - Screens: app/homework/plan.tsx, help.tsx, check.tsx, app/pocket.tsx; entry points on the circle
+    screen and on each homework card (parent: "Zaki, explain the lesson"; child: "Check with Zaki").
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

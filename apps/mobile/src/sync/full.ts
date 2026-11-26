@@ -1,4 +1,5 @@
-import { insertServerMessages, upsertItem } from "@/db/messages";
+import { insertServerMessages, upsertItems } from "@/db/messages";
+import { itemsChanged } from "@/lib/signals";
 import { listItems, listMessagesPage } from "@/lib/api";
 import { scheduleItems } from "@/notifications";
 import { messagesChanged } from "./index";
@@ -17,7 +18,9 @@ export async function fullSync(): Promise<void> {
     if (messages.length < 200) break;
   }
   const items = await listItems();
-  for (const item of items) await upsertItem(item);
-  await scheduleItems(items.filter((i) => i.status === "open"));
+  await upsertItems(items);
+  itemsChanged.emit();
+  // In the background: nothing on screen waits for notifications.
+  void scheduleItems(items.filter((i) => i.status === "open"));
   messagesChanged.emit();
 }
