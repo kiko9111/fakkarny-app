@@ -7,6 +7,7 @@ import { ChatInput } from "@/chat/ChatInput";
 import { MessageBubble } from "@/chat/MessageBubble";
 import { QuickReplies } from "@/chat/QuickReplies";
 import { TypingIndicator } from "@/chat/TypingIndicator";
+import { isWriting } from "@/chat/writing";
 import { useChat } from "@/chat/useChat";
 import type { LocalMessage } from "@/db/messages";
 import { t } from "@/i18n";
@@ -73,7 +74,7 @@ function ZakiHeader({ typing }: { typing: boolean }) {
 }
 
 export default function ChatScreen() {
-  const { messages, loaded, typing, locked, send } = useChat();
+  const { messages, loaded, typing, locked, send, writing } = useChat();
   // "عايز أتعود على القراية كل يوم" → offer a tracker with one tap (rules on the phone, no AI call).
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const say = (text: string) => {
@@ -122,8 +123,13 @@ export default function ChatScreen() {
         inverted
         keyExtractor={(m) => m.client_id}
         // In the inverted list, index-1 sits just below on screen and index+1 just above.
-        renderItem={({ item, index }) => <MessageBubble message={item} lastInRun={data[index - 1]?.role !== item.role} firstInRun={data[index + 1]?.role !== item.role} />}
-        ListHeaderComponent={typing && !offline ? <TypingIndicator /> : undefined}
+        renderItem={({ item, index }) => (
+          <MessageBubble message={item} lastInRun={data[index - 1]?.role !== item.role} firstInRun={data[index + 1]?.role !== item.role} writing={isWriting(item, writing)} heard={writing?.clientId === item.client_id} />
+        )}
+        // Rows also depend on the reply being written (its dots, "Sending…" on the message it answers).
+        extraData={writing}
+        // Once the words of the reply show, they are the sign that Zaki is writing.
+        ListHeaderComponent={typing && !offline && !writing ? <TypingIndicator /> : undefined}
         keyboardShouldPersistTaps="handled"
       />
       {locked ? (

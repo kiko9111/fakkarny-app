@@ -11,8 +11,10 @@ import "./storage";
  * `brain`: "phone" when Zaki's model runs on the phone (Android test mode), else the cloud.
  * `brain_model`: the chosen on-phone model id (src/brain/catalog.ts). `brain_fallback`: "0" turns
  * off the cloud fallback when the phone model fails. `brain_last_ms`: last on-phone reply time. `reply_last_ms`: last whole reply wait (send to reply).
+ * `reply_stream`: "1" when the server last said it sends chat replies while they are written
+ * (read and written by lib/api.ts under the same `pref:` name; it cannot import this file).
  */
-export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak" | "split_daftar" | "brain" | "brain_model" | "brain_fallback" | "brain_last_ms" | "reply_last_ms";
+export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak" | "split_daftar" | "brain" | "brain_model" | "brain_fallback" | "brain_last_ms" | "reply_last_ms" | "reply_stream";
 
 export const prefs = {
   get(key: PrefKey): string | null {

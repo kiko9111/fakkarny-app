@@ -178,12 +178,23 @@ function jsonSchema(schema: z.ZodType): Anthropic.Tool.InputSchema {
   return rest as Anthropic.Tool.InputSchema;
 }
 
-/** The tools sent with every chat turn (deterministic, so they cache with the persona). */
-export function friendTools(): Anthropic.ToolUnion[] {
+/**
+ * The tools sent with every chat turn (deterministic, so they cache with the persona).
+ * `eager`: only on a request asked for as a stream (ai/respond-stream.ts), so the words of the
+ * reply arrive as they are written instead of in one piece. A request that is not a stream is
+ * sent exactly as before.
+ */
+export function friendTools(opts: { eager?: boolean } = {}): Anthropic.ToolUnion[] {
   return [
     // Strict: the same grammar-checked schema the structured output used (12 nullable fields,
     // under the API's 16; src/ai/model.test.ts guards it).
-    { name: "respond", description: RESPOND_DESCRIPTION, input_schema: zodOutputFormat(RespondInput).schema as Anthropic.Tool.InputSchema, strict: true },
+    {
+      name: "respond",
+      description: RESPOND_DESCRIPTION,
+      input_schema: zodOutputFormat(RespondInput).schema as Anthropic.Tool.InputSchema,
+      strict: true,
+      ...(opts.eager ? { eager_input_streaming: true } : {}),
+    },
     ...AREA_TOOLS.map((t): Anthropic.Tool => ({ name: t.name, description: t.description, input_schema: jsonSchema(t.input) })),
   ];
 }

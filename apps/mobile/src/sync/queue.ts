@@ -40,7 +40,8 @@ export interface Timers {
 export type FlushOutcome = "idle" | "done" | "offline" | "retrying" | "locked";
 
 export function isRetryable(err: unknown): boolean {
-  if (err instanceof HttpError) return err.status >= 500 || err.status === 409 || err.status === 429 || err.status === 408;
+  // Status 0: the phone gave up before there was an answer (lib/api.ts: the sign-in lookup stalled).
+  if (err instanceof HttpError) return err.status === 0 || err.status >= 500 || err.status === 409 || err.status === 429 || err.status === 408;
   return true; // network errors, timeouts, aborted fetches
 }
 

@@ -772,11 +772,84 @@ Rules:
   (docs.railway.com/config-as-code): before then the health check path, the 20 s overlap and the
   60 s drain from #59 must be set in the service's settings in the dashboard, where the region is
   set too. After that date the file is ignored and deploys run on the service settings.
+- Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
+  words show changes: the stored answer and everything a turn decides are as before.
+  - Wire: the phone POSTs /messages with `Accept: text/event-stream, application/json`
+    (apps/mobile/src/sync/stream.ts). When the model writes the reply the server answers with
+    events: `draft {i, d}` (more words of bubble i), `reset {}` (forget the draft, the reply is
+    being written again), then `done {status, body, timing}` (exactly the plain answer) or
+    `error {status}`. The stream opens with its first words (routes/live-reply.ts), so a turn
+    the rules answer, a failure before any words, a resend, a retry that joins a turn in flight,
+    phone-brain mode and a phone that did not ask all get the plain JSON answer as before.
+  - The switch that needs no app update: a server that streams says so on every answer
+    (`x-reply-stream: 1`, REPLY_STREAM_HEADER; app.ts `liveReplies`, true while the model's
+    `streams` is), and the phone asks for a stream only from a server that says so (it keeps
+    what the server last said in localStorage `pref:reply_stream`). FAKKARNI_CHAT_STREAM=0 on
+    Railway takes the line away, and every phone is back on the plain POST with its next
+    answer. A server from before streams never says it, so an app update alone changes nothing.
+  - Model: `respond(input, live)` asks for the same tool turn as a stream (ai/respond-stream.ts;
+    ai/reply-stream.ts picks the reply's words out of the `respond` tool's JSON as it arrives).
+    `eager_input_streaming` goes on `respond` on streamed requests only. FAKKARNI_CHAT_STREAM: "0"
+    never streams, "plain" streams without the eager flag. A 400 on a streamed request that then
+    passes without the stream steps the mode down for the life of the process (eager → plain →
+    off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
+    the API takes the eager flag on a strict tool was not checked with a real key before this
+    shipped: after a deploy read /admin, "How replies were read from the model" (the `stream`
+    and `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout /
+    cut for a streamed try that was lost and read whole instead) and "first words".
+  - Cost of a lost stream: it is paid for as far as it got. What it read is known from its
+    start and added to the turn's usage; what it had written is only told at a stream's end,
+    so the turn's cost is a floor. The eager flag changes the tools, which come before the
+    cached persona prompt, so eager turns and whole turns keep separate cache entries: a turn
+    that falls back to a whole request writes the cache again unless a whole turn ran in the
+    last 5 minutes. Compare cache_read and cache_creation tokens on `ai_call` after a deploy;
+    FAKKARNI_CHAT_STREAM=plain puts both kinds on one entry (the reply then arrives in one
+    piece, still ahead of the rest of the turn).
+  - What may be shown (pipeline/draft.ts, pure): whole words, three words behind the writing;
+    nothing from a sentence that says a reminder or alarm is set (`saysReminderSet`), or after
+    it, until the turn is done (step 3c decides whether it is true); when the reply must be
+    Arabic, a bubble only once it has an Arabic letter, and nothing more once one ended without;
+    bubbles past the third fold into it. Nothing at all on a message the crisis keyword net
+    caught: that reply goes out whole with the helpline, as always. Any rewrite sends `reset`
+    first, also when the server replaces the reply with its own words (`honestReply`): call
+    `live?.onRestart()` before any new step that changes a reply after the model wrote it.
+  - `reply.hijack()` takes the answer away from Fastify: its onSend hooks do not run (no gzip,
+    which a stream needs; live-reply drops the caller's saved user row itself) and an error in
+    the handler would only be logged, so the route catches it and ends the stream with `error`.
+    A failed streamed turn sets the raw status, so the error count and request log say 500.
+  - Phone: React Native's `fetch` hands a body over only when it is complete, so the reply is
+    read with XMLHttpRequest (sync/opener.ts: handlers set before `send`, text read on
+    readystatechange / progress, never at DONE because RN puts an error's words in responseText).
+    The draft is memory only (chat/writing.ts, `replyWriting` in sync/index.ts): rows named like
+    the stored reply (`<client_id>:reply:<n>`), so the stored bubbles take their place without a
+    jump; dots under the last bubble; the message being answered stops saying "Sending…".
+    When a streamed send ends with no answer (cut after it began, or nothing at all), the same
+    message goes out again at once the plain way (`sendForReply`; the server answers it from the
+    turn in flight or from what it stored): a phone whose stream reading fails is answered as it
+    always was. An answer that was read is kept however the connection ends after it. Streaming
+    goes off on that phone for 10 minutes after two failed streams in a row with none read to
+    its end in between (`createStreamSwitch`): a cut counts at once, a send with no answer at
+    all only when the plain send after it is answered, and one that waited out the whole 60 s
+    counts double. One lost connection changes nothing. None of this was run on a real phone
+    before it shipped (the opener was run on a browser's XMLHttpRequest).
+  - Tests: apps/api/test/anthropic-standin.ts is a stand-in Messages API on a real socket, so
+    model-stream.test.ts and messages-live.test.ts run the SDK's own stream code. The e2e test
+    sends one streamed message; E2E_EXPECT_WORDS=1 makes it require the words (against a local
+    API started with ANTHROPIC_API_KEY and FAKKARNI_ANTHROPIC_BASE_URL pointing at the stand-in,
+    or a real key). api-smoke.yml prints "first byte" for streamed turns. The browser preview has
+    no server: it replays its sample answers word by word (apps/mobile/src/demo/replay.ts).
+  - The real app in a browser against a local API (the nearest thing to a phone a cloud
+    session has; run 2026-11-26 with the stand-in model: words from 0.65 s, the whole reply at
+    1.45 s, and with the first two streams cut each message was still answered at 1.4 s and
+    the third was asked for whole): export the web app without EXPO_PUBLIC_DEMO and with
+    EXPO_PUBLIC_API_URL set to the address of apps/mobile/scripts/web-live.mjs, which serves
+    the export and passes everything else to the API (how to run is in the file; CUT=<n> cuts
+    streamed answers).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
-- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming deferred.
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming came later (2026-11-26, see the repo notes).
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice

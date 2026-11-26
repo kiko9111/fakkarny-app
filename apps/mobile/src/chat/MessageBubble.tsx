@@ -7,6 +7,7 @@ import { t, dateLocale } from "@/i18n";
 import { track } from "@/lib/analytics";
 import { shareInvite } from "@/referral/share";
 import { ActionCards } from "./ActionCards";
+import { TypingDots } from "./TypingIndicator";
 import { glass, Button, Icon, palette, radius, shadow, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 /** Friend messages that Zaki started himself get a small label, so they read as his idea. */
@@ -27,8 +28,23 @@ const time = (iso: string) => {
 /**
  * One chat message. `lastInRun` is the bottom bubble of a run from the same sender: it gets
  * Zaki's face (friend side) and the time, so a burst of replies reads as one turn.
+ * `writing`: Zaki is still writing this one (chat/writing.ts): the dots stay under the words of
+ * the last bubble and it has no time yet. `heard`: Zaki is already answering this message of the
+ * user's, so it no longer says "Sending…" (the server stores both when the reply is done).
  */
-export const MessageBubble = memo(function MessageBubble({ message, lastInRun = true, firstInRun = true }: { message: LocalMessage; lastInRun?: boolean; firstInRun?: boolean }) {
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  lastInRun = true,
+  firstInRun = true,
+  writing = false,
+  heard = false,
+}: {
+  message: LocalMessage;
+  lastInRun?: boolean;
+  firstInRun?: boolean;
+  writing?: boolean;
+  heard?: boolean;
+}) {
   const mine = message.role === "user";
   const kind = !mine ? KIND[message.kind] : undefined;
   return (
@@ -47,6 +63,7 @@ export const MessageBubble = memo(function MessageBubble({ message, lastInRun = 
           <Text variant="body" color={mine ? palette.onPrimary : palette.ink}>
             {message.text}
           </Text>
+          {writing && lastInRun ? <TypingDots small /> : null}
         </View>
         {!mine && message.actions.length ? <ActionCards serverId={message.server_id} actions={message.actions} /> : null}
         {message.kind === "upsell" ? (
@@ -73,14 +90,14 @@ export const MessageBubble = memo(function MessageBubble({ message, lastInRun = 
             </Text>
           </Pressable>
         ) : null}
-        {mine && message.sync_status !== "synced" ? (
+        {mine && message.sync_status !== "synced" && !(heard && message.sync_status === "pending") ? (
           <View style={styles.meta}>
             <Icon name={message.sync_status === "pending" ? "time-outline" : "alert-circle-outline"} size={13} color={message.sync_status === "failed" ? palette.danger : palette.inkFaint} />
             <Text variant="caption" color={message.sync_status === "failed" ? palette.danger : palette.inkFaint}>
               {message.sync_status === "pending" ? t.chat.pending : t.chat.failed}
             </Text>
           </View>
-        ) : lastInRun && time(message.created_at) ? (
+        ) : lastInRun && !writing && time(message.created_at) ? (
           <Text variant="caption" color={palette.inkFaint} style={styles.time}>
             {time(message.created_at)}
           </Text>

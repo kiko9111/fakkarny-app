@@ -1,15 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { kvGet, kvSet } from "@/db/kv";
 import { draftUserMessage, listMessages, saveUserMessage, type LocalMessage } from "@/db/messages";
 import { draftTime, keepSame, withDrafts } from "./list";
 import { ensurePermissionAndRegister } from "@/notifications";
-import { chatLocked, isChatLocked, messagesChanged, syncBusy, syncQueue } from "@/sync";
+import { chatLocked, isChatLocked, messagesChanged, replyWriting, syncBusy, syncQueue } from "@/sync";
+import { addWriting, replyStored, withWriting, type Writing } from "./writing";
+
+/** The words of a reply being written are drawn at most this often (each draw lays the bubble out again). */
+const WRITING_EVERY_MS = 60;
+/** A draft whose stored reply never shows up is dropped after this long. */
+const WRITING_LEFT_MS = 4_000;
 
 export function useChat() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [typing, setTyping] = useState(false);
   const [locked, setLocked] = useState(isChatLocked);
+
+  /** Zaki's reply while he is still writing it (sync/stream.ts); the stored reply takes its place. */
+  const [writing, setWriting] = useState<Writing | null>(null);
+  const latest = useRef<Writing | null>(null);
+  const paint = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showWriting = useCallback((next: Writing | null, now = false) => {
+    latest.current = next;
+    if (paint.current && !now) return;
+    if (paint.current) clearTimeout(paint.current);
+    paint.current = null;
+    if (now) return setWriting(next);
+    paint.current = setTimeout(() => {
+      paint.current = null;
+      setWriting(latest.current);
+    }, WRITING_EVERY_MS);
+  }, []);
 
   /** Typed a moment ago and not in the phone's store yet. */
   const drafts = useRef<LocalMessage[]>([]);
@@ -26,20 +48,36 @@ export function useChat() {
     }
     // Bubbles that did not change keep their objects, so only what changed redraws.
     setMessages((prev) => keepSame(prev, withDrafts(rows, drafts.current)));
+    // The finished reply is in: it stands where its draft stood.
+    if (replyStored(rows, latest.current)) showWriting(null, true);
     setLoaded(true);
-  }, []);
+  }, [showWriting]);
 
   useEffect(() => {
     void reload();
     const offChange = messagesChanged.subscribe(() => void reload());
     const offBusy = syncBusy.subscribe(setTyping);
     const offLocked = chatLocked.subscribe(setLocked);
+    let left: ReturnType<typeof setTimeout> | null = null;
+    const offWriting = replyWriting.subscribe((w) => {
+      if (left) clearTimeout(left);
+      left = null;
+      if (w.kind === "words") return showWriting(addWriting(latest.current, w.clientId, w.bubble, w.delta));
+      // Written again, or the send failed: the words shown are void.
+      if (w.kind === "reset" || !w.ok) return showWriting(null, true);
+      // Over and answered: the draft stays until the stored reply is in the list (`reload`).
+      left = setTimeout(() => showWriting(null, true), WRITING_LEFT_MS);
+    });
     return () => {
       offChange();
       offBusy();
       offLocked();
+      offWriting();
+      if (left) clearTimeout(left);
+      if (paint.current) clearTimeout(paint.current);
+      paint.current = null;
     };
-  }, [reload]);
+  }, [reload, showWriting]);
 
   const send = useCallback(
     async (text: string) => {
@@ -67,5 +105,7 @@ export function useChat() {
     [reload],
   );
 
-  return { messages, loaded, typing, locked, send };
+  // The reply being written sits under the message it answers, as rows of its own.
+  const withReply = useMemo(() => withWriting(messages, writing), [messages, writing]);
+  return { messages: withReply, loaded, typing, locked, send, writing: withReply === messages ? null : writing };
 }

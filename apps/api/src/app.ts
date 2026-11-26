@@ -3,7 +3,7 @@ import rateLimit from "@fastify/rate-limit";
 import { registerIdempotency } from "./plugins/idempotency";
 import { registerGzip } from "./plugins/gzip";
 import Fastify, { type FastifyBaseLogger, type FastifyRequest, type FastifyServerOptions } from "fastify";
-import { INSTALL_ID_HEADER } from "@fakkarni/shared";
+import { INSTALL_ID_HEADER, REPLY_STREAM_HEADER } from "@fakkarni/shared";
 import type { PrismaClient } from "./generated/prisma/client";
 import { createMetrics, type Metrics } from "./observability/metrics";
 import { Sentry } from "./observability/sentry";
@@ -59,6 +59,8 @@ export interface AppDeps {
   adminPassword?: string;
   /** Reuse a caller's user row for this long on reads (plugins/auth.ts). Off (0) by default. */
   userCacheMs?: number;
+  /** True while this server sends chat replies as they are written: every answer then says so, and phones ask for them. */
+  liveReplies?: () => boolean;
   /** Requests per minute per caller (default 600); false disables rate limiting. */
   rateLimitPerMinute?: number | false;
   /** Send unhandled errors to Sentry (initSentry must have run). */
@@ -87,6 +89,14 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
 
   if (deps.sentry) Sentry.setupFastifyErrorHandler(app);
   app.addHook("onResponse", async (_req, reply) => metrics.record(reply.statusCode));
+  // A phone asks for a reply as it is written only from a server that says it sends one
+  // (apps/mobile/src/sync/stream.ts), so this line is also the way to stop the asking.
+  const liveReplies = deps.liveReplies;
+  if (liveReplies) {
+    app.addHook("onRequest", async (_req, reply) => {
+      if (liveReplies()) reply.header(REPLY_STREAM_HEADER, "1");
+    });
+  }
 
   if (deps.rateLimitPerMinute !== false) {
     app.register(rateLimit, {

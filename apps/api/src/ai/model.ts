@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { APP_ACTION_KINDS, AppAction, FriendResponse, MAX_APP_ACTIONS, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
 import { friendTools, readToolCalls, RespondInput } from "./tools";
+import { createStreamModes, readToolTurn, ReplyStreamTimeout, streamModeFromEnv, type ReplyLive, type StreamLost, type StreamMode } from "./respond-stream";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
 export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
@@ -54,7 +55,11 @@ export interface FriendModelInput {
 /** The model's validated answer. app_actions may be left out (scripted test models). */
 export type FriendOutput = Omit<FriendResponse, "app_actions"> & { app_actions?: FriendResponse["app_actions"] };
 export type FriendModelResult =
-  | { ok: true; output: FriendOutput; usage: Usage }
+  /**
+   * `stream`: how the answer was read when its words were passed on while written (absent otherwise).
+   * `streamLost`: a streamed try of this turn was not the answer, and why (the turn was asked for again, whole).
+   */
+  | { ok: true; output: FriendOutput; usage: Usage; stream?: StreamMode; streamLost?: StreamLost }
   | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
 
 /** One Session turn: what Zaki says, whether this is a crisis, and at most one small step. */
@@ -116,7 +121,13 @@ export function toReceipt(raw: z.infer<typeof ModelReceipt>): Receipt | null {
 export interface FriendModel {
   /** Read a receipt photo (owner decision 2026-11-23: photos for receipts and homework only). */
   readReceipt?(input: { photo: PhotoUpload; language: "ar" | "en" }): Promise<{ receipt: Receipt | null; usage: Usage }>;
-  respond(input: FriendModelInput): Promise<FriendModelResult>;
+  /** True while `respond` passes a reply's words on as they are written (off by setting, after refusals, or paused). */
+  readonly streams?: boolean;
+  /**
+   * One chat turn. With `live`, the words of the reply are passed on while they are written
+   * (ai/respond-stream.ts); the returned answer is the same either way and is the one that counts.
+   */
+  respond(input: FriendModelInput, live?: ReplyLive): Promise<FriendModelResult>;
   /** A Session turn (apps/api/src/session). Separate prompt, separate output; never creates items or memories. */
   reflect?(input: { system: string; context: string; history: ChatTurn[] }): Promise<SessionTurnResult>;
   /** Plain-text completion for summaries and proactive messages (no structured output). */
@@ -305,7 +316,12 @@ export function anthropicApiKey(): string | undefined {
   return process.env["FAKKARNI_ANTHROPIC_API_KEY"] || process.env["ANTHROPIC_API_KEY"] || undefined;
 }
 
-export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string } = {}): FriendModel {
+/** A streamed turn that has not finished by now is asked for again without a stream. */
+const STREAM_TIMEOUT_MS = 25_000;
+
+export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; streamTimeoutMs?: number } = {}): FriendModel {
+  // How streamed turns are asked for; steps down for good when the API refuses one (respond-stream.ts).
+  const modes = createStreamModes(streamModeFromEnv(process.env["FAKKARNI_CHAT_STREAM"]));
   const client = new Anthropic({
     apiKey: opts.apiKey ?? anthropicApiKey(),
     // Explicit, so a tooling-level ANTHROPIC_BASE_URL in the shell never redirects app traffic.
@@ -316,31 +332,71 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
   });
 
   return {
-    async respond(input) {
+    get streams() {
+      return CHAT_TOOLS && modes.mode !== "off";
+    },
+    async respond(input, live) {
       let usage = zeroUsage;
+      let lost: StreamLost | null = null;
       // One retry if the output doesn't validate. The first try uses tools; when that turn has
       // no usable `respond` (or the tools request fails), the retry uses the structured output.
       for (let attempt = 0; attempt < 2; attempt++) {
         let output: FriendResponse | null = null;
+        /** Set when this try's words were passed on while written. */
+        let streamed: StreamMode | null = null;
+        // A try that is not the answer after all: what was shown of it is void.
+        const dropDraft = () => {
+          if (streamed) live?.onRestart();
+          streamed = null;
+        };
         if (CHAT_TOOLS && attempt === 0) {
+          const turn = (eager: boolean): Anthropic.MessageCreateParamsNonStreaming => ({
+            model: FRIEND_MODEL,
+            max_tokens: 2000,
+            tools: friendTools({ eager }),
+            // "any": a turn always answers through the tools (respond plus any app tools), never loose text.
+            tool_choice: { type: "any" },
+            system: [{ type: "text", text: wellFormed(input.system) + TOOL_TURN_NOTE, cache_control: { type: "ephemeral" } }],
+            messages: buildMessages(input),
+            output_config: { effort: FRIEND_EFFORT },
+          });
           try {
-            const res = await client.messages.create({
-              model: FRIEND_MODEL,
-              max_tokens: 2000,
-              tools: friendTools(),
-              // "any": a turn always answers through the tools (respond plus any app tools), never loose text.
-              tool_choice: { type: "any" },
-              system: [{ type: "text", text: wellFormed(input.system) + TOOL_TURN_NOTE, cache_control: { type: "ephemeral" } }],
-              messages: buildMessages(input),
-              output_config: { effort: FRIEND_EFFORT },
-            });
+            let res: Anthropic.Message;
+            const mode: StreamMode = live ? modes.mode : "off";
+            if (live && mode !== "off") {
+              const begun: { usage: Anthropic.Usage | null } = { usage: null };
+              try {
+                res = await readToolTurn(client.messages.stream(turn(mode === "eager")), live, { timeoutMs: opts.streamTimeoutMs ?? STREAM_TIMEOUT_MS, onBegun: (u) => (begun.usage = u) });
+                streamed = mode;
+                modes.worked();
+              } catch (err) {
+                // The same turn is asked for again, whole: what was shown of this one is void.
+                live.onRestart();
+                const status = err instanceof Anthropic.APIError ? err.status : undefined;
+                // An outage or an account problem is not the stream's doing: handled as before.
+                if (typeof status === "number" && status !== 400) throw err;
+                // A stream that began is paid for as far as it got. What it read is known from
+                // its start; what it had written is only told at its end, so this is a floor.
+                if (begun.usage) usage = addUsage(usage, toUsage(begun.usage));
+                lost = status === 400 ? "refused" : err instanceof ReplyStreamTimeout ? "timeout" : "cut";
+                // Cut off or too slow: two of those in a row and streams pause for a while.
+                if (status !== 400) modes.broke();
+                // After a slow or broken stream there is time for one plain try, not two.
+                res = await client.messages.create(turn(false), { maxRetries: status === 400 ? 1 : 0 });
+                // Refused as a stream and taken without: never asked for that way again.
+                if (status === 400) modes.refused();
+              }
+            } else res = await client.messages.create(turn(false));
             usage = addUsage(usage, toUsage(res.usage));
-            if (res.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
-            if (res.stop_reason === "max_tokens") return { ok: false, reason: "max_tokens", usage };
+            if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") {
+              dropDraft();
+              return { ok: false, reason: res.stop_reason, usage };
+            }
             output = toolTurnToFriendResponse(res.content);
           } catch (err) {
             // A bad request (e.g. a schema the API rejects) must never cost the reply: retry below.
             if (err instanceof Anthropic.APIError && err.status !== 400) throw err;
+            dropDraft();
             continue;
           }
         } else {
@@ -362,13 +418,17 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string }
           }
         }
         {
-          // Franco or English back to an Arabic/Franco message: try once more, then take what we get.
-          if (input.requireArabic && attempt === 0 && !output.reply.every((r) => /[\u0600-\u06FF]/.test(r))) continue;
+          // Franco or English back to an Arabic/Franco message.
+          const wrongScript = input.requireArabic && !output.reply.every((r) => /[\u0600-\u06FF]/.test(r));
           // "Before the 10th" said on the 19th sometimes comes back as the 10th just gone.
           const today = input.todayLocal;
           const pastDue = today && output.create_items.some((i) => (i.type === "reminder" || i.type === "task") && i.due_at_local && i.due_at_local.slice(0, 10) < today);
-          if (pastDue && attempt === 0) continue;
-          return { ok: true, output, usage };
+          // Either one: try once more, then take what we get.
+          if ((wrongScript || pastDue) && attempt === 0) {
+            dropDraft();
+            continue;
+          }
+          return { ok: true, output, usage, ...(streamed ? { stream: streamed } : {}), ...(lost ? { streamLost: lost } : {}) };
         }
       }
       return { ok: false, reason: "invalid_output", usage };

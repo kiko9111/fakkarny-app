@@ -90,8 +90,8 @@ describe("sync queue", () => {
     expect([...rows.values()].map((r) => r.status)).toEqual(["synced", "synced"]);
   });
 
-  it("retries on 5xx, 409 and 429 but drops messages the server rejects (400)", async () => {
-    for (const status of [500, 503, 409, 429]) {
+  it("retries on 5xx, 409, 429 and no answer in time (0) but drops messages the server rejects (400)", async () => {
+    for (const status of [500, 503, 409, 429, 0]) {
       const { store, rows } = memoryStore(["a"]);
       const q = createSyncQueue({ store, send: async () => { throw new HttpError(status); }, timers: fakeTimers().timers });
       expect(await q.flush()).toBe("retrying");

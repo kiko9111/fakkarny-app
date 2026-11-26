@@ -17,6 +17,13 @@ export type HealthResponse = z.infer<typeof HealthResponse>;
  */
 export const INSTALL_ID_HEADER = "x-install-id";
 
+/**
+ * On every answer of a server that sends chat replies while they are written (value "1"). The
+ * phone asks for a reply that way only from a server that says so: taking the header away
+ * (FAKKARNI_CHAT_STREAM=0 on the server) stops the asking on every phone, with no app update.
+ */
+export const REPLY_STREAM_HEADER = "x-reply-stream";
+
 /** POST /messages — body sent by the phone's sync queue. */
 export const PostMessageRequest = z.object({
   client_id: z.string().min(1).max(64),
