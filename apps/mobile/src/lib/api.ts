@@ -76,11 +76,14 @@ import {
 import { getInstallId } from "@/db/kv";
 import { HttpError, isRetryable } from "@/sync/queue";
 import { createWriteOutbox, isOffline, QueuedOffline, type PendingWrite } from "@/sync/writes";
+import { createStreamSwitch, postForReply, type ReplyHandlers } from "@/sync/stream";
+import { openReply } from "@/sync/opener";
 import { randomUUID } from "expo-crypto";
 import { resolveApiUrl } from "./api-url";
 import { accessToken } from "./supabase";
 import { isDemo } from "./demo";
 import { demoRequest } from "@/demo/server";
+import { replayReply } from "@/demo/replay";
 import { createScreenCache, eachValid } from "./screen-cache";
 import { createSavedReads } from "./saved-reads";
 import { cacheRefreshed, dataChanged } from "./signals";
@@ -271,11 +274,56 @@ export async function postMessage(body: PostMessageRequest): Promise<PostMessage
   return PostMessageResponse.parse(await postMessageRaw(body));
 }
 
-/** POST /messages, unparsed: with the phone brain on, the server may answer 202 (NeedsBrainResponse). */
-export async function postMessageRaw(body: PostMessageRequest): Promise<unknown> {
+/** Asking for a reply as a stream pauses for a while after one broke on the way (sync/stream.ts). */
+const replyStream = createStreamSwitch();
+
+/**
+ * POST /messages, unparsed: with the phone brain on, the server may answer 202 (NeedsBrainResponse).
+ * With `live`, the reply is asked for as a stream: its words are handed on while Zaki writes
+ * them, and the returned answer is the same one a plain POST gives. A server that does not
+ * stream (an older one, or a turn it answers at once) answers plainly and nothing changes.
+ */
+export async function postMessageRaw(body: PostMessageRequest, live?: ReplyHandlers): Promise<unknown> {
   // Zaki's reply is an AI call: give it longer than a screen load, or a slow reply is cut off,
   // retried, and the message sits there looking unsent.
-  return request("/messages", { method: "POST", body: JSON.stringify(body) }, REPLY_TIMEOUT_MS);
+  const text = JSON.stringify(body);
+  // Not when the phone's own model writes the reply.
+  if (!live || isDemo || body.brain === "phone" || !replyStream.wanted(Date.now())) {
+    const answer = await request("/messages", { method: "POST", body: text }, REPLY_TIMEOUT_MS);
+    // The sample data has no server to stream from: its answer is shown as a stream would show it.
+    if (live && isDemo) await replayReply(answer, live);
+    return answer;
+  }
+
+  const who = person;
+  const started = Date.now();
+  reads.changed();
+  try {
+    // As in `send`: the sign-in lookup counts against the same wait.
+    let giveUp: ReturnType<typeof setTimeout> | undefined;
+    const token = await Promise.race([accessToken(), new Promise<never>((_, reject) => (giveUp = setTimeout(() => reject(new HttpError(0)), REPLY_TIMEOUT_MS)))]).finally(() => clearTimeout(giveUp));
+    const { json } = await postForReply(
+      openReply,
+      {
+        url: `${API_URL}/messages`,
+        headers: { "content-type": "application/json", [INSTALL_ID_HEADER]: await getInstallId(), "x-message-kinds": "2", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        body: text,
+        timeoutMs: Math.max(1_000, REPLY_TIMEOUT_MS - (Date.now() - started)),
+      },
+      {
+        // Words for someone who is no longer on this phone (it was wiped meanwhile) are not drawn.
+        onDraft: (bubble, delta) => (who === person ? live.onDraft(bubble, delta) : undefined),
+        onReset: () => (who === person ? live.onReset() : undefined),
+      },
+    );
+    if (who !== person) throw new HttpError(401);
+    return json;
+  } catch (err) {
+    replyStream.failed(err, Date.now());
+    throw err;
+  } finally {
+    reads.changed();
+  }
 }
 
 /** Answer one of Zaki's action cards (Send / Cancel). Returns the reply with its cards updated. */

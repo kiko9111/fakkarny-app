@@ -1,5 +1,6 @@
 import type { PhoneBrainRequest } from "@fakkarni/shared";
 import type { Item, Memory, Message, PrismaClient, User } from "../generated/prisma/client";
+import type { DraftSink } from "./draft";
 
 export interface PipelineInput {
   prisma: PrismaClient;
@@ -19,6 +20,11 @@ export interface PipelineInput {
   brain?: { output?: unknown; model?: string };
   /** Filled with ms-since-start marks (rules, context, model, saved) so the route can report where the wait went. */
   timing?: Record<string, number>;
+  /**
+   * Where the words of the reply go while the model writes them (the phone asked for them:
+   * routes/live-reply.ts). Only for show: the returned replies are the answer.
+   */
+  draft?: DraftSink;
 }
 
 export interface PipelineResult {

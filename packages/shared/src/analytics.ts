@@ -28,7 +28,7 @@ export const APP_EVENTS = [
   "receipt_logged",
   "receipt_split",
   "homework_photos", // props.count
-  "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok
+  "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;

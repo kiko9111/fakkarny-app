@@ -21,6 +21,8 @@ import type { preHandlerAsyncHookHandler } from "fastify";
 import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../serialize";
 import type { Message } from "../generated/prisma/client";
 import { inBackground } from "../lib/background";
+import { Sentry } from "../observability/sentry";
+import { createLiveReply, wantsLiveReply } from "./live-reply";
 
 /**
  * Messages this server is answering right now, with the answer on its way. A restart empties it,
@@ -62,6 +64,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     const body = PostMessageRequest.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_body", issues: body.error.issues });
     let user = req.user;
+    // A phone that asked for it gets the words of the reply while they are written (live-reply.ts).
+    // Not when the phone's own model writes the reply.
+    const live = body.data.brain !== "phone" && wantsLiveReply(req) ? createLiveReply(req, reply) : null;
+    /** Where the wait went, when this request did the answering. */
+    let spent: Record<string, number> | undefined;
 
     // Keep the user's time zone current (relative dates resolve in it).
     if (body.data.timezone && body.data.timezone !== user.timezone && isValidTimeZone(body.data.timezone)) {
@@ -88,7 +95,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
           const joined = await Promise.race([running.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), JOIN_WAIT_MS))]);
           return joined ? send(joined) : reply.code(409).send({ error: "duplicate_in_flight" });
         }
-        return send(await answer(existing));
+        return respondTo(existing);
       }
       const res: PostMessageResponse = {
         message: toWireMessage(existing, readsNewKinds(req)),
@@ -120,10 +127,28 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       throw err;
     }
 
-    return send(await answer(message));
+    return respondTo(message);
 
     function send(res: PostMessageResponse | NeedsBrainResponse) {
-      return reply.code("needs_brain" in res ? 202 : 201).send(res);
+      const status = "needs_brain" in res ? 202 : 201;
+      // The reply went out as a stream: the answer ends it.
+      if (live?.opened) return void live.done(status, res, spent);
+      return reply.code(status).send(res);
+    }
+
+    /** Answer the message. Once its reply is going out as a stream, a failure is told there too. */
+    async function respondTo(message: Message) {
+      try {
+        return send(await answer(message));
+      } catch (err) {
+        if (!live?.opened) throw err;
+        // Fastify no longer owns this answer. The phone hears the failure and sends the message
+        // again later; this server then answers it from the start (nothing was stored).
+        const e = (err ?? {}) as { name?: string; code?: string };
+        req.log.error({ err: { name: e.name, code: e.code } }, "chat turn failed after its reply stream opened");
+        Sentry.captureException(err);
+        return void live.fail(500);
+      }
     }
 
     function answer(message: Message): Promise<PostMessageResponse | NeedsBrainResponse> {
@@ -151,7 +176,17 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     let aiAllowance = opts.requireSubscription ? dailyAiAllowance(user, now()) : null;
     if (aiAllowance !== null && (await coveredByFamilyPlan(prisma, user.id, now()))) aiAllowance = null;
     const brain = body.data!.brain === "phone" ? { output: body.data!.phone_output, model: body.data!.phone_model } : undefined;
-    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false, brain, timing });
+    const draft = live
+      ? {
+          text: (bubble: number, delta: string) => {
+            // How long until the first words were on their way (numbers only).
+            timing["first"] ??= Date.now() - started;
+            live.text(bubble, delta);
+          },
+          reset: () => live.reset(),
+        }
+      : undefined;
+    const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false, brain, timing, ...(draft ? { draft } : {}) });
     // Phone brain, first pass: the phone's model writes the reply, then the phone sends it back.
     if (result.needsBrain) {
       await touched;
@@ -173,7 +208,9 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
     } finally {
       // Where the wait went, for the phone (Server-Timing) and for /admin (numbers only, never text).
       const total = Date.now() - started;
-      reply.header("Server-Timing", [...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`), `total;dur=${total}`].join(", "));
+      spent = { ...timing, total };
+      // (A stream's headers are long gone: its timing goes with the `done` event.)
+      if (!live?.opened) reply.header("Server-Timing", [...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`), `total;dur=${total}`].join(", "));
       void prisma.event
         .create({ data: { userId: user.id, name: "chat_timing", propsJson: { ...timing, total, brain: body.data!.brain ?? "cloud", pass: body.data!.phone_output ? 2 : 1 } } })
         .catch(() => {});

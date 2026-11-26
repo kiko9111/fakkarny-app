@@ -7,6 +7,7 @@
  * can't parse fails here instead of on a device.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { PostMessageResponse } from "@fakkarni/shared";
 
 const URL_ = process.env.E2E_API_URL;
 let installId = "";
@@ -136,6 +137,33 @@ describe.skipIf(!URL_)("phone client against a live API", () => {
       expect(api.peekTasks()?.map((x) => x.id)).toContain(task.id);
       // Asked again with nothing changed: still covered, by "nothing new".
       expect(await as(A, () => api.refreshAll())).toBe(true);
+    }
+    // A chat message whose reply is asked for as a stream. A server that writes the reply with a
+    // model sends its words first (E2E_EXPECT_WORDS=1 checks they came); every server, also one
+    // from before streams, ends with the answer a plain POST gives. An older client ignores the
+    // second argument and posts plainly.
+    if (client.postMessageRaw) {
+      let heard: string[] = [];
+      const sent = Date.now();
+      let first = 0;
+      const live = {
+        onDraft: (i: number, d: string) => {
+          first ||= Date.now() - sent;
+          heard[i] = (heard[i] ?? "") + d;
+        },
+        onReset: () => void (heard = []),
+      };
+      const text = "عامل ايه النهارده يا زكي";
+      const raw = await as(A, () => api.postMessageRaw({ client_id: crypto.randomUUID(), text, created_at: new Date().toISOString(), timezone: "Africa/Cairo" }, live));
+      const answer = PostMessageResponse.parse(raw);
+      expect(answer.message.text).toBe(text);
+      // For the run's log (numbers only): how this server answered.
+      console.log(first ? `reply read while written: first words after ${first} ms, the whole answer after ${Date.now() - sent} ms` : `reply in one piece after ${Date.now() - sent} ms`);
+      if (process.env.E2E_EXPECT_WORDS) {
+        expect(heard.length).toBeGreaterThan(0);
+        // What was shown while it was written is the start of what was stored.
+        for (const [i, words] of heard.entries()) expect(answer.replies[i]?.text.startsWith(words.trim())).toBe(true);
+      }
     }
     // What a tap's answer puts into the saved copy is what the server then says too.
     await as(A, () => api.listTrackers());

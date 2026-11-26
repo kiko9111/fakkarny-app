@@ -185,6 +185,8 @@ export function wantsAlarm(text: string): boolean | null {
  * The pipeline checks that the turn really set one; a model reply once said so with no item.
  */
 const PROMISE = /(ه[اَ]?فكّ?رك|هفكرِك|هصحّ?يك|هنبّ?هك|هرن عليك|(ظبطت|ضبطت|حطيت|سجلت)(ل[كه]ا?)?\s*(ال)?(منبه|منبّه|تذكير|المنبه)|(المنبه|المنبّه|التذكير)\s*(اتظبط|اتضبط|جاهز|متظبط)|\bI'?ll remind\b|\bI will remind\b|\b(reminder|alarm)( is)? (set|ready|on)\b|\bI'?ve set (a|an|the|your) (reminder|alarm)\b|\bI'?ll wake you\b)/i;
+/** One sentence says a reminder or alarm is set (the draft of a reply holds such a sentence back: pipeline/draft.ts). */
+export const saysReminderSet = (sentence: string): boolean => PROMISE.test(sentence);
 export function promisesReminder(replies: string[]): boolean {
   // Sentence by sentence; a question ("هفكرك الساعة ٤ ولا ٥؟") is not a promise.
   const sentences = replies.flatMap((r) => r.match(/[^.!؟?\n]+[.!؟?]?/g) ?? []);

@@ -53,13 +53,16 @@ export async function adminStats(prisma: PrismaClient, metrics: Metrics, now: Da
     WHERE created_at >= ${week} AND (name LIKE 'app:%' OR name IN ('chat_intent', 'referral_reward', 'referral_welcome'))
     GROUP BY name ORDER BY n DESC LIMIT 40`;
   // Reply speed (ms, numbers only): the server's own time per turn, and what the phone saw.
-  const speed = await prisma.$queryRaw<{ src: string; n: bigint; p50: number | null; p90: number | null; model_p50: number | null }[]>`
+  // `first`: on turns whose reply went out while it was written, how long until its first words.
+  const speed = await prisma.$queryRaw<{ src: string; n: bigint; p50: number | null; p90: number | null; model_p50: number | null; first_p50: number | null; streamed: bigint }[]>`
     SELECT CASE WHEN name = 'chat_timing' THEN 'server ' || COALESCE(props_json->>'brain', 'cloud') || ' pass ' || COALESCE(props_json->>'pass', '1')
                 ELSE 'phone ' || COALESCE(props_json->>'brain', 'cloud') END AS src,
            COUNT(*) AS n,
            percentile_cont(0.5) WITHIN GROUP (ORDER BY (props_json->>'total')::float) AS p50,
            percentile_cont(0.9) WITHIN GROUP (ORDER BY (props_json->>'total')::float) AS p90,
-           percentile_cont(0.5) WITHIN GROUP (ORDER BY ((props_json->>'model')::float - COALESCE((props_json->>'context')::float, 0))) AS model_p50
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY ((props_json->>'model')::float - COALESCE((props_json->>'context')::float, 0))) AS model_p50,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY (props_json->>'first')::float) AS first_p50,
+           COUNT(props_json->>'first') AS streamed
     FROM events WHERE created_at >= ${day} AND name IN ('chat_timing', 'app:chat_reply')
     GROUP BY 1 ORDER BY 1`;
   const aiErrors = await prisma.$queryRaw<{ kind: string; n: bigint }[]>`
@@ -90,7 +93,16 @@ export async function adminStats(prisma: PrismaClient, metrics: Metrics, now: Da
       top_users: costRows.slice(0, 10).map((r) => ({ user: r.user_id.slice(0, 8), cost_usd: Number(r.cost), calls: Number(r.calls) })),
     },
     errors_24h: metrics.summary(),
-    reply_speed_24h: speed.map((r) => ({ source: r.src, turns: Number(r.n), p50_ms: Math.round(r.p50 ?? 0), p90_ms: Math.round(r.p90 ?? 0), model_p50_ms: Math.round(r.model_p50 ?? 0) })),
+    reply_speed_24h: speed.map((r) => ({
+      source: r.src,
+      turns: Number(r.n),
+      p50_ms: Math.round(r.p50 ?? 0),
+      p90_ms: Math.round(r.p90 ?? 0),
+      model_p50_ms: Math.round(r.model_p50 ?? 0),
+      // Turns whose words went out while they were written, and how soon the first ones did.
+      streamed_turns: Number(r.streamed),
+      first_words_p50_ms: Math.round(r.first_p50 ?? 0),
+    })),
     ai_errors_24h: aiErrors.map((r) => ({ kind: r.kind, count: Number(r.n) })),
     growth_7d: {
       active_circles: Number(activeCircles?.n ?? 0),
@@ -117,7 +129,7 @@ function page(s: Stats): string {
 <h2>Subscriptions</h2><table>${row("No plan yet", s.plans.none)}${row("Trial", s.plans.trial)}${row("Monthly", s.plans.monthly)}${row("Yearly", s.plans.yearly)}${row("Expired", s.plans.expired)}${row("Paying share of ever-subscribed", pct(s.conversion.paid_share_of_subscribed))}</table>
 <h2>AI cost (30 days)</h2><table>${row("Total", usd(c.total_usd))}${row("Per active user", usd(c.per_active_user_usd))}${row("Per paying user (target under $1.50)", usd(c.per_paying_user_usd), c.per_paying_user_usd > c.target_per_paying_user_usd ? "warn" : "")}
 ${c.top_users.map((u) => row(`User ${u.user}…`, `${usd(u.cost_usd)} · ${u.calls} calls`)).join("")}</table>
-<h2>Reply speed (24 h: median / slowest 10%)</h2><table>${s.reply_speed_24h.map((r) => row(r.source.replace(/[<>&]/g, ""), `${(r.p50_ms / 1000).toFixed(1)} s / ${(r.p90_ms / 1000).toFixed(1)} s · ${r.turns} turns${r.source.startsWith("server") ? ` · model ${(r.model_p50_ms / 1000).toFixed(1)} s` : ""}`, r.p50_ms > 8000 ? "warn" : "")).join("") || row("No turns yet", "")}</table>
+<h2>Reply speed (24 h: median / slowest 10%)</h2><table>${s.reply_speed_24h.map((r) => row(r.source.replace(/[<>&]/g, ""), `${(r.p50_ms / 1000).toFixed(1)} s / ${(r.p90_ms / 1000).toFixed(1)} s · ${r.turns} turns${r.source.startsWith("server") ? ` · model ${(r.model_p50_ms / 1000).toFixed(1)} s` : ""}${r.streamed_turns ? ` · first words ${(r.first_words_p50_ms / 1000).toFixed(1)} s on ${r.streamed_turns}` : ""}`, r.p50_ms > 8000 ? "warn" : "")).join("") || row("No turns yet", "")}</table>
 <h2>Model failures (24 h)</h2><table>${s.ai_errors_24h.map((e) => row(e.kind.replace(/[<>&]/g, ""), e.count, "warn")).join("") || row("None", 0)}</table>
 <h2>Health (24 h)</h2><table>${row("Requests", s.errors_24h.requests)}${row("5xx errors", s.errors_24h.errors)}${row("Error rate", pct(s.errors_24h.errorRate), s.errors_24h.errorRate > 0.01 ? "warn" : "")}${row("Crisis flags (7 days, safety review only)", s.crisis_flags_7d)}</table>
 </body></html>`;

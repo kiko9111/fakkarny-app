@@ -772,11 +772,53 @@ Rules:
   (docs.railway.com/config-as-code): before then the health check path, the 20 s overlap and the
   60 s drain from #59 must be set in the service's settings in the dashboard, where the region is
   set too. After that date the file is ignored and deploys run on the service settings.
+- Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
+  words show changes: the stored answer and everything a turn decides are as before.
+  - Wire: the phone POSTs /messages with `Accept: text/event-stream, application/json`
+    (apps/mobile/src/sync/stream.ts). When the model writes the reply the server answers with
+    events: `draft {i, d}` (more words of bubble i), `reset {}` (forget the draft, the reply is
+    being written again), then `done {status, body, timing}` (exactly the plain answer) or
+    `error {status}`. The stream opens with its first words (routes/live-reply.ts), so a turn
+    the rules answer, a failure before any words, a resend, a retry that joins a turn in flight,
+    phone-brain mode and a phone that did not ask all get the plain JSON answer as before.
+  - Model: `respond(input, live)` asks for the same tool turn as a stream (ai/respond-stream.ts;
+    ai/reply-stream.ts picks the reply's words out of the `respond` tool's JSON as it arrives).
+    `eager_input_streaming` goes on `respond` on streamed requests only. FAKKARNI_CHAT_STREAM: "0"
+    never streams, "plain" streams without the eager flag. A 400 on a streamed request that then
+    passes without the stream steps the mode down for the life of the process (eager → plain →
+    off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
+    the API takes the eager flag on a strict tool was not checked with a real key before this
+    shipped: after a deploy read the `stream` prop on `ai_call` events and "first words" on /admin.
+  - What may be shown (pipeline/draft.ts, pure): whole words, three words behind the writing;
+    nothing from a sentence that says a reminder or alarm is set (`saysReminderSet`), or after
+    it, until the turn is done (step 3c decides whether it is true); when the reply must be
+    Arabic, a bubble only once it has an Arabic letter, and nothing more once one ended without;
+    bubbles past the third fold into it. Nothing at all on a message the crisis keyword net
+    caught: that reply goes out whole with the helpline, as always. Any rewrite sends `reset`.
+  - `reply.hijack()` takes the answer away from Fastify: its onSend hooks do not run (no gzip,
+    which a stream needs; live-reply drops the caller's saved user row itself) and an error in
+    the handler would only be logged, so the route catches it and ends the stream with `error`.
+    A failed streamed turn sets the raw status, so the error count and request log say 500.
+  - Phone: React Native's `fetch` hands a body over only when it is complete, so the reply is
+    read with XMLHttpRequest (sync/opener.ts: handlers set before `send`, text read on
+    readystatechange / progress, never at DONE because RN puts an error's words in responseText).
+    The draft is memory only (chat/writing.ts, `replyWriting` in sync/index.ts): rows named like
+    the stored reply (`<client_id>:reply:<n>`), so the stored bubbles take their place without a
+    jump; dots under the last bubble; the message being answered stops saying "Sending…". A
+    stream cut after it began turns streaming off on that phone for 10 minutes
+    (`createStreamSwitch`); the outbox sends the message again and the server answers from what
+    it stored.
+  - Tests: apps/api/test/anthropic-standin.ts is a stand-in Messages API on a real socket, so
+    model-stream.test.ts and messages-live.test.ts run the SDK's own stream code. The e2e test
+    sends one streamed message; E2E_EXPECT_WORDS=1 makes it require the words (against a local
+    API started with ANTHROPIC_API_KEY and FAKKARNI_ANTHROPIC_BASE_URL pointing at the stand-in,
+    or a real key). api-smoke.yml prints "first byte" for streamed turns. The browser preview has
+    no server: it replays its sample answers word by word (apps/mobile/src/demo/replay.ts).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
-- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming deferred.
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming came later (2026-11-26, see the repo notes).
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
