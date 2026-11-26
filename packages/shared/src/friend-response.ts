@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DebtDirection, ItemStatus, ItemType, MemoryKind } from "./enums";
 import { AppAction, MAX_APP_ACTIONS } from "./chat-actions";
+import { PlaceName, PlaceOn } from "./places";
 
 /**
  * The structured output of one Claude call (PRD §6 "Response tool schema").
@@ -32,6 +33,9 @@ export const CreateItemAction = z.object({
   /** "Every hour" = 60, "every day" = 1440. The first occurrence is remind_at_local / due_at_local. */
   repeat_every_minutes: z.number().int().min(15).max(10080).optional(),
   debt: DebtDetails.optional(),
+  /** Fire at a place instead of (or as well as) a time: the words the user used ("the supermarket"). Set by code (places.ts), not by the model. */
+  place: PlaceName.optional(),
+  place_on: PlaceOn.optional(),
 });
 export type CreateItemAction = z.infer<typeof CreateItemAction>;
 
@@ -44,6 +48,9 @@ export const UpdateItemAction = z.object({
   follow_up_at_local: LocalDateTime.optional(),
   repeat_every_minutes: z.number().int().min(15).max(10080).optional(),
   alarm: z.boolean().optional(),
+  /** A place to fire at (places.ts); set by code. */
+  place: PlaceName.optional(),
+  place_on: PlaceOn.optional(),
 });
 export type UpdateItemAction = z.infer<typeof UpdateItemAction>;
 

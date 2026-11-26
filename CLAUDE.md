@@ -1183,6 +1183,37 @@ Rules:
   - Screens: app/homework/plan.tsx, help.tsx, check.tsx, app/pocket.tsx; entry points on the circle
     screen and on each homework card (parent: "Zaki, explain the lesson"; child: "Check with Zaki").
 
+- Place reminders (2026-11-26, kareem: "remind me to buy bread when I'm near the supermarket"; no live
+  tracking, location stays on the phone). Pure rules in packages/shared/src/places.ts: `parsePlaceTrigger`
+  reads "when I'm at / get to / leave X", "لما أوصل / أكون عند / أخرج من X", "lama awsal / a5rog men X"
+  (conservative: "when I'm free" is not a place), `titleWithoutPlace`, `placeKey`, `kindOfPlace`
+  ("the supermarket" → grocery), `placesFor` (same words first, else every saved place of that kind).
+  - Server: items.place (the user's words only) + place_on ("arrive" | "leave"), migration item_place, wire
+    `Item.place` / `place_on` (old servers omit them; zod defaults null), PATCH /items {place, place_on}.
+    The model's schemas are unchanged (structured output limits): the pipeline reads the place in code
+    (step 3b', pipeline/place.ts `withPlace`: on the turn's reminders/tasks, else the first list item
+    becomes the task, else a task from the message) and `setsReminder` counts a place. The rule engine
+    (understand) makes the task without asking for a time. The context shows "at place …" on open items.
+  - Phone: saved places are in localStorage "places:v1" only (src/places/store.ts; never synced, wiped by
+    db/reset.ts). Logic (pure + tested) in src/places/logic.ts: visits fire once per arrival (REFIRE_MS 2 h,
+    a departure only after an arrival), alerts per reminder (`item_<id>_place`, the reminder category so
+    Done / Later work), the shop's household lists (`peekShopLists`, the saved copy of GET /lists filtered
+    by `place` = the saved place's kind), and the "I've arrived" offer. Native: expo-location +
+    expo-task-manager, optional (`locationAvailable` / `geofenceAvailable`, src/places/native.ts):
+    geofencing (task "zaki-places", defined when the bundle loads via src/places/fire.ts imported by the root
+    layout) needs location "all the time"; otherwise a look with the app open on every refresh (2 min
+    throttle; all Expo Go and older builds get). Watching runs only when a saved place has something to do.
+    A reminder whose place is not saved yet gets one local Zaki line with an Open card to /places
+    (client_id `local:place:<key>`).
+  - "I've arrived": a saved place can offer it for one circle; the notification's button (category
+    "arrival", opens the app) sends check-in "arrived" with the place's name as the note. Words only,
+    sent only on the tap.
+  - Store rules: the build asks ACCESS_BACKGROUND_LOCATION (app.json expo-location plugin, foreground
+    service off). Play Console needs the location permissions declaration and a short video of the
+    disclosure → permission flow before a release with it; the in-app disclosure (places.tsx) comes
+    before the system question. Privacy text says what is kept (legal/content.ts).
+  - Needs a new Android build (native modules). Until then the screen says "needs a newer version".
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

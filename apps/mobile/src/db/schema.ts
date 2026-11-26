@@ -51,4 +51,6 @@ export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE messages ADD COLUMN actions_json TEXT;`,
   // v5 — alarm-style reminders, only when the user asked for one
   `ALTER TABLE items ADD COLUMN alarm INTEGER NOT NULL DEFAULT 0;`,
+  // v6 — place reminders: the words for the place; where it is lives in the phone's saved places
+  `ALTER TABLE items ADD COLUMN place TEXT; ALTER TABLE items ADD COLUMN place_on TEXT;`,
 ];
