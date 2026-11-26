@@ -61,6 +61,9 @@ Rules:
 - Production API: Railway project `mellow-reverence`, service `@fakkarni/api`, built
   from the root Dockerfile and deployed from branch `claude/new-session-60jlqv` on
   every push: https://fakkarniapi-production.up.railway.app (health check /health).
+  railway.json (config as code): traffic moves to a new deploy only after its /health answers, the old
+  one keeps serving 20 s more, then gets SIGTERM and 60 s to finish replies in flight. Deploys used to
+  drop chat for a minute (messages sat on "Sending…").
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
@@ -627,7 +630,7 @@ Rules:
   questions about the user's own data ("what do I have this week?", "sagelt kam?", "who owes me?",
   "shrbt kam?") are answered from the context by apps/api/src/pipeline/questions.ts (pure). Only
   small talk reaches the phone's model, which now runs the same `cleanPhoneReply` check (moved to
-  packages/shared/src/phone-brain.ts; the 202 carries `lang`) and stops after 20 s (`THINK_LIMIT_MS`):
+  packages/shared/src/phone-brain.ts; the 202 carries `lang`) and stops after 10 s (`THINK_LIMIT_MS`):
   either way cloud Zaki answers unless the fallback is off. Franco with no digits ("sagelt kam",
   "shrbt maya ahh") counts as Franco, "shrbt maya" logs water, and "ahh"/"aywa" answer a check-in.
 - Phone model evals: `npm run eval -- --brain phone --base-url <llama-server> --label <name>` scores a
@@ -692,10 +695,190 @@ Rules:
   --local` on a GitHub runner (arm64 only) when a commit message contains "[android-local-build]",
   and attaches the APK to a GitHub pre-release.
 
+- Speed pass (2026-11-25, kareem: "super super super slow", target 10 times faster). The wait was
+  database round trips in a row (~0.1 s each while the API is in the US and Supabase in eu-west-1),
+  one request per tab, and the phone waiting for the server before it drew a tap; the model is only
+  part of a chat turn. Measure before and after any speed change:
+  `npm run perf -w @fakkarni/evals -- --label <name> [--rtt 100] [--only <group>]` (evals/perf/run.ts)
+  runs the real app in-process against a local Postgres through a delay proxy with a stand-in model,
+  prints time and round trips per screen, tap and chat turn, and writes evals/perf/out/<label>.json
+  (not committed); `--compare a,b` puts two runs side by side. It empties every table, so
+  PERF_DATABASE_URL must name a database with "perf" in it (default fakkarni_perf; migrate it first).
+  At 0.1 s a trip, before → after: every tab refreshed 3.7 s / 103 trips → 0.9 s / 46 in one request;
+  taps 0.6–2.1 s → 0.4–1.2 s; a chat turn besides the model 0.9–1.8 s → 0.5–1.3 s. At 0.02 s a trip
+  (the API in the database's region) the same code gives 0.2 s, 0.09–0.26 s and 0.11–0.29 s: the
+  region move is worth more than any code change, and it is a Railway dashboard setting.
+- Server speed rules (same pass):
+  - Count round trips, not queries: run independent lookups together, and never add a query in a
+    row to a hot path (auth, GET of a tab, POST /messages) without measuring it.
+  - Prisma `relationJoins` (preview feature in schema.prisma): an `include` / nested `select` is one
+    joined query instead of one per relation. No code sets `relationLoadStrategy`.
+  - Sign-in lookup (plugins/auth.ts): the caller's user row is reused for USER_CACHE_MS (15 s; "0"
+    turns it off) on GET and HEAD only. Every write looks the row up and drops the caller's copy
+    when it is answered; a route that changes someone else's user row calls `forgetCachedUserId`
+    (plan webhook, invite reward, referral code) once the change is committed, never inside its
+    transaction (a read in between would save the old row again). A read that was still looking
+    the row up when it was dropped does not save what it found. So a GET handler must not trust
+    `req.user` for a decision that writes (see `ensureCode`), and must never change the object.
+    Kept in the process: with more than one API instance, another instance's write shows up to
+    15 s late. Off unless buildApp gets `userCacheMs` (server.ts passes it; tests change rows
+    behind the API).
+  - `inBackground` (src/lib/background.ts): rows nobody reads in the answer (events for /admin)
+    are started and not awaited. Never for allowance counts, safety flags or anything a later
+    request reads.
+  - GET /bootstrap (routes/bootstrap.ts) answers every tab's GET in one request: it calls the
+    app's own routes as the caller (`app.inject`, a per-process header keeps them out of the rate
+    limit) and returns `{v: 1, parts: {"<path>": "<that route's JSON text>"}}` with an ETag (304
+    when nothing changed; the queries still run, only the bytes are saved). One call runs up to
+    32 GETs inside, so the route has its own limit, BOOTSTRAP_PER_MINUTE (30 per caller); the
+    phone treats a 429 there like being offline and does not fall back to one request per tab.
+    A new server-only screen goes into BOOTSTRAP_BASE or BOOTSTRAP_CIRCLE, the phone's `PARSERS`
+    (lib/api.ts) and `prefetchAll`.
+  - plugins/gzip.ts gzips text answers of 1.4 KB and more when the caller accepts it (the phone's
+    HTTP client does). Register it after any onSend hook that reads the answer as text.
+- Phone speed rules (same pass). The rule: nothing the user does waits for the server to be drawn.
+  - Saved copies live in memory (src/lib/screen-cache.ts: parsed once, the same object back while
+    the text is unchanged, written to storage a moment later and when the app is left). Reads go
+    through `createSavedReads` (src/lib/saved-reads.ts, pure + tested): one request per path at a
+    time, a copy confirmed in the last 8 s is used as it is, any write or `dataChanged` ends that
+    freshness, and an older answer never replaces a newer one. `refreshAll` (lib/api.ts) brings
+    every tab with GET /bootstrap and fires `cacheRefreshed` (src/lib/signals.ts), which makes the
+    screens in view re-read from memory; a server without the route (404) gets the old one-by-one
+    preload for 30 minutes before it is asked again. Wiping the phone (`resetLocalData`, after the
+    account is deleted) calls `forgetSaved()`: an answer still on its way for the last person is
+    never kept, and a write answered after the wipe is not handed on (`person` in `request`).
+  - A screen's `load` reads its `peek*()` first, then asks. A write's answer goes into every saved
+    copy that shows it (`reads.set` through `saved` / `savedIn` and the `saved*` helpers in
+    lib/api.ts), so another tab has it before its next read. A write answered with no body (an
+    RSVP, a deleted comment) changes the saved copy itself, or the next `load` draws the old state
+    for a moment. Do the same for any new write.
+  - Taps: `useGuess` (src/lib/optimistic.ts; logic in guess-row.ts, pure + tested) with a pure
+    `guess*` helper per feature (tasks, daftar, circles, trackers `bumpTracker`). The guess shows in
+    the same frame, sends go out in tap order, only the last answer of a row is drawn, a failure
+    falls back to the newest confirmed state, and `keep` holds a guess queued offline
+    (`QueuedOffline`). Honesty stays: anything that reaches other people (Yes / Send on a chat
+    card, "sent to the circle" toasts) shows as done only after the server says so; the user's own
+    Cancel, Undo, done, reaction, comment, check-in and tracker step show at once.
+  - Chat: a sent message is drawn before it is stored (`draftUserMessage` → `saveUserMessage`,
+    chat/useChat.ts) and stays until the store hands it back; `keepSame` (chat/list.ts) keeps
+    unchanged bubbles' objects so only what changed redraws. Marking a plan done is local first
+    (lib/useItems.ts): the row leaves at once, SQLite is updated with the same `updated_at`, the
+    server follows through `writeOrQueue`.
+  - Checking the app in a browser without a server: build `node scripts/build-web-preview.mjs
+    out.html`, then load it in Playwright with `page.route("https://zaki.preview/**", (r) =>
+    r.fulfill({ contentType: "text/html", body }))` and open https://zaki.preview/ (a file:// page
+    cannot route, and plain http has no `crypto.randomUUID`).
+- Railway stops reading railway.json (config as code, deprecated) on 2026-12-01
+  (docs.railway.com/config-as-code): before then the health check path, the 20 s overlap and the
+  60 s drain from #59 must be set in the service's settings in the dashboard, where the region is
+  set too. After that date the file is ignored and deploys run on the service settings.
+- Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
+  words show changes: the stored answer and everything a turn decides are as before.
+  - Wire: the phone POSTs /messages with `Accept: text/event-stream, application/json`
+    (apps/mobile/src/sync/stream.ts). When the model writes the reply the server answers with
+    events: `draft {i, d}` (more words of bubble i), `reset {}` (forget the draft, the reply is
+    being written again), then `done {status, body, timing}` (exactly the plain answer) or
+    `error {status}`. The stream opens with its first words (routes/live-reply.ts), so a turn
+    the rules answer, a failure before any words, a resend, a retry that joins a turn in flight,
+    phone-brain mode and a phone that did not ask all get the plain JSON answer as before.
+  - The switch that needs no app update: a server that streams says so on every answer
+    (`x-reply-stream: 1`, REPLY_STREAM_HEADER; app.ts `liveReplies`, true while the model's
+    `streams` is), and the phone asks for a stream only from a server that says so (it keeps
+    what the server last said in localStorage `pref:reply_stream`). FAKKARNI_CHAT_STREAM=0 on
+    Railway takes the line away, and every phone is back on the plain POST with its next
+    answer. A server from before streams never says it, so an app update alone changes nothing.
+  - Model: `respond(input, live)` asks for the same tool turn as a stream (ai/respond-stream.ts;
+    ai/reply-stream.ts picks the reply's words out of the `respond` tool's JSON as it arrives).
+    `eager_input_streaming` goes on `respond` on streamed requests only. FAKKARNI_CHAT_STREAM: "0"
+    never streams, "plain" streams without the eager flag. A 400 on a streamed request that then
+    passes without the stream steps the mode down for the life of the process (eager → plain →
+    off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
+    the API takes the eager flag on a strict tool was not checked with a real key before this
+    shipped: after a deploy read /admin, "How replies were read from the model" (the `stream`
+    and `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout /
+    cut for a streamed try that was lost and read whole instead) and "first words".
+  - Cost of a lost stream: it is paid for as far as it got. What it read is known from its
+    start and added to the turn's usage; what it had written is only told at a stream's end,
+    so the turn's cost is a floor. The eager flag changes the tools, which come before the
+    cached persona prompt, so eager turns and whole turns keep separate cache entries: a turn
+    that falls back to a whole request writes the cache again unless a whole turn ran in the
+    last 5 minutes. Compare cache_read and cache_creation tokens on `ai_call` after a deploy;
+    FAKKARNI_CHAT_STREAM=plain puts both kinds on one entry (the reply then arrives in one
+    piece, still ahead of the rest of the turn).
+  - What may be shown (pipeline/draft.ts, pure): whole words, three words behind the writing;
+    nothing from a sentence that says a reminder or alarm is set (`saysReminderSet`), or after
+    it, until the turn is done (step 3c decides whether it is true); when the reply must be
+    Arabic, a bubble only once it has an Arabic letter, and nothing more once one ended without;
+    bubbles past the third fold into it. Nothing at all on a message the crisis keyword net
+    caught: that reply goes out whole with the helpline, as always. Any rewrite sends `reset`
+    first, also when the server replaces the reply with its own words (`honestReply`): call
+    `live?.onRestart()` before any new step that changes a reply after the model wrote it.
+  - `reply.hijack()` takes the answer away from Fastify: its onSend hooks do not run (no gzip,
+    which a stream needs; live-reply drops the caller's saved user row itself) and an error in
+    the handler would only be logged, so the route catches it and ends the stream with `error`.
+    A failed streamed turn sets the raw status, so the error count and request log say 500.
+  - Phone: React Native's `fetch` hands a body over only when it is complete, so the reply is
+    read with XMLHttpRequest (sync/opener.ts: handlers set before `send`, text read on
+    readystatechange / progress, never at DONE because RN puts an error's words in responseText).
+    The draft is memory only (chat/writing.ts, `replyWriting` in sync/index.ts): rows named like
+    the stored reply (`<client_id>:reply:<n>`), so the stored bubbles take their place without a
+    jump; dots under the last bubble; the message being answered stops saying "Sending…".
+    When a streamed send ends with no answer (cut after it began, or nothing at all), the same
+    message goes out again at once the plain way (`sendForReply`; the server answers it from the
+    turn in flight or from what it stored): a phone whose stream reading fails is answered as it
+    always was. An answer that was read is kept however the connection ends after it. Streaming
+    goes off on that phone for 10 minutes after two failed streams in a row with none read to
+    its end in between (`createStreamSwitch`): a cut counts at once, a send with no answer at
+    all only when the plain send after it is answered, and one that waited out the whole 60 s
+    counts double. One lost connection changes nothing. None of this was run on a real phone
+    before it shipped (the opener was run on a browser's XMLHttpRequest).
+  - Tests: apps/api/test/anthropic-standin.ts is a stand-in Messages API on a real socket, so
+    model-stream.test.ts and messages-live.test.ts run the SDK's own stream code. The e2e test
+    sends one streamed message; E2E_EXPECT_WORDS=1 makes it require the words (against a local
+    API started with ANTHROPIC_API_KEY and FAKKARNI_ANTHROPIC_BASE_URL pointing at the stand-in,
+    or a real key). api-smoke.yml prints "first byte" for streamed turns. The browser preview has
+    no server: it replays its sample answers word by word (apps/mobile/src/demo/replay.ts).
+  - The real app in a browser against a local API (the nearest thing to a phone a cloud
+    session has; run 2026-11-26 with the stand-in model: words from 0.65 s, the whole reply at
+    1.45 s, and with the first two streams cut each message was still answered at 1.4 s and
+    the third was asked for whole): export the web app without EXPO_PUBLIC_DEMO and with
+    EXPO_PUBLIC_API_URL set to the address of apps/mobile/scripts/web-live.mjs, which serves
+    the export and passes everything else to the API (how to run is in the file; CUT=<n> cuts
+    streamed answers).
+- Polish pass (2026-11-26, same thread; every screen walked in English and Arabic in the
+  browser preview). Rules that came out of it:
+  - Motion is src/ui/motion.tsx only: `Appear` (a short fade and lift, once) and `LoadingCards`
+    (soft cards that keep a page's shape). Core `Animated`, opacity and position only, native
+    driver on the phone, and the phone's "reduce motion" setting is honoured (fade, no movement,
+    no pulse). No animation library and no new native module: this reaches builds over the air.
+    Not checked on a real phone before it shipped (the same pattern as the toast and typing dots).
+  - A screen's first load with nothing saved shows `LoadingCards` where its list will be, never
+    a spinner in the middle of the page (People, a circle, Daftar sections and one section,
+    splits and one split, Memories). A screen that failed with nothing saved shows its retry.
+  - Chat: a message that arrives while the chat is open rises into place once
+    (chat/entrance.ts, pure: the first list does not, and of a history that lands in one piece,
+    as when signing in pulls it, only the newest four do, so older rows never rise as they are
+    scrolled to; a reply's draft and the stored reply are one bubble; the screen hands the list
+    over while it is drawn, because a bubble asks when it is first drawn). The first message of
+    a local day has the day above it (chat/days.ts, pure: Today, Yesterday, weekday, then the
+    date) and a new day ends a run of bubbles. Scrolled up past about half a screen
+    (`JUMP_AFTER`), a round button brings the newest message back (the list is inverted, so that
+    is offset 0), and sending does the same.
+  - Text boxes (`TextField`) show focus with the theme's colour and a soft ring
+    (`shadow.focus`), not the browser's outline.
+  - Numbers are written with Latin digits in Arabic too (`dateLocale` is ar-EG-u-nu-latn):
+    never type Arabic-Indic digits into a string. What the user types is still read both ways
+    (`parseAmount`, `parseContact`). Lists inside a sentence join with `listComma` (i18n).
+  - On a card the main button is the positive one: Cancel is never the filled button
+    (TaskCard), and a row's actions sit under it, not squeezed beside the title (private notes
+    in the Daftar are laid out like `DaftarCard`). A streak beside a title is a flame and the
+    number (`TrackerStreak`), with the words read out.
+  - The browser preview has sample split bills (demo/server.web.ts, the shared `splitBill` math).
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
-- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming deferred.
+- [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming came later (2026-11-26, see the repo notes).
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
 - [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice

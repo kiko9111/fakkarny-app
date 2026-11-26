@@ -3,7 +3,9 @@ import { z } from "zod";
 import { CreateTrackerRequest, isRamadanSeason, LogTrackerRequest, RAMADAN_PACK, TRACKER_TEMPLATES, TrackerKind, UpdateTrackerRequest, type ListTrackersResponse, type SharedTrackersResponse, type TrackerResponse } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
 import { Prisma } from "../generated/prisma/client";
-import { addRamadanPack, canShareIn, createTracker, logEntry, toWireTracker, trackerLimit } from "../trackers/store";
+import { addRamadanPack, canShareIn, createTracker, logEntryWithStats, toWireTracker, toWireTrackers, trackerLimit } from "../trackers/store";
+import { inBackground } from "../lib/background";
+import { toLocalIso } from "../lib/time";
 import { trackerStats } from "../trackers/stats";
 
 export interface TrackerRoutesOptions {
@@ -28,9 +30,10 @@ export const trackerRoutes: FastifyPluginAsync<TrackerRoutesOptions> = async (ap
   app.get("/trackers", async (req) => {
     const at = now();
     const rows = await prisma.tracker.findMany({ where: { userId: req.user.id }, orderBy: { createdAt: "asc" }, take: 50, include: { circle: { select: { name: true } } } });
+    const [trackers, limit] = await Promise.all([toWireTrackers(prisma, rows, req.user.timezone, at), trackerLimit(prisma, req.user, at)]);
     const res: ListTrackersResponse = {
-      trackers: await Promise.all(rows.map((t) => toWireTracker(prisma, t, req.user.timezone, at))),
-      limit: await trackerLimit(prisma, req.user, at),
+      trackers,
+      limit,
       ramadan_pack: !isRamadanSeason(at) ? "off" : RAMADAN_PACK.every((k) => rows.some((t) => t.kind === k)) ? "added" : "available",
     };
     return res;
@@ -110,9 +113,11 @@ export const trackerRoutes: FastifyPluginAsync<TrackerRoutesOptions> = async (ap
     // A step logged offline keeps the time it was tapped (up to 3 days back), so streaks stay right.
     const tapped = body.data.at ? new Date(body.data.at) : null;
     const at = tapped && tapped <= now() && now().getTime() - tapped.getTime() < 3 * 86_400_000 ? tapped : now();
-    await logEntry(prisma, tracker, amount, "tap", at, req.user.timezone);
-    await prisma.event.create({ data: { userId: req.user.id, name: "tracker_logged", propsJson: { kind: tracker.kind, via: "tap" } } });
-    return { tracker: await toWireTracker(prisma, tracker, req.user.timezone, now()) } satisfies TrackerResponse;
+    const { wire } = await logEntryWithStats(prisma, tracker, amount, "tap", at, req.user.timezone);
+    inBackground(prisma.event.create({ data: { userId: req.user.id, name: "tracker_logged", propsJson: { kind: tracker.kind, via: "tap" } } }));
+    // A step tapped offline on an earlier day is counted on that day: today's numbers are read again.
+    const day = (d: Date) => toLocalIso(d, req.user.timezone).slice(0, 10);
+    return { tracker: day(at) === day(now()) ? wire : await toWireTracker(prisma, tracker, req.user.timezone, now()) } satisfies TrackerResponse;
   });
 
   /** Undo a slip of the thumb: removes the newest entry. */

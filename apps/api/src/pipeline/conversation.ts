@@ -9,9 +9,11 @@ import { loadContext, mustReplyInArabic, PHONE_RECENT_MESSAGES, renderContext, r
 import { answerQuestion, readQuestion } from "./questions";
 import { cleanPhoneReply, describeUnderstood, PHONE_REPLY_PROMPT, PHONE_REPLY_VERSION, templateReply } from "../persona/phone-reply";
 import { understandInput } from "./understand-input";
-import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
+import { detectScript, FALLBACK_REPLY, fastReply, helplineMessage, looksDistressed, looksLikeCrisis, looksLikeReminderWork, promisesReminder, replyLang, saysReminderSet, UNSET_REMINDER_REPLY, wantsAlarm, type ReplyLang } from "./rules";
+import { createDraftRelay } from "./draft";
 import { summarizeIfNeeded } from "./summarize";
-import { logEntry, loggedLine, toWireTracker, trackerFastPath } from "../trackers/store";
+import { inBackground } from "../lib/background";
+import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
@@ -58,7 +60,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
   const { model, log } = deps;
   const dailyCap = deps.dailyCap ?? DAILY_MESSAGE_CAP;
 
-  return async ({ prisma, user, message, now, aiAllowance, requireSubscription, brain, timing }) => {
+  return async ({ prisma, user, message, now, aiAllowance, requireSubscription, brain, timing, draft }) => {
     // Where the wait goes (ms since the start, numbers only): sent back as Server-Timing.
     const t0 = Date.now();
     const mark = (k: string) => {
@@ -70,9 +72,12 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // Every database round trip adds to the wait for the reply, so the lookups that don't
     // depend on each other run together, and the context for the model loads while the rule
-    // checks below run (most messages reach the model).
-    const ctxEarly = loadContext(prisma, user, now);
-    ctxEarly.catch(() => {});
+    // checks below run (most messages reach the model). A message the rules answer on their
+    // own words ("thanks", an emoji) never reaches the model: its context is not loaded at all
+    // (it was ~25 lookups that held the rule checks' own lookups back in the queue).
+    const canned = crisisKeyword ? null : fastReply(message.text, script);
+    let ctxEarly: ReturnType<typeof loadContext> | null = canned ? null : loadContext(prisma, user, now);
+    ctxEarly?.catch(() => {});
     const [today, lastFriend] = await Promise.all([
       crisisKeyword ? Promise.resolve(0) : prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } }),
       prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" } }),
@@ -91,14 +96,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 0a. "Yes" / "no" to a card Zaki is waiting on ("Ask Mona to buy bread?"): done by rules.
     const answered = crisisKeyword ? null : await answerPendingCards(prisma, user, message, lastFriend, script, now, requireSubscription ?? false);
     if (answered) {
-      await event(prisma, user.id, "reply_fast_path", { card: true });
+      counted(prisma, user.id, "reply_fast_path", { card: true });
       return answered;
     }
 
     // 0b. "Undo" / "تراجع": takes back Zaki's latest change of the user's own, by rules.
     const undone = crisisKeyword || !isUndo(message.text) ? null : await undoLatest(prisma, user, message, script, now);
     if (undone) {
-      await event(prisma, user.id, "reply_fast_path", { undo: true });
+      counted(prisma, user.id, "reply_fast_path", { undo: true });
       return undone;
     }
 
@@ -107,7 +112,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     if (home) {
       const ran = await runAppActions(prisma, user, [{ kind: "checkin", checkin_kind: home }], script, now, { requireSubscription: requireSubscription ?? false });
       if (ran.cards.some((c) => c.status === "pending")) {
-        await event(prisma, user.id, "reply_fast_path", { checkin: true });
+        counted(prisma, user.id, "reply_fast_path", { checkin: true });
         return withCards(prisma, await applyActions(prisma, { user, message, replies: [HOME_REPLY[script]], response: EMPTY_ACTIONS, now }), ran.cards);
       }
     }
@@ -119,9 +124,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const answersStatus = status?.pending === true;
 
     // 1. Rules fast path: no AI for messages that carry nothing to remember.
-    const canned = crisisKeyword ? null : fastReply(message.text, script);
     if (canned) {
-      await event(prisma, user.id, "reply_fast_path", {});
+      counted(prisma, user.id, "reply_fast_path", {});
       return applyActions(prisma, { user, message, replies: [canned], response: EMPTY_ACTIONS, now });
     }
 
@@ -129,14 +133,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const tracked = crisisKeyword ? null : await trackerFastPath(prisma, user, message.text, script, now);
     const closesReminder = tracked?.closesReminder === true;
     if (tracked && !closesReminder) {
-      await event(prisma, user.id, "reply_fast_path", { tracker: true });
+      counted(prisma, user.id, "reply_fast_path", { tracker: true });
       return applyActions(prisma, { user, message, replies: [tracked.text], response: EMPTY_ACTIONS, now, ...(tracked.upsell ? { replyKind: "upsell" as const } : {}) });
     }
 
     // 1a'. Expenses and income by rules: "دفعت 300 بنزين" goes to a Daftar section. No AI call.
     const money = crisisKeyword || tracked ? null : await moneyFastPath(prisma, user, message.text, script, now);
     if (money) {
-      await event(prisma, user.id, "reply_fast_path", { money: true });
+      counted(prisma, user.id, "reply_fast_path", { money: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now }), money.cards ?? []);
       return { ...result, notices: [...(result.notices ?? []), ...money.notices.filter((n) => n.userId !== user.id)] };
     }
@@ -173,6 +177,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // 2. One model call with persona (cached) + context + recent chat.
     // A tracker step logged just above changes the numbers: load them again.
     mark("rules");
+    ctxEarly ??= loadContext(prisma, user, now);
     const ctx = closesReminder ? await loadContext(prisma, user, now) : await ctxEarly;
     mark("context");
     const history = historyUpTo(ctx.recent, message);
@@ -182,6 +187,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let usage: Usage | null = null;
     let modelOk = false;
     let cloudInput: Parameters<FriendModel["respond"]>[0] | null = null;
+    /** The reply's words on their way to the phone while the model writes them (pipeline/draft.ts). */
+    let live: ReturnType<typeof createDraftRelay> | undefined;
+    let streamMode: string | null = null;
+    /** A streamed try of this turn was lost (refused, too slow, cut off) and the turn asked for again. */
+    let streamLost: string | null = null;
     /** Phone mode: what wrote the reply when the phone's model wasn't asked (counts only). */
     let codeReply: string | null = null;
     const nowLocal = toLocalIso(now, user.timezone).slice(0, 16);
@@ -256,15 +266,21 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       // the recent chat can't turn every reply into "my brain froze". Timeouts and outages don't.
       const tries = [modelInput, { ...modelInput, history: history.slice(-1) }];
       replies = [FALLBACK_REPLY[script]];
+      // The words go to the phone while they are written, when it asked for them. Not on a
+      // message the crisis net caught: that reply goes out whole, with the helpline in it, as it
+      // always has. A bubble in the wrong script is asked for again (ai/model.ts), so it is never shown.
+      if (draft && !crisisKeyword) live = createDraftRelay(draft, { promises: saysReminderSet, ...(modelInput.requireArabic ? { mustContain: ARABIC_LETTER } : {}) });
       for (const [n, input] of tries.entries()) {
         try {
-          const result = await model.respond(input);
+          const result = await model.respond(input, live);
           usage = usage ? addUsage(usage, result.usage) : result.usage;
           if (result.ok) {
             modelOk = true;
             replies = result.output.reply;
             actions = result.output;
             crisis ||= result.output.crisis;
+            streamMode = result.stream ?? null;
+            streamLost = result.streamLost ?? null;
             if (n > 0) await event(prisma, user.id, "ai_recovered", { short_history: true }).catch(() => {});
             break;
           }
@@ -309,12 +325,15 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     let shown: Awaited<ReturnType<typeof recentlySetItem>> = null;
     if (!crisis && usage && cloudInput && promisesReminder(replies) && !setsReminder(actions)) {
       await event(prisma, user.id, "reminder_claim_unset", {});
-      const retry = await model.respond({ ...cloudInput, context: `${cloudInput.context}\n\n${UNSET_CHECK}` }).catch(() => null);
+      // The reply is written again: what the phone was shown of the first one goes.
+      live?.onRestart();
+      const retry = await model.respond({ ...cloudInput, context: `${cloudInput.context}\n\n${UNSET_CHECK}` }, live).catch(() => null);
       if (retry) usage = addUsage(usage, retry.usage);
       if (retry?.ok && !retry.output.crisis && (setsReminder(retry.output) || !promisesReminder(retry.output.reply))) {
         replies = retry.output.reply;
         actions = retry.output;
       } else {
+        live?.onRestart();
         shown = await recentlySetItem(prisma, user.id, now);
         if (!shown) replies = [UNSET_REMINDER_REPLY[script]];
       }
@@ -344,6 +363,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
           ...(freeCall ? { free: freeCall } : {}),
           model: FRIEND_MODEL,
           persona: PERSONA_VERSION,
+          ...(streamMode ? { stream: streamMode } : {}),
+          ...(streamLost ? { stream_lost: streamLost } : {}),
           ...usage,
           cost_usd: costUsd(usage),
           items_created: actions.create_items.length,
@@ -359,7 +380,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       const ran = await runAppActions(prisma, user, appActions, script, now, { requireSubscription: requireSubscription ?? false });
       // Nothing the model asked for could be done ("cancel Karim's debt" with no such debt): its
       // words ("I'll cancel it") would be a false promise, so the reply says what happened instead.
-      if (ran.cards.length && ran.cards.every((c) => c.status === "failed") && !applied.items.length) applied = await honestReply(prisma, applied, ran.cards, script);
+      if (ran.cards.length && ran.cards.every((c) => c.status === "failed") && !applied.items.length) {
+        // What the phone was shown of the model's words goes first, as with every rewrite.
+        live?.onRestart();
+        applied = await honestReply(prisma, applied, ran.cards, script);
+      }
       applied = await withCards(prisma, applied, ran.cards);
       applied = { ...applied, notices: [...(applied.notices ?? []), ...ran.notices] };
     }
@@ -381,6 +406,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     return { ...applied, aiAllowance: { limit, used: used + (usage && !freeCall && !brain ? 1 : 0) } };
   };
 }
+
+const ARABIC_LETTER = /[\u0600-\u06FF]/;
 
 const UNSET_CHECK =
   "CHECK: your reply says a reminder or alarm is set, but this turn creates or changes no reminder. If the user gave or confirmed a time for something, return it now: update_items with the id from OPEN ITEMS and its time (or create_items if it is not there). If it is already set exactly as they want in OPEN ITEMS, keep your reply and change nothing. If you can't set it, reply without saying it is set.";
@@ -427,14 +454,19 @@ async function answerStatusCheck(prisma: Parameters<MessagePipeline>[0]["prisma"
   const tracker = await prisma.tracker.findFirst({ where: { id: pending.id, userId: user.id } });
   const step = tracker ? TRACKER_TEMPLATES[tracker.kind as TrackerKind]?.step : 0;
   if (!tracker || !step) return { pending: true };
-  await logEntry(prisma, tracker, step, "chat", now, user.timezone);
+  const { wire } = await logEntryWithStats(prisma, tracker, step, "chat", now, user.timezone);
   await event(prisma, user.id, "status_answered", { subject: "tracker", via: "rules" });
-  const line = loggedLine(lang, await toWireTracker(prisma, tracker, user.timezone, now), step);
+  const line = loggedLine(lang, wire, step);
   return { pending: true, result: await applyActions(prisma, { user, message, replies: [line], response: EMPTY_ACTIONS, now }) };
 }
 
 async function event(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: string, name: string, props: Prisma.InputJsonObject) {
   await prisma.event.create({ data: { userId, name, propsJson: props } });
+}
+
+/** A counter for the dashboard only (nothing reads it back): written without making the reply wait. */
+function counted(prisma: Parameters<MessagePipeline>[0]["prisma"], userId: string, name: string, props: Prisma.InputJsonObject) {
+  inBackground(prisma.event.create({ data: { userId, name, propsJson: props } }));
 }
 
 /**

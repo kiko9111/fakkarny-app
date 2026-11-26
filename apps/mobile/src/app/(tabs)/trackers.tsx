@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useLive } from "@/lib/live";
 import { router } from "expo-router";
-import type { Tracker } from "@fakkarni/shared";
+import type { ListTrackersResponse, Tracker } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { failText } from "@/lib/errors";
 import { addRamadanPack, listTrackers, peekTrackers } from "@/lib/api";
@@ -19,12 +19,17 @@ export default function TrackersScreen() {
   const [state, setState] = useState<"loading" | "ready" | "offline">(saved ? "ready" : "loading");
 
   const load = useCallback(async () => {
-    try {
-      const res = await listTrackers();
+    const show = (res: ListTrackersResponse) => {
       setTrackers(res.trackers);
       setLimit(res.limit);
       setRamadan(res.ramadan_pack);
       setState("ready");
+    };
+    // What the phone holds first (a step logged on Today is already in it), then the server.
+    const held = peekTrackers();
+    if (held) show(held);
+    try {
+      show(await listTrackers());
     } catch (err) {
       setWhy(failText(err, t.trackers.offline));
       setState((s) => (s === "ready" ? s : "offline"));

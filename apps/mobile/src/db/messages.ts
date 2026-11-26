@@ -58,26 +58,28 @@ const toLocal = (r: Row): LocalMessage => ({
   actions: parseActions(r.actions_json),
 });
 
-/** Save the user's message locally first; the outbox sends it when online. */
-export async function addUserMessage(text: string): Promise<LocalMessage> {
+/**
+ * The user's message as it will be stored, made without waiting for the store, so the chat can
+ * draw it in the same frame as the tap (chat/useChat.ts). `at` is its time (default: now).
+ */
+export function draftUserMessage(text: string, at: string = new Date().toISOString()): LocalMessage {
+  return { client_id: randomUUID(), role: "user", kind: "chat", text: text.trim(), created_at: at, sync_status: "pending", saved: null, server_id: null, actions: [] };
+}
+
+/** Store a drafted message; the outbox sends it when online. */
+export async function saveUserMessage(m: LocalMessage): Promise<void> {
   const db = await getDb();
-  const row: Row = {
-    client_id: randomUUID(),
-    role: "user",
-    kind: "chat",
-    text: text.trim(),
-    created_at: new Date().toISOString(),
-    sync_status: "pending",
-    attempts: 0,
-    saved_json: null,
-    server_id: null,
-    actions_json: null,
-  };
   await db.runAsync(
     "INSERT INTO messages (client_id, role, kind, text, created_at, sync_status) VALUES (?, ?, ?, ?, ?, ?)",
-    row.client_id, row.role, row.kind, row.text, row.created_at, row.sync_status,
+    m.client_id, m.role, m.kind, m.text, m.created_at, m.sync_status,
   );
-  return toLocal(row);
+}
+
+/** Save the user's message locally first; the outbox sends it when online. */
+export async function addUserMessage(text: string): Promise<LocalMessage> {
+  const m = draftUserMessage(text);
+  await saveUserMessage(m);
+  return m;
 }
 
 /** Latest messages, oldest first. */

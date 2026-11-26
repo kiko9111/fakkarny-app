@@ -23,9 +23,14 @@ jobs:
         run: |
           U=$(cat /proc/sys/kernel/random/uuid)
           curl -s -m 30 -w "  /health %{http_code} %{time_total}s\n" "$API/health"
-          for p in /me /circles /tasks /trackers /daftar /money/sections /splits "/items?status=open" /me/referral; do
+          for p in /me /circles /tasks /trackers /daftar /money /splits "/items?status=open" /me/referral; do
             curl -s -m 30 -o /tmp/body -w "$p %{http_code} %{time_total}s " -H "x-install-id: $U" -H "x-message-kinds: 2" "$API$p"; head -c 300 /tmp/body; echo
           done
+          echo "--- every tab in one answer (404 until the server has the route), plain and gzipped, then asked again with its ETag"
+          curl -s -m 30 -o /dev/null -D /tmp/head -w "/bootstrap %{http_code} %{time_total}s %{size_download} bytes\n" -H "x-install-id: $U" -H "x-message-kinds: 2" "$API/bootstrap"
+          curl -s -m 30 -o /dev/null -w "/bootstrap gzip %{http_code} %{time_total}s %{size_download} bytes\n" -H "accept-encoding: gzip" -H "x-install-id: $U" -H "x-message-kinds: 2" "$API/bootstrap"
+          TAG=$(grep -i '^etag:' /tmp/head | cut -d' ' -f2- | tr -d '\r' || true)
+          if [ -n "$TAG" ]; then curl -s -m 30 -o /dev/null -w "/bootstrap unchanged %{http_code} %{time_total}s\n" -H "if-none-match: $TAG" -H "x-install-id: $U" -H "x-message-kinds: 2" "$API/bootstrap"; fi
           echo "--- 20 quick /circles calls (rate limit check)"
           for i in $(seq 1 20); do curl -s -m 30 -o /dev/null -w "%{http_code} " -H "x-install-id: $U" "$API/circles"; done; echo
       - name: Time a chat turn and one database round trip
@@ -33,8 +38,8 @@ jobs:
           U=$(cat /proc/sys/kernel/random/uuid)
           H=(-H "x-install-id: $U" -H "x-message-kinds: 2" -H "content-type: application/json")
           curl -s -o /dev/null "${H[@]}" "$API/me"
-          echo "--- where the server runs (Railway edge header)"
-          curl -s -o /dev/null -D - "$API/health" | grep -i -E "^(x-railway|server|via)" || true
+          echo "--- where the server runs (Railway edge header), and whether it tells phones to ask for replies as they are written (x-reply-stream)"
+          curl -s -o /dev/null -D - "$API/health" | grep -i -E "^(x-railway|server|via|x-reply-stream)" || true
           echo "--- 5x /health (network only, no database)"
           for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total} " "$API/health"; done; echo
           echo "--- 5x /splits (sign-in lookup + one query)"
@@ -44,11 +49,30 @@ jobs:
             curl -s -m 90 -o /tmp/reply -w "$2 %{http_code} %{time_total}s\n" "${H[@]}" -X POST -d "$body" "$API/messages"
             node -e 'const r=JSON.parse(require("fs").readFileSync("/tmp/reply","utf8"));console.log("   items:",(r.items||[]).map(i=>i.type+" remind="+i.remind_at).join(", ")||"none","| replies:",(r.replies||[]).length)' || true
           }
+          # The same POST the way the app sends it since replies show while they are written: "first
+          # byte" is when the first words left the server (a stream opens with them). A server
+          # without streaming, or a turn the rules answer, answers in one piece as before.
+          stream() {
+            body=$(printf '{"client_id":"%s","text":"%s","created_at":"%s","timezone":"Africa/Cairo"}' "$(cat /proc/sys/kernel/random/uuid)" "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+            curl -sN -m 90 -o /tmp/stream -w "$2 %{http_code} %{content_type} | first byte %{time_starttransfer}s | all %{time_total}s\n" "${H[@]}" -H "accept: text/event-stream, application/json" -X POST -d "$body" "$API/messages"
+            node -e '
+              const t = require("fs").readFileSync("/tmp/stream", "utf8");
+              if (!/^event: /m.test(t)) { console.log("   answered in one piece"); process.exit(0); }
+              const ev = t.split("\n\n").map((b) => { const e = /^event: (.*)$/m.exec(b), d = /^data: (.*)$/m.exec(b); return e && d ? { e: e[1], d: JSON.parse(d[1]) } : null; }).filter(Boolean);
+              const done = ev.find((x) => x.e === "done");
+              console.log("   pieces shown:", ev.filter((x) => x.e === "draft").length, "| taken back:", ev.filter((x) => x.e === "reset").length, "| ended with:", ev.at(-1)?.e, "| server ms:", JSON.stringify(done?.d.timing ?? null), "| replies:", (done?.d.body?.replies || []).length);
+            ' || true
+          }
           echo "--- chat turns"
           post "شكرا" "thanks (rules, no AI)"
           post "فكرني بكره اعزم خالد على حاجة يشربها" "reminder, no time (AI)"
           post "ahh hlw el sa3a 4" "yes, at 4 (AI)"
           post "عامل ايه النهارده" "small talk (AI)"
+          echo "--- chat turns read while they are written"
+          stream "شكرا" "thanks (rules, no AI)"
+          stream "احكيلي حاجة حلوة عن النهارده" "small talk (AI)"
+          stream "يومي كان طويل اوي ومحتاج افصل شوية" "small talk 2 (AI)"
+          stream "فكرني بكره الساعة 9 الصبح اكلم الدكتور" "reminder with a time (AI: the line that says it is set comes with the answer)"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -58,7 +82,8 @@ jobs:
         working-directory: apps/mobile
         env:
           E2E_API_URL: ${{ env.API }}
-        run: npx vitest run src/e2e
+        # verbose: the test prints how the chat reply arrived (first words, whole answer).
+        run: npx vitest run src/e2e --reporter=verbose
       - name: Phone client of the installed Android build (e47c0d0) against the live API
         if: always()
         working-directory: apps/mobile
@@ -68,4 +93,4 @@ jobs:
           cp src/e2e/api.e2e.test.ts /tmp/e2e.test.ts
           git checkout e47c0d0 -- src ../../packages/shared/src
           mkdir -p src/e2e && cp /tmp/e2e.test.ts src/e2e/api.e2e.test.ts
-          npx vitest run src/e2e
+          npx vitest run src/e2e --reporter=verbose

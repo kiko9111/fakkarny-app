@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLive } from "@/lib/live";
 import { QueuedOffline } from "@/sync/writes";
-import { ActivityIndicator, Linking, Share, StyleSheet, View } from "react-native";
+import { Linking, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { checkinOrder, FamilyRole, isRamadanSeason, type CheckinKind, type CircleDetail, type CircleFeedResponse, type CircleMember, type SharedTracker } from "@fakkarni/shared";
-import { fill, whatsappShareUrl } from "@/circles/logic";
+import { fill, guessCheckin, whatsappShareUrl } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
-import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, peekCircle, peekCircleFeed, peekCircleTrackers, removeCircleMember, screenCache, setFamilyRole } from "@/lib/api";
+import { answerInvite, askCheckin, askZakiInCircle, checkIn, inviteToIftar, createInvite, deleteCircle, getCircle, getCircleFeed, getCircleSummary, getCircleTrackers, peekCircle, peekCircleFeed, peekCircleTrackers, removeCircleMember, saveCircle, screenCache, setFamilyRole } from "@/lib/api";
+import { useGuess } from "@/lib/optimistic";
 import { HttpError } from "@/sync/queue";
 import { failText } from "@/lib/errors";
 import { iftarDate, sortTasks, type IftarDay } from "@/tasks/logic";
 import { TaskCard } from "@/tasks/TaskCard";
 import { AskZakiBox, FeedPost } from "@/circles/FeedPost";
-import { TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
-import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
+import { TrackerStreak, TRACKER_ICON, trackerName } from "@/trackers/TrackerCard";
+import { glass, ask, Badge, Button, Card, Chip, confirm, IconButton, IconTile, LoadingCards, Note, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
 const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -22,7 +23,9 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday:
 export default function CircleScreen() {
   const { id, invite: inviteNow } = useLocalSearchParams<{ id: string; invite?: string }>();
   // The phone's last copy draws at once; the fresh one replaces it when it arrives.
-  const [circle, setCircle] = useState<CircleDetail | null>(() => peekCircle(id));
+  const [saved, setCircle] = useState<CircleDetail | null>(() => peekCircle(id));
+  // The user's own check-in or role shows at once (the circle's guess, lib/optimistic.ts).
+  const { shown: circle, run: guessCircle } = useGuess(saved);
   const [failed, setFailed] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [] });
@@ -32,6 +35,11 @@ export default function CircleScreen() {
   // Each part loads on its own: the circle shows as soon as it arrives, and a feed or tracker
   // problem never keeps the whole circle from opening.
   const load = useCallback(async () => {
+    // What the phone holds first (the same objects when nothing changed: no redraw), then the server.
+    const held = { circle: peekCircle(id), feed: peekCircleFeed(id), trackers: peekCircleTrackers(id) };
+    if (held.circle) setCircle(held.circle);
+    if (held.feed) setFeed(held.feed);
+    if (held.trackers) setTrackers(held.trackers);
     const feedDone = getCircleFeed(id).then(setFeed, () => {});
     const trackersDone = getCircleTrackers(id).then(setTrackers, () => {});
     const summaryDone = getCircleSummary(id).then(
@@ -87,19 +95,30 @@ export default function CircleScreen() {
       else void load();
     } catch {
       notify(t.circles.failed, "error");
+      // Whatever the screen guessed meanwhile goes back to what the server has.
+      void load();
     }
   };
 
-  const sendCheckin = async (kind: CheckinKind) => {
-    try {
-      setCircle(await checkIn(id, kind));
-      notify(t.family.checkedIn);
-      void load();
-    } catch (err) {
-      // Offline: kept on the phone, sent to the family when the network is back.
-      if (err instanceof QueuedOffline) notify(t.trackers.savedOffline, "info");
-      else notify(t.circles.failed, "error");
-    }
+  const sendCheckin = (kind: CheckinKind) => {
+    // The user's own row shows it at once; "sent" is said when the circle really has it.
+    let guessed: CircleDetail | null = null;
+    const next = (c: CircleDetail | null) => (guessed = c ? guessCheckin(c, kind, new Date()) : null);
+    void guessCircle(() => checkIn(id, kind), { next, adopt: (answer) => answer, keep: (err) => err instanceof QueuedOffline }).then(
+      (answer) => {
+        setCircle(answer);
+        notify(t.family.checkedIn);
+        void load();
+      },
+      (err) => {
+        // Offline: kept on the phone (and in the saved copy), sent to the family when the network is back.
+        if (err instanceof QueuedOffline) {
+          if (guessed) saveCircle(guessed);
+          return notify(t.trackers.savedOffline, "info");
+        }
+        notify(t.circles.failed, "error");
+      },
+    );
   };
   const askOne = async (userId: string) => {
     try {
@@ -109,12 +128,14 @@ export default function CircleScreen() {
       notify(err instanceof HttpError && err.status === 409 ? t.family.askedTooSoon : t.circles.failed, err instanceof HttpError && err.status === 409 ? "info" : "error");
     }
   };
-  const pickRole = async (userId: string, role: FamilyRole | null) => {
-    try {
-      setCircle(await setFamilyRole(id, userId, role));
-    } catch {
-      notify(t.circles.failed, "error");
-    }
+  const pickRole = (userId: string, role: FamilyRole | null) => {
+    const next = (c: CircleDetail | null) => (c ? { ...c, members: c.members.map((m) => (m.user_id === userId ? { ...m, family_role: role } : m)) } : null);
+    void guessCircle(() => setFamilyRole(id, userId, role), { next, adopt: (answer) => answer }).then(setCircle, () => notify(t.circles.failed, "error"));
+  };
+  /** Going / not going shows on the invitation at once. */
+  const rsvp = (postId: string, going: boolean) => {
+    setFeed((f) => ({ ...f, posts: f.posts.map((p) => (p.id === postId ? { ...p, my_rsvp: going } : p)) }));
+    void act(() => answerInvite(id, postId, going), false);
   };
   const iftar = (pick: IftarDay) => void act(() => inviteToIftar(id, iftarDate(pick, new Date())), false, t.ramadan.sent);
   const askIftarDay = () =>
@@ -125,18 +146,17 @@ export default function CircleScreen() {
     ]);
 
   if (!circle) {
-    return (
+    return failed ? (
       <View style={styles.center}>
         <Stack.Screen options={{ title: "" }} />
-        {failed ? (
-          <>
-            <Note icon="cloud-offline-outline">{failed}</Note>
-            <Button label={t.circles.retry} kind="tonal" onPress={() => void load()} />
-          </>
-        ) : (
-          <ActivityIndicator color={palette.primary} />
-        )}
+        <Note icon="cloud-offline-outline">{failed}</Note>
+        <Button label={t.circles.retry} kind="tonal" onPress={() => void load()} />
       </View>
+    ) : (
+      <Screen>
+        <Stack.Screen options={{ title: "" }} />
+        <LoadingCards count={4} />
+      </Screen>
     );
   }
 
@@ -205,7 +225,7 @@ export default function CircleScreen() {
       <SectionHeader title={t.ui.checkInPrompt} />
       <View style={styles.chips}>
         {checkinOrder(circle.family_type).map((kind) => (
-          <Chip key={kind} label={plain(t.family.checkins[kind])} icon={CHECKIN_ICON[kind]} tone="family" onPress={() => void sendCheckin(kind)} />
+          <Chip key={kind} label={plain(t.family.checkins[kind])} icon={CHECKIN_ICON[kind]} tone="family" onPress={() => sendCheckin(kind)} />
         ))}
       </View>
 
@@ -236,8 +256,8 @@ export default function CircleScreen() {
           extra={
             p.kind === "iftar" ? (
               <View style={styles.chips}>
-                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => void act(() => answerInvite(id, p.id, true), false)} />
-                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => void act(() => answerInvite(id, p.id, false), false)} />
+                <Chip label={plain(t.ramadan.going)} selected={p.my_rsvp === true} onPress={() => rsvp(p.id, true)} />
+                <Chip label={plain(t.ramadan.notGoing)} selected={p.my_rsvp === false} onPress={() => rsvp(p.id, false)} />
               </View>
             ) : undefined
           }
@@ -275,7 +295,7 @@ export default function CircleScreen() {
                   {[tr.is_mine ? t.trackers.mine : tr.owner_name ?? t.circles.noName, tr.goal ? fill(t.trackers.ofGoalToday, { n: tr.today, goal: tr.goal }) : fill(t.trackers.today, { n: tr.today })].join(" · ")}
                 </Text>
               </View>
-              {tr.streak >= 2 ? <Badge label={fill(t.ui.streakDays, { n: tr.streak })} tone="ok" /> : null}
+              {tr.streak >= 2 ? <TrackerStreak days={tr.streak} /> : null}
             </View>
           ))}
         </Card>
@@ -309,7 +329,7 @@ export default function CircleScreen() {
           <SectionHeader title={t.ui.yourRole} />
           <View style={styles.chips}>
             {FamilyRole.options.map((role) => (
-              <Chip key={role} label={t.family.roles[role]} tone="family" selected={me.family_role === role} onPress={() => void pickRole(me.user_id, me.family_role === role ? null : role)} />
+              <Chip key={role} label={t.family.roles[role]} tone="family" selected={me.family_role === role} onPress={() => pickRole(me.user_id, me.family_role === role ? null : role)} />
             ))}
           </View>
         </>

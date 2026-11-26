@@ -14,6 +14,9 @@ import {
   type Message,
   type Session,
   type SessionMessage,
+  type Split,
+  splitBill,
+  type SplitInput,
   type Tracker,
   type TrackerKind,
   TRACKER_TEMPLATES,
@@ -94,6 +97,8 @@ interface State {
   served_morning: boolean;
   /** Spending sections (older saved demos have none: seeded on first use). */
   money?: SectionRow[];
+  /** Split bills (seeded on first use, like the sections). */
+  splits?: Split[];
   /** Item id of the status check Zaki just asked about (shows the "did Youssef pay you back?" flow). */
   pending_status?: string | null;
   status_asked?: boolean;
@@ -240,12 +245,12 @@ function seed(): State {
       item({ title: L("ميعاد الدكتور", "Doctor's appointment"), due_at: atLocal(1, 18), remind_at: atLocal(1, 17) }),
       item({ title: L("ادفع فاتورة النت", "Pay the internet bill"), type: "task", due_at: atLocal(3, 12) }),
       item({ title: L("هدية عيد ميلاد مريم", "Mariam's birthday present"), type: "task" }),
-      item({ title: L("يوسف · ٢٠٠", "Youssef · 200"), type: "debt", debt_person: L("يوسف", "Youssef"), debt_amount: 200, debt_direction: "owed_to_me" }),
+      item({ title: L("يوسف · 200", "Youssef · 200"), type: "debt", debt_person: L("يوسف", "Youssef"), debt_amount: 200, debt_direction: "owed_to_me" }),
     ],
     memories: [
       { id: id(), user_id: ME, kind: "person", subject: L("سارة", "Sara"), content: L("أختك، بتشتغل دكتورة أسنان", "Your sister, a dentist"), last_used_at: null, created_at: inHours(-48) },
       { id: id(), user_id: ME, kind: "preference", subject: L("القهوة", "Coffee"), content: L("بتحب القهوة من غير سكر", "You take your coffee without sugar"), last_used_at: null, created_at: inHours(-40) },
-      { id: id(), user_id: ME, kind: "fact", subject: L("الجيم", "Gym"), content: L("بتروح الجيم الصبح ٣ مرات في الأسبوع", "You go to the gym three mornings a week"), last_used_at: null, created_at: inHours(-30) },
+      { id: id(), user_id: ME, kind: "fact", subject: L("الجيم", "Gym"), content: L("بتروح الجيم الصبح 3 مرات في الأسبوع", "You go to the gym three mornings a week"), last_used_at: null, created_at: inHours(-30) },
     ],
     circles: [family, friends],
     daftar: [
@@ -465,10 +470,10 @@ on("GET", "/messages", (_m, _b, q) => {
     const hour = now().getHours();
     const text =
       hour < 12
-        ? L("صباح الفل يا كريم ☀️ النهارده عندك تكلّم تيتة الساعة ٨. ومتنساش تشرب مية، إنت لسه في البداية 💧", "Good morning, Kareem ☀️ Today you're calling grandma at 8. And don't forget your water 💧")
+        ? L("صباح الفل يا كريم ☀️ النهارده عندك تكلّم تيتة الساعة 8. ومتنساش تشرب مية، إنت لسه في البداية 💧", "Good morning, Kareem ☀️ Today you're calling grandma at 8. And don't forget your water 💧")
         : hour < 18
           ? L("أهلاً يا كريم 👋 عامل إيه النهارده؟ لو عندك حاجة عايز تفتكرها، قولّي وأنا أشيلها عنك.", "Hey Kareem 👋 How's your day going? Tell me anything you want to remember and I'll hold on to it.")
-          : L("مساء الخير يا كريم 🌙 يومك كان عامل إزاي؟ لسه فاضل مكالمة تيتة الساعة ٨.", "Good evening, Kareem 🌙 How was your day? There's still grandma's call at 8.");
+          : L("مساء الخير يا كريم 🌙 يومك كان عامل إزاي؟ لسه فاضل مكالمة تيتة الساعة 8.", "Good evening, Kareem 🌙 How was your day? There's still grandma's call at 8.");
     const m = msg("friend", text, `demo:welcome:${Date.now()}`, hour < 12 ? "morning" : hour < 18 ? "chat" : "night");
     state.messages.push(m);
     // A status check, the way the server asks one: Zaki follows up on its own.
@@ -634,10 +639,11 @@ on("DELETE", "/circles/([^/]+)", (m) => {
 on("GET", "/circles/([^/]+)/summary", (m) => {
   const c = findCircle(m[1]!);
   const done = state.tasks.filter((t) => t.circle_id === c.id && t.status === "done").length;
+  const star = c.members.find((x) => x.name)?.name;
   return {
     since: inHours(-24 * 7),
     lines: [
-      L(`نجم الأسبوع: ${c.members[0]?.name ?? "حد من الدايرة"} 🌟`, `Star of the week: ${c.members[0]?.name ?? "someone in the circle"} 🌟`),
+      L(`نجم الأسبوع: ${star ?? "حد من الدايرة"} 🌟`, `Star of the week: ${star ?? "someone in the circle"} 🌟`),
       L(`${done} مهام خلصت الأسبوع ده`, `${done} tasks done this week`),
     ],
   };
@@ -1019,8 +1025,95 @@ on("GET", "/money/gift", () => ({
   ).split("|"),
 }));
 
+// Split the bill: the same math as the server (packages/shared/src/split.ts), kept in memory.
+const SPLIT_DEFAULTS = { title: "", items: [], subtotal: null, service_pct: 12, vat_pct: 14, vat_on_service: true, tip: 0, paid_by: null } as const;
+function toSplit(body: Record<string, unknown>, old?: Split): Split {
+  const input = { ...SPLIT_DEFAULTS, ...(old ? { title: old.title } : null), ...body } as unknown as SplitInput;
+  const people = input.people.map((p) => ({ name: String(p.name).trim() }));
+  const items = (input.items ?? []).map((it) => ({ name: it.name, price: Number(it.price), eaters: [...new Set((it.eaters ?? []).filter((e) => e < people.length))] }));
+  const r = splitBill({ ...input, people, items });
+  // Who already paid back stays ticked, by name, when the bill is worked out again.
+  const paidBefore = new Set((old?.people ?? []).filter((x, i) => x.paid && i !== old?.paid_by).map((x) => x.name));
+  const code = old?.code ?? `ZK${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  return {
+    id: old?.id ?? id(),
+    code,
+    title: input.title,
+    currency: "EGP",
+    subtotal: Math.round(r.subtotal * 100) / 100,
+    service_pct: input.service_pct,
+    vat_pct: input.vat_pct,
+    vat_on_service: input.vat_on_service,
+    tip: input.tip,
+    total: r.total,
+    people: people.map((x, i) => ({ name: x.name, ordered: Math.round(r.ordered[i]! * 100) / 100, share: r.shares[i]!, paid: i === input.paid_by || paidBefore.has(x.name) })),
+    items,
+    bill: input.subtotal,
+    web_adds: old?.web_adds ?? 0,
+    paid_by: input.paid_by,
+    url: `https://zaki.preview/s/${code}`,
+    created_at: old?.created_at ?? iso(now()),
+  };
+}
+const splits = (): Split[] => {
+  if (!state.splits) {
+    const dinner = toSplit({
+      title: L("عشا الخميس", "Thursday dinner"),
+      people: [{ name: L("أنا", "Me") }, { name: L("عمر", "Omar") }, { name: L("مريم", "Mariam") }, { name: L("يوسف", "Youssef") }],
+      items: [
+        { name: L("بيتزا", "Pizza"), price: 320, eaters: [0, 1] },
+        { name: L("مكرونة", "Pasta"), price: 210, eaters: [2] },
+        { name: L("برجر", "Burger"), price: 240, eaters: [3] },
+        { name: L("مشروبات", "Drinks"), price: 160, eaters: [] },
+      ],
+      paid_by: 0,
+    });
+    dinner.created_at = inHours(-26);
+    dinner.people[1]!.paid = true;
+    dinner.web_adds = 1;
+    state.splits = [dinner];
+  }
+  return state.splits;
+};
+const splitText = (x: Split) => {
+  const payer = x.paid_by !== null ? x.people[x.paid_by]?.name : null;
+  const lines = x.people.map((person, i) => `• ${person.name}: ${L(`${person.share} جنيه`, `EGP ${person.share}`)}${i === x.paid_by ? L(" (دفع)", " (paid)") : ""}`);
+  const head = L(`🧾 ${x.title ? `حساب «${x.title}»` : "الحساب"}: ${x.total} جنيه بالخدمة والضريبة`, `🧾 ${x.title ? `“${x.title}”` : "The bill"}: EGP ${x.total} with service and VAT`);
+  const ask = payer ? L(`ابعتوا لـ${payer} نصيبكم 🙏`, `Send ${payer} your share 🙏`) : "";
+  return [head, ...lines, ask, L(`شوف نصيبك: ${x.url}`, `See your share: ${x.url}`)].filter(Boolean).join("\n");
+};
+const findSplit = (sid: string) => {
+  const x = splits().find((one) => one.id === sid);
+  if (!x) throw new DemoHttpError(404);
+  return x;
+};
+const splitAnswer = (x: Split) => ({ split: x, share_text: splitText(x) });
+on("GET", "/splits", () => ({ splits: splits() }));
+on("POST", "/splits", (_m, b) => {
+  const x = toSplit(b);
+  splits().unshift(x);
+  return splitAnswer(x);
+});
+on("GET", "/splits/([^/]+)", (m) => splitAnswer(findSplit(m[1]!)));
+on("PUT", "/splits/([^/]+)", (m, b) => {
+  const next = toSplit(b, findSplit(m[1]!));
+  state.splits = splits().map((one) => (one.id === next.id ? next : one));
+  return splitAnswer(next);
+});
+on("POST", "/splits/([^/]+)/paid", (m, b) => {
+  const x = findSplit(m[1]!);
+  const person = x.people[Number(b.index)];
+  if (!person) throw new DemoHttpError(400);
+  person.paid = b.paid === true;
+  return splitAnswer(x);
+});
+on("DELETE", "/splits/([^/]+)", (m) => {
+  state.splits = splits().filter((one) => one.id !== m[1]);
+  return null;
+});
+
 // Session
-const HELPLINE = L("لو حاسس إنك مش بخير خالص، كلّم الخط الساخن للصحة النفسية ١٦٣٢٨ (مجاني).", "If you feel really unwell, call the mental health line 16328 (free, Egypt).");
+const HELPLINE = L("لو حاسس إنك مش بخير خالص، كلّم الخط الساخن للصحة النفسية 16328 (مجاني).", "If you feel really unwell, call the mental health line 16328 (free, Egypt).");
 const sessionMsg = (role: "user" | "zaki", text: string, step: SessionMessage["step"] = null): SessionMessage => ({ id: id(), role, text, created_at: iso(now()), step });
 on("GET", "/session", () => ({
   available: true,
@@ -1063,8 +1156,8 @@ on("POST", "/session/([^/]+)/messages", (_m, b) => {
     ? sessionMsg("zaki", `${L("أنا سامعك، واللي بتحس بيه مهم جداً. إنت مش لوحدك.", "I hear you, and what you feel really matters. You're not alone.")} ${HELPLINE}`)
     : turns === 0
       ? sessionMsg("zaki", L("مفهوم جداً إنك تحس كده. لو تقدر، احكيلي أكتر: إمتى بدأت تحس بالإحساس ده؟", "That makes a lot of sense. If you can, tell me more: when did this feeling start?"))
-      : sessionMsg("zaki", L("شكراً إنك شاركتني ده. إيه رأيك في خطوة صغيرة: تمشي ١٠ دقايق النهارده بعد المغرب؟", "Thanks for sharing that with me. How about one small step: a 10-minute walk this evening?"), {
-          title: L("تمشية ١٠ دقايق", "10-minute walk"),
+      : sessionMsg("zaki", L("شكراً إنك شاركتني ده. إيه رأيك في خطوة صغيرة: تمشي 10 دقايق النهارده بعد المغرب؟", "Thanks for sharing that with me. How about one small step: a 10-minute walk this evening?"), {
+          title: L("تمشية 10 دقايق", "10-minute walk"),
           remind_at: atLocal(0, 18, 30),
           accepted: false,
         });

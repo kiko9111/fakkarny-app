@@ -7,7 +7,7 @@ import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
 import { listCircles, peekCircles } from "@/lib/api";
 import { failText } from "@/lib/errors";
-import { Button, IconTile, ListRow, Note, palette, Screen, SectionHeader, space, Text } from "@/ui";
+import { Button, IconTile, ListRow, LoadingCards, Note, palette, Screen, SectionHeader, space, Text } from "@/ui";
 
 /** The user's circles (family, friends, work, any group), and the way into creating or joining one. */
 export default function CirclesScreen() {
@@ -15,6 +15,9 @@ export default function CirclesScreen() {
   const [failed, setFailed] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // What the phone holds first (the same object when nothing changed: no redraw), then the server.
+    const held = peekCircles();
+    if (held) setCircles(held);
     try {
       setCircles(await listCircles());
       setFailed(null);
@@ -51,6 +54,7 @@ export default function CirclesScreen() {
         </View>
       ) : null}
       <SectionHeader title={t.circles.yours} action={t.ui.newCircle} onAction={newCircle} />
+      {circles === null && !failed ? <LoadingCards count={2} /> : null}
       {(circles ?? []).map(row)}
       {circles !== null && circles.length === 0 ? (
         <Text variant="small" color={palette.inkSoft}>

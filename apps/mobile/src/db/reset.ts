@@ -1,5 +1,5 @@
 import * as Notifications from "expo-notifications";
-import { screenCache } from "@/lib/api";
+import { forgetSaved } from "@/lib/api";
 import { prefs } from "@/lib/prefs";
 import { getDb } from "./database";
 
@@ -11,5 +11,5 @@ export async function resetLocalData(): Promise<void> {
   });
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
   prefs.clear();
-  screenCache.clear();
+  forgetSaved();
 }

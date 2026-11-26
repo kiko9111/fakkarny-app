@@ -7,6 +7,8 @@ import type { PrismaClient, User } from "../generated/prisma/client";
 declare module "fastify" {
   interface FastifyRequest {
     user: User;
+    /** Set on a write: the caller's saved user row is dropped once the answer is ready. */
+    forgetUser?: string;
   }
 }
 
@@ -54,13 +56,73 @@ export function createVerifier(cfg: AuthConfig): Verifier | null {
   };
 }
 
+/**
+ * The caller's user row, kept for a few seconds so that reads don't each start with a database
+ * round trip (the phone refreshes screens with reads in a row and polls for new messages; one
+ * round trip is ~0.1 s while the server and the database are in different regions).
+ * - Only reads (GET) use it. A write always looks the row up.
+ * - The caller's own entry is dropped when their write is answered (`forgetUser` on the request,
+ *   cleared in buildApp's onSend hook), so their next read sees what they just changed.
+ * - A write to someone else's row from a route (plan webhook, invite reward) drops that row with
+ *   `forgetCachedUserId`, called once the change is committed (never inside its transaction: a
+ *   read in between would save the old row again). Background changes (the tick) show within
+ *   the cache time.
+ * - A read that was already looking the row up when it was dropped does not save what it found
+ *   (`drops` below): it may have read the row as it was before the write.
+ * One process only: with more than one server instance, a write on one would not clear the other.
+ * Off unless buildApp is given `userCacheMs` (server.ts does; tests change rows behind the API).
+ */
+export const USER_CACHE_MS = 15_000;
+const MAX_CACHED_USERS = 5_000;
+const cachedUsers = new Map<string, { user: User; until: number }>();
+
+function cachedUser(authId: string): User | null {
+  const hit = cachedUsers.get(authId);
+  if (!hit) return null;
+  if (hit.until <= Date.now()) {
+    cachedUsers.delete(authId);
+    return null;
+  }
+  return hit.user;
+}
+
+function cacheUser(authId: string, user: User, ttlMs: number): void {
+  // Oldest out first (a Map keeps insertion order), so the cache can't grow without limit.
+  cachedUsers.delete(authId);
+  if (cachedUsers.size >= MAX_CACHED_USERS) cachedUsers.delete(cachedUsers.keys().next().value as string);
+  cachedUsers.set(authId, { user, until: Date.now() + ttlMs });
+}
+
+/**
+ * How often each caller's row was dropped, and how often any row was dropped by user id. A read
+ * notes both before it looks the row up and saves the row only if neither moved meanwhile.
+ */
+const drops = new Map<string, number>();
+let dropsById = 0;
+const dropsOf = (authId: string) => drops.get(authId) ?? 0;
+
+/** Drop one caller's saved row (their own write, sign-in linking, account deletion). */
+export function forgetCachedUser(authId: string): void {
+  cachedUsers.delete(authId);
+  const n = dropsOf(authId) + 1;
+  drops.delete(authId);
+  if (drops.size >= MAX_CACHED_USERS) drops.delete(drops.keys().next().value as string);
+  drops.set(authId, n);
+}
+
+/** Drop a saved row by user id: for a route that changes somebody else's user row. Call it after the change is committed. */
+export function forgetCachedUserId(userId: string): void {
+  dropsById++;
+  for (const [authId, hit] of cachedUsers) if (hit.user.id === userId) cachedUsers.delete(authId);
+}
+
 function bearer(req: FastifyRequest): string | null {
   const h = req.headers.authorization;
   return h?.startsWith("Bearer ") ? h.slice(7) : null;
 }
 
 /** Resolve the calling user, creating the row on first contact. */
-export function requireUser(prisma: PrismaClient, cfg: AuthConfig = { allowInstallId: true }, verifier = createVerifier(cfg)) {
+export function requireUser(prisma: PrismaClient, cfg: AuthConfig = { allowInstallId: true }, verifier = createVerifier(cfg), cacheMs = 0) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     let authId: string | null = null;
     const token = bearer(req);
@@ -73,13 +135,28 @@ export function requireUser(prisma: PrismaClient, cfg: AuthConfig = { allowInsta
       if (parsed.success) authId = installAuthId(parsed.data);
     }
     if (!authId) return reply.code(401).send({ error: "unauthorized" });
+    const read = req.method === "GET" || req.method === "HEAD";
+    const stale = (u: User) => !u.lastActiveAt || Date.now() - u.lastActiveAt.getTime() > ACTIVE_WRITE_MS;
+    if (read && cacheMs > 0) {
+      const saved = cachedUser(authId);
+      if (saved && !stale(saved)) {
+        req.user = saved;
+        return;
+      }
+    } else if (!read) {
+      // The handler may change the row: whoever reads next must look it up again.
+      req.forgetUser = authId;
+    }
+    const before = read && cacheMs > 0 ? { own: dropsOf(authId), byId: dropsById } : null;
     // One read per request; the write happens only for a new user or when last_active_at is
     // more than ACTIVE_WRITE_MS old (it was an upsert, i.e. a row write, on every request, and
     // a screen fires several requests at once at the same row).
     const found = await prisma.user.findUnique({ where: { authId } });
-    if (!found) req.user = await prisma.user.upsert({ where: { authId }, create: { authId }, update: { lastActiveAt: new Date() } });
-    else if (!found.lastActiveAt || Date.now() - found.lastActiveAt.getTime() > ACTIVE_WRITE_MS) req.user = await prisma.user.update({ where: { id: found.id }, data: { lastActiveAt: new Date() } });
+    if (!found) req.user = await prisma.user.upsert({ where: { authId }, create: { authId, lastActiveAt: new Date() }, update: { lastActiveAt: new Date() } });
+    else if (stale(found)) req.user = await prisma.user.update({ where: { id: found.id }, data: { lastActiveAt: new Date() } });
     else req.user = found;
+    // Dropped while this read was looking it up: what it found may be from before that write.
+    if (before && before.own === dropsOf(authId) && before.byId === dropsById) cacheUser(authId, req.user, cacheMs);
   };
 }
 

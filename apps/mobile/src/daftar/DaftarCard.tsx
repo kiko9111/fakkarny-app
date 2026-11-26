@@ -1,31 +1,32 @@
-import { useState } from "react";
 import { Linking, Share, StyleSheet, View } from "react-native";
 import type { DaftarEntry, DaftarStatus } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { t } from "@/i18n";
 import { cancelDaftar, daftarShareText, respondDaftar, settleDaftar } from "@/lib/api";
 import { ask, Badge, Button, Card, confirm, notify, palette, PersonAvatar, space, Text, type IconName } from "@/ui";
-import { entryActions, formatMoney, type DaftarAction } from "./logic";
+import { entryActions, formatMoney, guessEntry, type DaftarAction } from "./logic";
+import { useGuess } from "@/lib/optimistic";
 
 const openWhatsApp = (text: string) => Linking.openURL(whatsappShareUrl(text)).catch(() => Share.share({ message: text }));
 const TONE: Record<DaftarStatus, "neutral" | "ok" | "warn" | "danger"> = { pending: "warn", confirmed: "ok", disputed: "danger", settled: "neutral", cancelled: "neutral" };
 const ICON: Partial<Record<DaftarAction, IconName>> = { confirm: "checkmark", resend: "logo-whatsapp", nudge: "logo-whatsapp", pay: "card-outline", settle: "checkmark-done" };
 
-/** One shared entry with the actions this person can take. `onChanged` reloads the list. */
-export function DaftarCard({ entry, onChanged }: { entry: DaftarEntry; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
+/**
+ * One shared entry with the actions this person can take. `onChanged` reloads the list.
+ * Right, Not right, Settled and Cancel show at once (the card's own guess, lib/optimistic.ts)
+ * while the server confirms; the WhatsApp text has to come from the server first.
+ */
+export function DaftarCard({ entry: fromList, onChanged }: { entry: DaftarEntry; onChanged: () => void }) {
+  const { shown: entry, busy, waiting, run: send } = useGuess(fromList);
   const amount = formatMoney(entry.amount);
   const owedToMe = entry.direction === "owed_to_me";
 
-  const work = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
+  const work = async (fn: () => Promise<DaftarEntry | void>, guess?: DaftarEntry | null) => {
     try {
-      await fn();
+      await send(fn, { guess, adopt: (answer) => answer ?? null });
       onChanged();
     } catch {
       notify(t.daftar.failed, "error");
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -38,21 +39,22 @@ export function DaftarCard({ entry, onChanged }: { entry: DaftarEntry; onChanged
       ]);
       return;
     }
-    if (action === "cancel") return confirm(t.daftar.cancelConfirm, t.daftar.yes, () => void work(() => cancelDaftar(entry.id)), t.daftar.no);
+    const guess = guessEntry(entry, action);
+    if (action === "cancel") return confirm(t.daftar.cancelConfirm, t.daftar.yes, () => void work(() => cancelDaftar(entry.id), guess), t.daftar.no);
     if (action === "resend" || action === "nudge") {
       return work(async () => {
         const text = await daftarShareText(entry.id);
         if (text) await openWhatsApp(text);
       });
     }
-    if (action === "settle") return work(() => settleDaftar(entry.id));
-    return work(() => respondDaftar(entry.id, action));
+    if (action === "settle") return work(() => settleDaftar(entry.id), guess);
+    return work(() => respondDaftar(entry.id, action), guess);
   };
 
   const actions = entryActions(entry);
   const settled = entry.status === "settled";
   return (
-    <Card style={busy ? styles.dim : undefined}>
+    <Card style={waiting ? styles.dim : undefined}>
       <View style={styles.head}>
         <PersonAvatar name={entry.other_name} color={owedToMe ? palette.ok : palette.primaryInk} bg={owedToMe ? palette.okSoft : palette.primarySoft} />
         <View style={styles.flex}>

@@ -3,6 +3,7 @@ import { ClaimReferralRequest, type MeResponse, type ReferralResponse } from "@f
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import { canClaim, newReferralCode, normalizeReferralCode, REFERRAL_MAX_DAYS_PER_MONTH } from "../billing/referral";
 import { referralDaysThisMonth as daysThisMonth, rewardInviter } from "../billing/referral-store";
+import { forgetCachedUserId } from "../plugins/auth";
 import { toWireUser } from "../serialize";
 import { baseUrl } from "./circles";
 
@@ -17,9 +18,14 @@ export interface ReferralRoutesOptions {
 /** The user's code, created on first use (retry on the rare collision). */
 async function ensureCode(prisma: PrismaClient, user: { id: string; referralCode: string | null }): Promise<string> {
   if (user.referralCode) return user.referralCode;
+  // The row handed to a read may be a few seconds old (plugins/auth.ts): never replace a code
+  // that was made in the meantime, or the link already shared would stop working.
+  const saved = await prisma.user.findUnique({ where: { id: user.id }, select: { referralCode: true } });
+  if (saved?.referralCode) return saved.referralCode;
   for (let attempt = 0; ; attempt++) {
     try {
       const updated = await prisma.user.update({ where: { id: user.id }, data: { referralCode: newReferralCode() } });
+      forgetCachedUserId(user.id);
       return updated.referralCode!;
     } catch (err) {
       if (attempt < 4 && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
@@ -58,6 +64,8 @@ export const referralRoutes: FastifyPluginAsync<ReferralRoutesOptions> = async (
       return tx.user.findUniqueOrThrow({ where: { id: req.user.id } });
     });
     if (!user) return reply.code(409).send({ error: "already_claimed" });
+    // Committed: the inviter's next read must see their new Pro days.
+    forgetCachedUserId(inviter!.id);
     const res: MeResponse = { user: toWireUser(user) };
     return res;
   });

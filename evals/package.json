@@ -7,7 +7,8 @@
     "eval": "tsx --env-file-if-exists=../apps/api/.env run.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "eval:session": "tsx --env-file-if-exists=../apps/api/.env session.ts"
+    "eval:session": "tsx --env-file-if-exists=../apps/api/.env session.ts",
+    "perf": "tsx perf/run.ts"
   },
   "dependencies": {
     "@fakkarni/api": "*",

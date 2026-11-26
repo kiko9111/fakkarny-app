@@ -14,7 +14,7 @@ import { summarizeDebts } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
 import { SpendView } from "@/money/SpendView";
 import { SplitsView } from "@/split/SplitsView";
-import { Button, Card, Chip, EmptyState, Icon, ListRow, Note, palette, PersonAvatar, radius, Screen, SectionHeader, space, Text } from "@/ui";
+import { Button, Card, Chip, EmptyState, Icon, Note, palette, PersonAvatar, radius, Screen, SectionHeader, space, Text } from "@/ui";
 
 /**
  * The Daftar: what both sides agreed on (shared, confirmed by link) with the balance on top,
@@ -29,6 +29,8 @@ export default function MoneyScreen() {
   const [offline, setOffline] = useState<string | null>(null);
 
   const loadShared = useCallback(async () => {
+    const held = peekDaftar();
+    if (held) setShared(held);
     try {
       setShared(await listDaftar());
       setOffline(null);
@@ -124,20 +126,30 @@ export default function MoneyScreen() {
           </Text>
         </>
       ) : null}
+      {/* Laid out like the shared entries above: who and how much on one line, the actions under it. */}
       {privateNotes.flatMap(({ p, mine }) =>
         p.items.map((i) => (
-          <ListRow
-            key={i.id}
-            leading={<PersonAvatar name={p.person} size={36} color={mine ? palette.ok : palette.friends} bg={mine ? palette.okSoft : palette.friendsSoft} />}
-            title={`${p.person} · ${fill(t.ui.pounds, { n: formatMoney(i.debt_amount ?? 0) })}`}
-            meta={mine ? t.ui.owedToYou : t.ui.youOwe}
-            trailing={
-              <View style={styles.rowActions}>
-                <Button label={t.money.sendToConfirm} size="sm" kind="tonal" icon="logo-whatsapp" onPress={() => share(i)} />
-                <Button label={t.money.paid} size="sm" kind="text" onPress={() => void complete(i.id).catch(() => {})} />
+          <Card key={i.id}>
+            <View style={styles.noteHead}>
+              <PersonAvatar name={p.person} color={mine ? palette.ok : palette.primaryInk} bg={mine ? palette.okSoft : palette.primarySoft} />
+              <View style={styles.flex}>
+                <Text variant="bodyStrong" numberOfLines={1}>
+                  {p.person}
+                </Text>
+                <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
+                  {mine ? t.ui.owedToYou : t.ui.youOwe}
+                </Text>
               </View>
-            }
-          />
+              <Text variant="headline" color={mine ? palette.ok : palette.primaryInk}>
+                {mine ? "+" : "−"}
+                {fill(t.ui.pounds, { n: formatMoney(i.debt_amount ?? 0) })}
+              </Text>
+            </View>
+            <View style={styles.noteActions}>
+              <Button label={t.money.sendToConfirm} size="sm" kind="tonal" icon="logo-whatsapp" onPress={() => share(i)} />
+              <Button label={t.money.paid} size="sm" kind="outline" icon="checkmark-done" onPress={() => void complete(i.id).catch(() => {})} />
+            </View>
+          </Card>
         )),
       )}
       </>
@@ -150,5 +162,7 @@ const styles = StyleSheet.create({
   totals: { flexDirection: "row", gap: space.md },
   total: { flex: 1, borderRadius: radius.lg, padding: space.lg, gap: 2 },
   totalHead: { flexDirection: "row", alignItems: "center", gap: 6 },
-  rowActions: { alignItems: "flex-end", gap: 2 },
+  flex: { flex: 1, minWidth: 0 },
+  noteHead: { flexDirection: "row", alignItems: "center", gap: space.md },
+  noteActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
 });

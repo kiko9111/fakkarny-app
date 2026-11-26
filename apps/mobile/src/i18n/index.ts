@@ -16,5 +16,7 @@ if (I18nManager.isRTL !== isRTL) {
   I18nManager.allowRTL(isRTL);
   I18nManager.forceRTL(isRTL);
 }
+/** Between the things of a list written in a sentence ("1:00 PM, 6:00 PM"): the language's own comma. */
+export const listComma = language === "ar-EG" ? "، " : ", ";
 /** Locale for dates and times: the app's language (Latin digits, like amounts), not the phone's. */
 export const dateLocale = language === "ar-EG" ? "ar-EG-u-nu-latn" : "en-US";

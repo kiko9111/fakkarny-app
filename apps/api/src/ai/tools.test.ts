@@ -39,6 +39,15 @@ describe("friend tools", () => {
     expect(tools.map((t) => t.name)).toEqual(["respond", ...AREA_TOOLS.map((t) => t.name)]);
   });
 
+  it("marks only respond, and only when asked, to arrive as it is written", () => {
+    const plain = friendTools();
+    const eager = friendTools({ eager: true });
+    expect(plain.some((t) => "eager_input_streaming" in t)).toBe(false);
+    expect(eager.filter((t) => "eager_input_streaming" in t).map((t) => (t as Anthropic.Tool).name)).toEqual(["respond"]);
+    // Nothing else differs, so a turn that is not a stream is asked for exactly as before.
+    expect(eager.map((t) => ({ ...t, eager_input_streaming: undefined }))).toEqual(plain.map((t) => ({ ...t, eager_input_streaming: undefined })));
+  });
+
   it("maps a tool call to an app action", () => {
     expect(toolCallToAction("money", { action: "log", amount: 250, money_kind: "expense", section: "أكل", note: "" })).toEqual({ kind: "log_money", amount: 250, money_kind: "expense", section: "أكل" });
     expect(toolCallToAction("money", { action: "set_budget", section: "أكل", amount: 0 })).toEqual({ kind: "set_budget", section: "أكل", amount: null });

@@ -7,6 +7,7 @@
  * can't parse fails here instead of on a device.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { PostMessageResponse } from "@fakkarni/shared";
 
 const URL_ = process.env.E2E_API_URL;
 let installId = "";
@@ -23,6 +24,10 @@ let api: Api;
 const A = crypto.randomUUID();
 const B = crypto.randomUUID();
 const as = async <T>(who: string, work: () => Promise<T>): Promise<T> => {
+  // Another person on the same "phone": what the last one saved is wiped, as signing out does.
+  // (Without it a list read moments after the other person's would be answered from their copy.)
+  // Optional calls: this file also runs against the client of an older build (api-smoke.yml).
+  if (who !== installId) (api as Partial<Api> | undefined)?.forgetSaved?.();
   installId = who;
   return work();
 };
@@ -117,5 +122,53 @@ describe.skipIf(!URL_)("phone client against a live API", () => {
 
     // Back to the chat: B's chat carries Zaki's update lines with cards
     await as(B, () => api.listMessagesPage(null));
+
+    // Every tab in one answer. A server from before 2026-11-26 has no such route (false): the
+    // phone then loads the screens one by one, which is everything above.
+    const client = api as Partial<Api>;
+    if (client.refreshAll && (await as(A, () => api.refreshAll()))) {
+      expect(api.peekCircles()?.map((x) => x.id)).toContain(c.id);
+      expect(api.peekCircle(c.id)?.members).toHaveLength(2);
+      expect(api.peekCircleFeed(c.id)?.posts.length).toBeGreaterThan(0);
+      expect(api.peekTrackers()?.trackers.map((x) => x.id)).toContain(tr.id);
+      expect(api.peekDaftar()?.map((x) => x.id)).toContain(d.entry.id);
+      expect(api.peekMoneySaved()?.sections.map((x) => x.id)).toContain(sec.id);
+      expect(api.peekMe()?.name).toBe("Mona");
+      expect(api.peekTasks()?.map((x) => x.id)).toContain(task.id);
+      // Asked again with nothing changed: still covered, by "nothing new".
+      expect(await as(A, () => api.refreshAll())).toBe(true);
+    }
+    // A chat message whose reply is asked for as a stream. A server that writes the reply with a
+    // model sends its words first (E2E_EXPECT_WORDS=1 checks they came); every server, also one
+    // from before streams, ends with the answer a plain POST gives. An older client ignores the
+    // second argument and posts plainly.
+    if (client.postMessageRaw) {
+      let heard: string[] = [];
+      const sent = Date.now();
+      let first = 0;
+      const live = {
+        onDraft: (i: number, d: string) => {
+          first ||= Date.now() - sent;
+          heard[i] = (heard[i] ?? "") + d;
+        },
+        onReset: () => void (heard = []),
+      };
+      const text = "عامل ايه النهارده يا زكي";
+      const raw = await as(A, () => api.postMessageRaw({ client_id: crypto.randomUUID(), text, created_at: new Date().toISOString(), timezone: "Africa/Cairo" }, live));
+      const answer = PostMessageResponse.parse(raw);
+      expect(answer.message.text).toBe(text);
+      // For the run's log (numbers only): how this server answered.
+      console.log(first ? `reply read while written: first words after ${first} ms, the whole answer after ${Date.now() - sent} ms` : `reply in one piece after ${Date.now() - sent} ms`);
+      if (process.env.E2E_EXPECT_WORDS) {
+        expect(heard.length).toBeGreaterThan(0);
+        // What was shown while it was written is the start of what was stored.
+        for (const [i, words] of heard.entries()) expect(answer.replies[i]?.text.startsWith(words.trim())).toBe(true);
+      }
+    }
+    // What a tap's answer puts into the saved copy is what the server then says too.
+    await as(A, () => api.listTrackers());
+    const logged = await as(A, () => api.logTracker(tr.id));
+    if (client.saveTracker) expect(api.peekTrackers()?.trackers.find((x) => x.id === tr.id)?.today).toBe(logged.today);
+    expect((await as(A, () => api.listTrackers())).trackers.find((x) => x.id === tr.id)?.today).toBe(logged.today);
   }, 60_000);
 });

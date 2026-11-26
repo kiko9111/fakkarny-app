@@ -1,15 +1,18 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
 import { ChatInput } from "@/chat/ChatInput";
+import { dayLabel, opensDay } from "@/chat/days";
+import { createEntrance } from "@/chat/entrance";
 import { MessageBubble } from "@/chat/MessageBubble";
 import { QuickReplies } from "@/chat/QuickReplies";
 import { TypingIndicator } from "@/chat/TypingIndicator";
+import { isWriting } from "@/chat/writing";
 import { useChat } from "@/chat/useChat";
 import type { LocalMessage } from "@/db/messages";
-import { t } from "@/i18n";
+import { dateLocale, t } from "@/i18n";
 import { track } from "@/lib/analytics";
 import { getMe } from "@/lib/api";
 import { unlock } from "@/lib/unlock-store";
@@ -18,7 +21,11 @@ import { shareInvite } from "@/referral/share";
 import { shareStreakCard } from "@/share/card";
 import { fill } from "@/circles/logic";
 import { suggestTracker } from "@/trackers/logic";
-import { Button, glass, Icon, IconButton, Note, palette, radius, space, Text, ZakiAvatar } from "@/ui";
+import { Appear, Button, glass, Icon, IconButton, Note, palette, radius, shadow, space, Text, ZakiAvatar } from "@/ui";
+
+/** How far up into older messages before the way back to the newest one is offered. */
+const JUMP_AFTER = 480;
+const DAY_WORDS = { today: t.chat.dayToday, yesterday: t.chat.dayYesterday };
 
 const GREETING: LocalMessage = {
   client_id: "local:greeting",
@@ -73,12 +80,23 @@ function ZakiHeader({ typing }: { typing: boolean }) {
 }
 
 export default function ChatScreen() {
-  const { messages, loaded, typing, locked, send } = useChat();
+  const { messages, loaded, typing, locked, send, writing } = useChat();
   // "عايز أتعود على القراية كل يوم" → offer a tracker with one tap (rules on the phone, no AI call).
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const list = useRef<FlatList<LocalMessage>>(null);
+  // The list is inverted: offset 0 is the newest message.
+  const toLatest = useCallback(() => list.current?.scrollToOffset({ offset: 0, animated: true }), []);
+  // Reading older messages: a button offers the way back down.
+  const [away, setAway] = useState(false);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const far = e.nativeEvent.contentOffset.y > JUMP_AFTER;
+    setAway((was) => (was === far ? was : far));
+  }, []);
   const say = (text: string) => {
     const followUp = unlock.onUserMessage(text);
     setSuggestion(suggestTracker(text));
+    // Sent while reading older messages: back to where the new one lands.
+    toLatest();
     void send(text).then(followUp).catch(() => {});
   };
   const navigation = useNavigation();
@@ -104,6 +122,16 @@ export default function ChatScreen() {
     const all = loaded && messages.length === 0 ? [GREETING] : messages;
     return [...all].reverse();
   }, [messages, loaded]);
+  // Messages that arrive while the chat is open rise into place; the ones in the first list are
+  // simply there (chat/entrance.ts). The list is handed over here, while the screen is drawn and
+  // not in an effect: each bubble asks whether it arrives when it is first drawn.
+  const entrance = useRef(createEntrance()).current;
+  const listed = useRef<LocalMessage[] | null>(null);
+  if (loaded && listed.current !== data) {
+    listed.current = data;
+    entrance.list(data.map((m) => m.client_id));
+  }
+  const now = new Date();
 
   // Android is edge-to-edge, so the window no longer resizes for the keyboard: padding on both platforms.
   return (
@@ -115,17 +143,50 @@ export default function ChatScreen() {
           </Note>
         </View>
       ) : null}
-      <FlatList
-        style={styles.flex}
-        contentContainerStyle={styles.list}
-        data={data}
-        inverted
-        keyExtractor={(m) => m.client_id}
-        // In the inverted list, index-1 sits just below on screen and index+1 just above.
-        renderItem={({ item, index }) => <MessageBubble message={item} lastInRun={data[index - 1]?.role !== item.role} firstInRun={data[index + 1]?.role !== item.role} />}
-        ListHeaderComponent={typing && !offline ? <TypingIndicator /> : undefined}
-        keyboardShouldPersistTaps="handled"
-      />
+      <View style={styles.flex}>
+        <FlatList
+          ref={list}
+          style={styles.flex}
+          contentContainerStyle={styles.list}
+          data={data}
+          inverted
+          keyExtractor={(m) => m.client_id}
+          renderItem={({ item, index }) => {
+            // In the inverted list, index-1 sits just below on screen and index+1 just above.
+            const below = data[index - 1];
+            const above = data[index + 1];
+            const newDay = opensDay(item.created_at, above?.created_at);
+            return (
+              <MessageBubble
+                message={item}
+                // A new day ends a run too, so the last bubble of the day before keeps its time.
+                lastInRun={below?.role !== item.role || (below ? opensDay(below.created_at, item.created_at) : false)}
+                firstInRun={newDay || above?.role !== item.role}
+                writing={isWriting(item, writing)}
+                heard={writing?.clientId === item.client_id}
+                day={newDay ? dayLabel(item.created_at, now, DAY_WORDS, dateLocale) : null}
+                entrance={entrance}
+              />
+            );
+          }}
+          // Rows also depend on the reply being written (its dots, "Sending…" on the message it answers).
+          extraData={writing}
+          // Once the words of the reply show, they are the sign that Zaki is writing.
+          ListHeaderComponent={typing && !offline && !writing ? <TypingIndicator /> : undefined}
+          keyboardShouldPersistTaps="handled"
+          onScroll={onScroll}
+          scrollEventThrottle={64}
+        />
+        {away ? (
+          <View style={styles.jumpWrap} pointerEvents="box-none">
+            <Appear rise={6} ms={160}>
+              <Pressable onPress={toLatest} accessibilityRole="button" accessibilityLabel={t.chat.jumpLatest} hitSlop={8} style={({ pressed }) => [styles.jump, pressed && styles.jumpPressed]}>
+                <Icon name="chevron-down" size={22} color={palette.primaryInk} />
+              </Pressable>
+            </Appear>
+          </View>
+        ) : null}
+      </View>
       {locked ? (
         // FR-9: chat locks without a subscription; history stays readable, queued messages send after subscribing.
         <View style={styles.lock}>
@@ -178,6 +239,10 @@ const styles = StyleSheet.create({
   streak: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: space.sm + 2, paddingVertical: 4, marginEnd: space.md, borderRadius: radius.pill, backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.glassEdge },
   headerName: { lineHeight: 22 },
   list: { paddingHorizontal: space.md, paddingVertical: space.sm },
+  // Over the bottom corner of the list, on the far side from Zaki's face (flips in RTL).
+  jumpWrap: { position: "absolute", left: 0, right: 0, bottom: space.sm, paddingHorizontal: space.md, alignItems: "flex-end" },
+  jump: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", ...glass, backgroundColor: palette.surfaceStrong, ...shadow.raised },
+  jumpPressed: { opacity: 0.8 },
   suggest: { flexDirection: "row", alignItems: "center", gap: space.sm, marginHorizontal: space.md, marginBottom: space.xs, padding: space.sm, borderRadius: 18, ...glass },
   flexText: { flex: 1 },
   offline: { paddingHorizontal: space.md, paddingTop: space.xs },

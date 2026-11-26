@@ -1,7 +1,7 @@
 import { AppState } from "react-native";
 import { addNetworkStateListener } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
-import { getMe, listMessagesAfter, patchMe, postMessageRaw, writeOutbox } from "@/lib/api";
+import { getMe, listMessagesAfter, patchMe, postMessageRaw, screenCache, writeOutbox } from "@/lib/api";
 import { PostMessageResponse } from "@fakkarni/shared";
 import { sendWithBrain } from "@/brain/flow";
 import { phoneBrainReady, thinkOnPhone, warmBrain } from "@/brain/engine";
@@ -22,6 +22,13 @@ import { createSyncQueue, type OutboxStore } from "./queue";
 export const messagesChanged = createEmitter<void>();
 /** True while the outbox is sending (the friend is "typing"). */
 export const syncBusy = createEmitter<boolean>();
+/**
+ * Zaki's reply while he is still writing it (the server sends the words as they come): more
+ * words of one bubble, "forget what was shown" (the reply is being written again), and "over"
+ * when the send ended. The finished reply is stored like any other and takes the draft's place.
+ */
+export type ReplyWriting = { clientId: string } & ({ kind: "words"; bubble: number; delta: string } | { kind: "reset" } | { kind: "over"; ok: boolean });
+export const replyWriting = createEmitter<ReplyWriting>();
 /** True when the server locked chat for lack of a subscription (FR-9). */
 export const chatLocked = createEmitter<boolean>();
 export let isChatLocked = false;
@@ -45,14 +52,29 @@ export const syncQueue = createSyncQueue({
     const started = Date.now();
     const onPhone = phoneBrainReady();
     let think = 0;
+    // How long until the first words of the reply were on screen (0: it came in one piece).
+    let first = 0;
+    const clientId = body.client_id;
+    const live = {
+      onDraft: (bubble: number, delta: string) => {
+        first ||= Date.now() - started;
+        replyWriting.emit({ clientId, kind: "words", bubble, delta });
+      },
+      onReset: () => {
+        // Taken back: the words that count are the ones that come next (none: it came in one piece).
+        first = 0;
+        replyWriting.emit({ clientId, kind: "reset" });
+      },
+    };
     const done = (ok: boolean) => {
       const total = Date.now() - started;
       if (ok) prefs.set("reply_last_ms", String(total));
-      track("chat_reply", { total, think, brain: onPhone ? "phone" : "cloud", ok });
+      track("chat_reply", { total, think, brain: onPhone ? "phone" : "cloud", ok, ...(first ? { first } : {}) });
+      replyWriting.emit({ clientId, kind: "over", ok });
     };
     try {
       const res = await sendWithBrain(body, {
-        post: postMessageRaw,
+        post: (b) => postMessageRaw(b, live),
         parse: (raw) => PostMessageResponse.parse(raw),
         think: onPhone ? thinkOnPhone : null,
         fallback: prefs.get("brain_fallback") !== "0",
@@ -124,9 +146,12 @@ export function startSync() {
   const refresh = () => {
     void syncQueue.wake();
     // Shared-data taps made offline (tracker steps, check-ins) go out first, then screens reload.
+    // Only when something did wait: "changed" ends the freshness of every saved copy, and with
+    // nothing sent it would throw away the refresh that starts just below.
+    const waiting = writeOutbox.pending().length;
     void writeOutbox
       .flush()
-      .then((r) => (r === "done" ? dataChanged.emit() : undefined))
+      .then((r) => (r === "done" && waiting > 0 ? dataChanged.emit() : undefined))
       .catch(() => {});
     void pullMessages();
     // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
@@ -148,6 +173,8 @@ export function startSync() {
   });
   AppState.addEventListener("change", (state) => {
     if (state === "active") refresh();
+    // Leaving the app: write the saved copies that still wait (they are saved a moment after each answer).
+    else screenCache.flush();
   });
   // While the app is open, Zaki's own lines and news from other people arrive without a push
   // (push is not set up on every build) and without leaving and reopening the app.

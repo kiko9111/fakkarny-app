@@ -67,6 +67,8 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
           maxLength={4000}
           textAlign={textStart}
           accessibilityLabel={t.chat.placeholder}
+          // The browser draws a text box two rows tall unless told; the phone sizes it to its text.
+          {...(Platform.OS === "web" ? { rows: 1 } : null)}
           // The browser preview: Enter sends, Shift+Enter makes a new line.
           onKeyPress={
             Platform.OS === "web"
@@ -99,5 +101,6 @@ const styles = StyleSheet.create({
   spinner: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   bar: { paddingHorizontal: space.md, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: "transparent" },
   field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, ...glass, backgroundColor: palette.surfaceStrong, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2 },
-  input: { flex: 1, minHeight: 40, maxHeight: 140, paddingTop: 9, paddingBottom: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, outlineStyle: "none" } as object,
+  // `textAlign` in the style too: the browser ignores the prop, and an empty box then starts on the wrong side in Arabic.
+  input: { flex: 1, minHeight: 40, maxHeight: 140, paddingTop: 9, paddingBottom: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, textAlign: textStart, outlineStyle: "none" } as object,
 });

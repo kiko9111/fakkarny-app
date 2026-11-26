@@ -81,9 +81,10 @@ async function once(ctx: Ctx, req: PhoneBrainRequest, temperature: number): Prom
 
 /**
  * The longest the phone's model may think about one message. Past it, cloud Zaki answers (unless
- * the fallback is off): kareem's Pixel 8 left messages on "Sending…" for minutes.
+ * the fallback is off): kareem's Pixel 8 left messages on "Sending…" for minutes, and 20 s still
+ * felt broken (2026-11-25). Small talk on the 0.8B model takes 3-6 s when it works.
  */
-export const THINK_LIMIT_MS = 20_000;
+export const THINK_LIMIT_MS = 10_000;
 
 /** A reply the server would keep: it parses, and a bubble passes the same check (script, Modern Standard, junk). */
 function goodReply(out: unknown, req: PhoneBrainRequest): boolean {
@@ -96,7 +97,7 @@ function goodReply(out: unknown, req: PhoneBrainRequest): boolean {
 async function think(ctx: Ctx, req: PhoneBrainRequest, deadline: number): Promise<unknown> {
   let out = await once(ctx, req, 0.3);
   // One more try, steadier, if the answer doesn't fit and there is time for it.
-  if (!goodReply(out, req) && Date.now() < deadline - 6_000) out = await once(ctx, req, 0);
+  if (!goodReply(out, req) && Date.now() < deadline - 4_000) out = await once(ctx, req, 0);
   if (!goodReply(out, req)) throw new Error("phone model gave no usable answer");
   return out;
 }
