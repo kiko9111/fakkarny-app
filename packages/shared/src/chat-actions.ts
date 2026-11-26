@@ -50,6 +50,10 @@ export const APP_ACTION_KINDS = [
   // Bill split
   "split_bill",
   "split_paid",
+  // Household lists (2026-11-26)
+  "list_add",
+  "list_done",
+  "list_trip",
   // Memories, settings, places in the app
   "forget",
   "settings",
@@ -80,6 +84,7 @@ export const CONFIRM_KINDS: readonly AppActionKind[] = [
   "iftar",
   "delete_section",
   "delete_tracker",
+  "list_trip",
 ];
 
 /** What `settings` can change from the chat (server-side settings only; language and theme live on the phone). */
@@ -88,7 +93,7 @@ export const ChatSetting = z.enum(CHAT_SETTINGS);
 export type ChatSetting = z.infer<typeof ChatSetting>;
 
 /** Places `open_screen` can open. */
-export const CHAT_SCREENS = ["memories", "settings", "money", "daftar", "trackers", "circles", "today", "receipt", "invite_friend", "paywall", "split", "session"] as const;
+export const CHAT_SCREENS = ["memories", "settings", "money", "daftar", "trackers", "circles", "today", "receipt", "invite_friend", "paywall", "split", "session", "lists"] as const;
 export const ChatScreen = z.enum(CHAT_SCREENS);
 export type ChatScreen = z.infer<typeof ChatScreen>;
 
@@ -120,6 +125,8 @@ const LocalDateTime = z.iso.datetime({ local: true });
  * - split_bill: amount (the total), people (names, without the user) or circle (split among its
  *   members, who see their share in their own Zaki: waits for the user's OK), name? (title)
  * - split_paid: ref?, person
+ * - list_add: things (what to add), list? (a list name; none = the household grocery list)
+ * - list_done: things (what they got), list? · list_trip: list? (tell the circle they're going shopping)
  * - forget: text (what to forget)
  * - settings: setting, text (the value)
  * - open_screen: screen
@@ -148,6 +155,9 @@ export const AppAction = z.object({
   answer: z.enum(["yes", "no"]).optional(),
   direction: z.enum(["owed_to_me", "i_owe"]).optional(),
   people: z.array(Name).max(20).optional(),
+  /** list_add / list_done: the things, one per entry. */
+  things: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+  list: Name.optional(),
   checkin_kind: z.enum(["arrived", "home", "on_way", "medicine", "ok"]).optional(),
   setting: ChatSetting.optional(),
   screen: ChatScreen.optional(),

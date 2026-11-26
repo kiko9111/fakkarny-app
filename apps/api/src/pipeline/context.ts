@@ -105,6 +105,15 @@ export function describeApp(app: AppData | undefined, userId: string, tz = "Afri
         : "none yet"
     }`,
   );
+  if (app.lists) {
+    lines.push(
+      `- HOUSEHOLD LISTS: ${
+        app.lists.length
+          ? app.lists.map((l) => `«${l.name}» (${l.place}${l.circle ? `, shared with «${l.circle.name}»` : ", private"}; ${l.items.length ? `open: ${l.items.map((i) => i.title).join(", ")}` : "empty"})`).join(" · ")
+          : "none yet (things to buy go on a new household grocery list)"
+      }`,
+    );
+  }
   if (app.numbers) lines.push(...describeNumbers(app, userId, tz));
   return lines;
 }

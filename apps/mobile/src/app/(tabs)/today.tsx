@@ -2,18 +2,48 @@ import { useCallback, useMemo, useState } from "react";
 import { useLive } from "@/lib/live";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import type { CircleTask, Item, ListTrackersResponse, Tracker } from "@fakkarni/shared";
+import type {
+  CircleTask,
+  HouseList,
+  Item,
+  ListTrackersResponse,
+  Tracker,
+} from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { PlanRow } from "@/components/PlanRow";
 import { listUpcoming } from "@/db/items";
-import { t, dateLocale } from "@/i18n";
-import { getMe, listTasks, listTrackers, peekMe, peekTasks, peekTrackers } from "@/lib/api";
+import { t, dateLocale, listComma } from "@/i18n";
+import { PLACE_ICON, preview, sortLists } from "@/lists/logic";
+import {
+  getMe,
+  listLists,
+  listTasks,
+  listTrackers,
+  peekLists,
+  peekMe,
+  peekTasks,
+  peekTrackers,
+} from "@/lib/api";
 import { useItems } from "@/lib/useItems";
 import { TaskCard } from "@/tasks/TaskCard";
 import { canAdd } from "@/trackers/logic";
 import { comingUp } from "@/lib/coming-up";
 import { TrackerCard } from "@/trackers/TrackerCard";
-import { Button, Card, EmptyState, Icon, palette, radius, Screen, SectionHeader, space, Text, ZakiAvatar } from "@/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Icon,
+  IconTile,
+  palette,
+  radius,
+  Screen,
+  SectionHeader,
+  space,
+  Text,
+  ZakiAvatar,
+} from "@/ui";
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -28,9 +58,21 @@ export default function TodayScreen() {
   const { items, refresh, complete } = useItems(listUpcoming);
   const [name, setName] = useState<string | null>(() => peekMe()?.name ?? null);
   const [tasks, setTasks] = useState<CircleTask[]>(() => peekTasks() ?? []);
-  const asked = useMemo(() => tasks.filter((task) => task.status === "pending" && task.role === "assignee"), [tasks]);
-  const [trackers, setTrackers] = useState<Tracker[] | null>(() => peekTrackers()?.trackers ?? null);
-  const [limit, setLimit] = useState<number | null>(() => peekTrackers()?.limit ?? 1);
+  const asked = useMemo(
+    () =>
+      tasks.filter(
+        (task) => task.status === "pending" && task.role === "assignee",
+      ),
+    [tasks],
+  );
+  const [trackers, setTrackers] = useState<Tracker[] | null>(
+    () => peekTrackers()?.trackers ?? null,
+  );
+  const [limit, setLimit] = useState<number | null>(
+    () => peekTrackers()?.limit ?? 1,
+  );
+  // null until this server has answered GET /lists once (a server from before lists says 404: no section).
+  const [lists, setLists] = useState<HouseList[] | null>(() => peekLists());
 
   const loadOnline = useCallback(() => {
     const showTrackers = (r: ListTrackersResponse) => {
@@ -51,6 +93,11 @@ export default function TodayScreen() {
     listTrackers()
       .then(showTrackers)
       .catch(() => {});
+    const heldLists = peekLists();
+    if (heldLists) setLists(heldLists);
+    listLists()
+      .then(setLists)
+      .catch(() => {});
   }, []);
   useLive(loadOnline);
   const reload = () => {
@@ -60,8 +107,13 @@ export default function TodayScreen() {
 
   const { soon, repeating, more } = comingUp(items, new Date());
   const own = (trackers ?? []).filter((x) => !x.pack).length;
-  const replace = (next: Tracker) => setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
-  const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
+  const replace = (next: Tracker) =>
+    setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
+  const dateLine = new Date().toLocaleDateString(dateLocale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
   return (
     <Screen onRefresh={reload}>
@@ -71,7 +123,11 @@ export default function TodayScreen() {
           <Text variant="caption" color={palette.inkSoft}>
             {dateLine}
           </Text>
-          <Text variant="title">{name ? fill(t.ui.hello, { greeting: greeting(), name }) : fill(t.ui.helloAnon, { greeting: greeting() })}</Text>
+          <Text variant="title">
+            {name
+              ? fill(t.ui.hello, { greeting: greeting(), name })
+              : fill(t.ui.helloAnon, { greeting: greeting() })}
+          </Text>
           <Text variant="small" color={palette.inkSoft}>
             {t.ui.todayLine}
           </Text>
@@ -87,28 +143,136 @@ export default function TodayScreen() {
         </>
       ) : null}
 
-      <SectionHeader title={t.ui.comingUp} action={more > 0 ? fill("{n} +", { n: more }) : undefined} onAction={() => router.push("/upcoming")} />
-      {soon.length === 0 && repeating.length === 0 ? (
-        <Card>
-          <EmptyState title={t.ui.noPlansTitle} body={t.ui.noPlansBody} action={<Button label={t.ui.tabZaki} kind="tonal" size="sm" icon="chatbubble-ellipses-outline" onPress={() => router.navigate("/")} />} />
+      {lists === null ? null : (
+        <SectionHeader
+          title={t.lists.title}
+          action={lists.length ? t.lists.seeAll : t.lists.new}
+          onAction={() => router.push("/list")}
+        />
+      )}
+      {lists === null ? null : lists.length === 0 ? (
+        <Card
+          onPress={() => router.push("/list")}
+          accessibilityLabel={t.lists.new}
+        >
+          <Text variant="small" color={palette.inkSoft}>
+            {t.lists.emptyAll}
+          </Text>
         </Card>
       ) : (
-        soon.map((i: Item) => <PlanRow key={i.id} item={i} onDone={() => void complete(i.id).catch(() => {})} />)
+        sortLists(lists)
+          .slice(0, 2)
+          .map((l) => (
+            <Card
+              key={l.id}
+              onPress={() =>
+                router.push({ pathname: "/list/[id]", params: { id: l.id } })
+              }
+              accessibilityLabel={l.name}
+            >
+              <View style={styles.listRow}>
+                <IconTile name={PLACE_ICON[l.place]} size={36} />
+                <View style={styles.flex}>
+                  <Text variant="bodyStrong">{l.name}</Text>
+                  {l.open_count ? (
+                    <Text
+                      variant="small"
+                      color={palette.inkSoft}
+                      numberOfLines={1}
+                    >
+                      {preview(l, listComma)}
+                    </Text>
+                  ) : null}
+                </View>
+                {l.open_count ? (
+                  <Badge
+                    label={fill(t.lists.count, { n: l.open_count })}
+                    tone="primary"
+                  />
+                ) : (
+                  <Badge label={t.lists.allDone} tone="ok" />
+                )}
+              </View>
+            </Card>
+          ))
+      )}
+
+      <SectionHeader
+        title={t.ui.comingUp}
+        action={more > 0 ? fill("{n} +", { n: more }) : undefined}
+        onAction={() => router.push("/upcoming")}
+      />
+      {soon.length === 0 && repeating.length === 0 ? (
+        <Card>
+          <EmptyState
+            title={t.ui.noPlansTitle}
+            body={t.ui.noPlansBody}
+            action={
+              <Button
+                label={t.ui.tabZaki}
+                kind="tonal"
+                size="sm"
+                icon="chatbubble-ellipses-outline"
+                onPress={() => router.navigate("/")}
+              />
+            }
+          />
+        </Card>
+      ) : (
+        soon.map((i: Item) => (
+          <PlanRow
+            key={i.id}
+            item={i}
+            onDone={() => void complete(i.id).catch(() => {})}
+          />
+        ))
       )}
       {repeating.length ? (
         <>
           <SectionHeader title={t.ui.repeating} />
           {repeating.map((i: Item) => (
-            <PlanRow key={i.id} item={i} onDone={() => void complete(i.id).catch(() => {})} />
+            <PlanRow
+              key={i.id}
+              item={i}
+              onDone={() => void complete(i.id).catch(() => {})}
+            />
           ))}
         </>
       ) : null}
 
-      <SectionHeader title={t.ui.tracking} action={canAdd(own, limit) ? t.trackers.add.replace(/^\+\s*/, "") : t.trackers.addPro} onAction={() => router.push(canAdd(own, limit) ? "/tracker/new" : "/paywall")} />
-      {trackers?.map((tr) => <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={loadOnline} />)}
+      <SectionHeader
+        title={t.ui.tracking}
+        action={
+          canAdd(own, limit)
+            ? t.trackers.add.replace(/^\+\s*/, "")
+            : t.trackers.addPro
+        }
+        onAction={() =>
+          router.push(canAdd(own, limit) ? "/tracker/new" : "/paywall")
+        }
+      />
+      {trackers?.map((tr) => (
+        <TrackerCard
+          key={tr.id}
+          tracker={tr}
+          onChanged={replace}
+          onRemoved={loadOnline}
+        />
+      ))}
       {trackers && trackers.length === 0 ? (
         <Card>
-          <EmptyState title={t.trackers.empty} action={<Button label={t.trackers.add} kind="tonal" size="sm" icon="add" onPress={() => router.push("/tracker/new")} />} />
+          <EmptyState
+            title={t.trackers.empty}
+            action={
+              <Button
+                label={t.trackers.add}
+                kind="tonal"
+                size="sm"
+                icon="add"
+                onPress={() => router.push("/tracker/new")}
+              />
+            }
+          />
         </Card>
       ) : null}
       {trackers?.length ? (
@@ -117,7 +281,12 @@ export default function TodayScreen() {
         </Text>
       ) : null}
 
-      <Card onPress={() => router.push("/session")} tone={palette.calmSoft} style={styles.reflect} accessibilityLabel={t.ui.reflectTitle}>
+      <Card
+        onPress={() => router.push("/session")}
+        tone={palette.calmSoft}
+        style={styles.reflect}
+        accessibilityLabel={t.ui.reflectTitle}
+      >
         <View style={styles.reflectIcon}>
           <Icon name="leaf" size={22} color={palette.calm} />
         </View>
@@ -136,8 +305,26 @@ export default function TodayScreen() {
 }
 
 const styles = StyleSheet.create({
+  listRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   flex: { flex: 1, minWidth: 0 },
-  hero: { flexDirection: "row", alignItems: "center", gap: space.lg, paddingVertical: space.sm },
-  reflect: { flexDirection: "row", alignItems: "center", gap: space.md, marginTop: space.md },
-  reflectIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
+  hero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.lg,
+    paddingVertical: space.sm,
+  },
+  reflect: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    marginTop: space.md,
+  },
+  reflectIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: palette.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

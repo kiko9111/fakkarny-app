@@ -1215,6 +1215,24 @@ Rules:
     before the system question. Privacy text says what is kept (legal/content.ts).
   - Needs a new Android build (native modules). Until then the screen says "needs a newer version".
 
+- Shared household lists (2026-11-26, kareem: "shared household list"): tables house_lists /
+  house_list_items, routes apps/api/src/routes/lists.ts, writes apps/api/src/lists/store.ts, wording
+  lists/rules.ts (gender-neutral), shared shape and `splitThings` in packages/shared/src/lists.ts.
+  A list belongs to a circle (every member sees and ticks it) or is private. Ticked items stay
+  visible for DONE_VISIBLE_HOURS (24). "I'm going shopping" (POST /lists/:id/trip, TRIP_HOURS 3)
+  tells the other members in their chat with an Open card + push; while it runs, anything another
+  member adds reaches the shopper as a chat line + push; "I'm back" tells the others how many things
+  were got (chat only). Chat by rules, no AI (lists/match.ts, conversation step 1a″): "ضيف بيض
+  للقايمة" / "add eggs to the list" / "dif beid lel list" (needs the word list), "إيه اللي في
+  القايمة", "جبت العيش" (only when every thing is open on one list), "نازل السوبر ماركت" (shows the
+  list and offers the trip card). The model's list_item items and the `list` tool go to the
+  household list (`addToList`, done card with Undo), never to personal Items. Starting a trip from
+  chat is a pending card (it reaches others). The default list (`defaultList`) is the grocery list
+  used last, else made in the first family circle. Place reminders read the saved GET /lists
+  (`peekShopLists`, list `place` = place kind). Free; in /bootstrap, /me/export (list_items) and
+  DELETE /me (private lists go). The phone shows list entry points only once GET /lists answered,
+  so an over-the-air update before the server deploy shows nothing new.
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

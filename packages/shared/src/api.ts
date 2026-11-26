@@ -179,5 +179,7 @@ export const ExportResponse = z.object({
   photos: z.array(z.object({ task: z.string().nullable(), mime: z.string(), data: z.string(), created_at: z.string() })).default([]),
   /** Pocket-money records the user is part of, as child or parent (homework rewards and what was handed over). */
   pocket_money: z.array(z.object({ role: z.enum(["child", "parent"]), kind: z.string(), amount: z.number(), title: z.string().nullable(), at: z.string() })).default([]),
+  /** Household list things the user added or ticked off, with their list's name. */
+  list_items: z.array(z.object({ list: z.string(), title: z.string(), qty: z.string().nullable(), added: z.boolean(), done_at: z.string().nullable(), created_at: z.string() })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;
