@@ -72,6 +72,10 @@ export default function SplitScreen() {
     }
   };
   const owed = split.people.reduce((sum, p, i) => (i === split.paid_by || p.paid ? sum : sum + p.share), 0);
+  // Someone else's group split: read-only, except saying you paid your own share.
+  const mine = split.mine !== false;
+  const meRow = !mine && split.me != null ? split.people[split.me] : undefined;
+  const iOwe = Boolean(meRow && split.me !== split.paid_by && split.paid_by !== null && !meRow.paid && meRow.share > 0);
 
   return (
     <Screen onRefresh={load} contentStyle={styles.content}>
@@ -81,7 +85,12 @@ export default function SplitScreen() {
           {t.split.total}
         </Text>
         <Text variant="number">{fill(t.ui.pounds, { n: formatMoney(split.total) })}</Text>
-        {split.paid_by !== null && owed > 0 ? (
+        {!mine && split.owner_name ? (
+          <Text variant="small" color={palette.inkSoft}>
+            {fill(t.split.from, { name: split.owner_name })}
+          </Text>
+        ) : null}
+        {mine && split.paid_by !== null && owed > 0 ? (
           <Text variant="small" color={palette.ok}>
             {fill(t.split.stillOwed, { n: formatMoney(owed) })}
           </Text>
@@ -108,10 +117,10 @@ export default function SplitScreen() {
               <Text variant="caption" color={palette.ok}>
                 {t.split.paidBill}
               </Text>
-            ) : split.paid_by !== null ? (
+            ) : split.paid_by !== null && (mine || i === split.me) ? (
               <Pressable onPress={() => togglePaid(i, !p.paid)} accessibilityRole="checkbox" accessibilityState={{ checked: p.paid }} style={styles.paid}>
                 <Text variant="small" color={p.paid ? palette.ok : palette.primaryInk}>
-                  {p.paid ? t.split.paidBack : t.split.markPaid}
+                  {mine ? (p.paid ? t.split.paidBack : t.split.markPaid) : p.paid ? t.split.youPaid : t.split.iPaid}
                 </Text>
               </Pressable>
             ) : null}
@@ -131,21 +140,34 @@ export default function SplitScreen() {
           ))}
         </Card>
       ) : null}
-      {entries.length && !inDaftar ? <Button label={t.split.toDaftar} kind="outline" icon="book-outline" block disabled={adding} onPress={() => void toDaftar()} /> : null}
-      <Button label={t.split.resend} kind="whatsapp" icon="logo-whatsapp" block onPress={resend} />
-      <Button label={t.split.shareCard} kind="outline" icon="image-outline" block onPress={() => void shareSplitCard(split.url).then((ok) => (ok ? track("split_card_shared") : notify(t.split.offline, "error")))} />
-      <Button label={t.split.openPage} kind="outline" icon="open-outline" block onPress={() => void Linking.openURL(split.url)} />
-      <Button
-        label={t.split.delete}
-        kind="text"
-        onPress={() =>
-          confirm(t.split.deleteConfirm, t.split.delete, () =>
-            void deleteSplit(split.id)
-              .then(() => router.back())
-              .catch(() => notify(t.split.offline, "error")),
-          )
-        }
-      />
+      {iOwe && split.instapay ? (
+        <>
+          <Button label={t.split.payInstapay} icon="card-outline" block onPress={() => void Linking.openURL(split.instapay!)} />
+          <Text variant="small" color={palette.inkSoft} align="center">
+            {fill(t.split.payHint, { n: formatMoney(meRow!.share) })}
+          </Text>
+        </>
+      ) : null}
+      {!mine ? <Button label={t.split.openPage} kind="outline" icon="open-outline" block onPress={() => void Linking.openURL(split.url)} /> : null}
+      {mine ? (
+        <>
+          {entries.length && !inDaftar ? <Button label={t.split.toDaftar} kind="outline" icon="book-outline" block disabled={adding} onPress={() => void toDaftar()} /> : null}
+          <Button label={t.split.resend} kind="whatsapp" icon="logo-whatsapp" block onPress={resend} />
+          <Button label={t.split.shareCard} kind="outline" icon="image-outline" block onPress={() => void shareSplitCard(split.url).then((ok) => (ok ? track("split_card_shared") : notify(t.split.offline, "error")))} />
+          <Button label={t.split.openPage} kind="outline" icon="open-outline" block onPress={() => void Linking.openURL(split.url)} />
+          <Button
+            label={t.split.delete}
+            kind="text"
+            onPress={() =>
+              confirm(t.split.deleteConfirm, t.split.delete, () =>
+                void deleteSplit(split.id)
+                  .then(() => router.back())
+                  .catch(() => notify(t.split.offline, "error")),
+              )
+            }
+          />
+        </>
+      ) : null}
     </Screen>
   );
 }

@@ -43,7 +43,7 @@ export function SplitsView({ reloadKey }: { reloadKey: number }) {
           <ListRow
             key={s.id}
             title={s.title || t.split.untitled}
-            meta={`${new Date(s.created_at).toLocaleDateString(dateLocale, { day: "numeric", month: "short" })} · ${fill(t.ui.pounds, { n: formatMoney(s.total) })}${left ? ` · ${fill(t.split.leftToPay, { n: left })}` : ""}`}
+            meta={`${new Date(s.created_at).toLocaleDateString(dateLocale, { day: "numeric", month: "short" })} · ${fill(t.ui.pounds, { n: formatMoney(s.total) })}${left ? ` · ${fill(t.split.leftToPay, { n: left })}` : ""}${s.mine === false && s.owner_name ? ` · ${fill(t.split.from, { name: s.owner_name })}` : ""}`}
             onPress={() => router.push({ pathname: "/split/[id]", params: { id: s.id } })}
           />
         );

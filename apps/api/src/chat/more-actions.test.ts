@@ -173,4 +173,24 @@ describe.skipIf(!hasTestDb)("the whole app from chat: undo, answers on news, sho
     const people = (await prisma.split.findFirstOrThrow()).peopleJson as { name: string; paid: boolean }[];
     expect(people.find((p) => p.name === "سارة")!.paid).toBe(true);
   });
+
+  it("splits a bill with a circle after a yes, and the member pays from their card", async () => {
+    const { kareem, mona } = await home();
+    queue.push(ok({ reply: ["حاضر"], app_actions: [{ kind: "split_bill", amount: 600, circle: "البيت", name: "غدا" }] }));
+    const r = await say(kareem, "قسم ٦٠٠ غدا على البيت");
+    const ask = cardsOf(r)[0]!;
+    expect(ask).toMatchObject({ kind: "split_bill", status: "pending" });
+    // Nothing reaches Mona before the yes.
+    expect((await chatOf(mona)).some((m) => m.text.includes("🧾"))).toBe(false);
+    const yes = await post(kareem, `/messages/${r.replies.at(-1)!.id}/actions/${ask.id}`, { confirm: true });
+    expect(yes.statusCode).toBe(200);
+    const split = await prisma.split.findFirstOrThrow();
+    expect(split.memberIds).toEqual([mona.id]);
+    const line = (await chatOf(mona)).find((m) => m.text.includes("🧾"))!;
+    expect(line.text).toContain("نصيبك 300");
+    const paid = await post(mona, `/messages/${line.id}/actions/${line.actions![0]!.id}`, { confirm: true });
+    expect(paid.statusCode).toBe(200);
+    expect(((await prisma.split.findFirstOrThrow()).peopleJson as { paid: boolean }[])[1]!.paid).toBe(true);
+    expect((await chatOf(kareem)).some((m) => m.text.includes("نصيب منى اتعلّم إنه اتدفع"))).toBe(true);
+  });
 });

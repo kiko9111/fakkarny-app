@@ -19,6 +19,21 @@ export interface Draft {
   vat: boolean;
   tip: string;
   paidBy: number | null;
+  /** A group split: the circle, and each row's member id (same order as `people`). */
+  circleId?: string | null;
+  userIds?: (string | null)[];
+}
+
+/**
+ * Fill the people from a circle: me first, then every other member (names as the circle shows
+ * them). Picking the circle again (or `null`) keeps the names and drops the link. Pure.
+ */
+export function withCircle(d: Draft, circle: { id: string; members: { user_id: string; name: string | null; is_me: boolean }[] } | null, me: string, unnamed: (n: number) => string): Draft {
+  if (!circle) return { ...d, circleId: null, userIds: undefined };
+  const self = circle.members.find((m) => m.is_me);
+  const others = circle.members.filter((m) => !m.is_me).slice(0, 29);
+  const people = [me, ...others.map((m, i) => (m.name?.trim() || unnamed(i + 2)).slice(0, 40))];
+  return { ...d, circleId: circle.id, people, userIds: [self?.user_id ?? null, ...others.map((m) => m.user_id)], items: d.items.map((it) => ({ ...it, eaters: [] })), paidBy: 0 };
 }
 
 /** Starting rows: "me" first, then empty rows up to `count` (at least 2). */
@@ -42,7 +57,10 @@ export function toSplitInput(d: Draft): SplitInput | null {
   if (!items.length && subtotal === null) return null;
   return {
     title: d.title.trim(),
-    people: d.people.map((name) => ({ name: name.trim() })),
+    people: d.people.map((name, i) => {
+      const id = d.circleId ? d.userIds?.[i] : null;
+      return id ? { name: name.trim(), user_id: id } : { name: name.trim() };
+    }),
     items,
     subtotal,
     service_pct: d.service ? DEFAULT_SERVICE_PCT : 0,
@@ -50,6 +68,7 @@ export function toSplitInput(d: Draft): SplitInput | null {
     vat_on_service: true,
     tip: parseAmount(d.tip) ?? 0,
     paid_by: d.paidBy !== null && d.paidBy < d.people.length ? d.paidBy : null,
+    circle_id: d.circleId ?? null,
   };
 }
 
@@ -65,6 +84,7 @@ export function removePerson(d: Draft, index: number): Draft {
   return {
     ...d,
     people: d.people.filter((_, k) => k !== index),
+    ...(d.userIds ? { userIds: d.userIds.filter((_, k) => k !== index) } : {}),
     items: d.items.map((it) => ({ ...it, eaters: it.eaters.filter((e) => e !== index).map(shift) })),
     paidBy: d.paidBy === index ? null : d.paidBy === null ? null : shift(d.paidBy),
   };

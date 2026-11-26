@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewSplit, removePerson, startPeople, toSplitInput, type Draft, daftarFromSplit, draftFromReceipt } from "./logic";
+import { previewSplit, removePerson, startPeople, toSplitInput, type Draft, daftarFromSplit, draftFromReceipt, withCircle } from "./logic";
 
 const base: Draft = { title: "", subtotal: "", people: ["Me", "Sara"], items: [], service: false, vat: false, tip: "", paidBy: 0 };
 
@@ -20,6 +20,20 @@ describe("split form", () => {
     const p = previewSplit({ ...base, subtotal: "300", items: [{ name: "steak", price: "200", eaters: [0] }, { name: "", price: "", eaters: [] }] });
     expect(p?.shares).toEqual([250, 50]);
     expect(toSplitInput({ ...base, items: [{ name: "x", price: "abc", eaters: [] }] })).toBeNull();
+  });
+
+  it("fills the people from a circle and sends their ids", () => {
+    const circle = { id: "c1", members: [{ user_id: "u-sara", name: "Sara", is_me: false }, { user_id: "u-me", name: "Kareem", is_me: true }, { user_id: "u-x", name: null, is_me: false }] };
+    const d = withCircle({ ...base, subtotal: "900" }, circle, "Me", (n) => `Person ${n}`);
+    expect(d.people).toEqual(["Me", "Sara", "Person 3"]);
+    const input = toSplitInput(d)!;
+    expect(input.circle_id).toBe("c1");
+    expect(input.people).toEqual([{ name: "Me", user_id: "u-me" }, { name: "Sara", user_id: "u-sara" }, { name: "Person 3", user_id: "u-x" }]);
+    // Removing someone keeps the ids lined up; dropping the circle keeps the names only.
+    expect(toSplitInput(removePerson(d, 1))!.people).toEqual([{ name: "Me", user_id: "u-me" }, { name: "Person 3", user_id: "u-x" }]);
+    const plain = toSplitInput(withCircle(d, null, "Me", String))!;
+    expect(plain.circle_id).toBeNull();
+    expect(plain.people).toEqual([{ name: "Me" }, { name: "Sara" }, { name: "Person 3" }]);
   });
 
   it("keeps indexes right when someone is removed", () => {
