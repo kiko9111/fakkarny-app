@@ -3,7 +3,7 @@ import { Linking, Pressable, Share, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { whatsappShareUrl } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
-import { upsertItem } from "@/db/messages";
+import { saveItem } from "@/sync/save-item";
 import { t } from "@/i18n";
 import { createDaftar, patchItem } from "@/lib/api";
 import { contactsAvailable, pickContactName } from "@/lib/contacts";
@@ -29,7 +29,7 @@ export default function NewDaftarScreen() {
     setBusy(true);
     try {
       const { share_text } = await createDaftar({ other_name: name.trim(), direction, amount, ...(note.trim() ? { note: note.trim() } : {}) });
-      if (params.itemId) await patchItem(params.itemId, { status: "done" }).then(upsertItem).catch(() => {});
+      if (params.itemId) await patchItem(params.itemId, { status: "done" }).then(saveItem).catch(() => {});
       if (share_text) await Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
       router.back();
     } catch {

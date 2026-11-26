@@ -31,6 +31,8 @@ export interface PlannedNotification {
   itemId: string;
   /** Show on the alarm channel. */
   alarm?: boolean;
+  /** The plan's title, which the notification carries for Done / Later ("Done «title»"). */
+  title?: string;
 }
 
 export const CLEAR_LEAD_MS = 30 * 60_000;
@@ -46,12 +48,28 @@ export function followupId(itemId: string) {
 }
 /** A repeating reminder gets one notification per upcoming occurrence. */
 export const REPEAT_SLOTS = 16;
-export function repeatId(itemId: string, slot: number) {
-  return `item_${itemId}_r${slot}`;
+/**
+ * One identifier per occurrence (its minute): when the window moves on, the occurrences already
+ * scheduled keep theirs, so only the new ones are added, and passed ones fired and went by themselves.
+ */
+export function repeatId(itemId: string, at: Date) {
+  return `item_${itemId}_r${Math.floor(at.getTime() / 60_000)}`;
 }
-/** Every identifier an item may have scheduled, for cancelling before re-planning. */
-export function allIds(itemId: string): string[] {
-  return [hintId(itemId), clearId(itemId), followupId(itemId), ...Array.from({ length: REPEAT_SLOTS }, (_, n) => repeatId(itemId, n))];
+/** Every identifier of an item's notifications starts with this. */
+export function itemPrefix(itemId: string) {
+  return `item_${itemId}_`;
+}
+/** The item an identifier of this app belongs to, or null for one that isn't an item's. */
+export function itemIdOf(identifier: string): string | null {
+  return /^item_(.+)_(?:hint|clear|followup|snooze|r\d+)$/.exec(identifier)?.[1] ?? null;
+}
+/** "Later" on a reminder: an hour on. Re-planning leaves it alone; closing the item clears it. */
+export function snoozeId(itemId: string) {
+  return `item_${itemId}_snooze`;
+}
+/** Identifiers older versions of the app used (repeats took slots 0–15), to clear what they left. */
+export function legacyIds(itemId: string): string[] {
+  return [hintId(itemId), clearId(itemId), followupId(itemId), ...Array.from({ length: REPEAT_SLOTS }, (_, n) => `item_${itemId}_r${n}`)];
 }
 
 export function planReminderNotifications(
@@ -76,12 +94,13 @@ export function planReminderNotifications(
   if (item.repeat_every_minutes) {
     const upcoming = remind.getTime() > opts.now.getTime() ? [remind] : [];
     const more = nextOccurrences(remind, item.repeat_every_minutes, new Date(Math.max(opts.now.getTime(), remind.getTime())), REPEAT_SLOTS, awake);
-    return [...upcoming.filter(awake), ...more].slice(0, REPEAT_SLOTS).map((date, n) => ({
-      identifier: repeatId(item.id, n),
+    return [...upcoming.filter(awake), ...more].slice(0, REPEAT_SLOTS).map((date) => ({
+      identifier: repeatId(item.id, date),
       date,
       body: item.nudge ?? item.title,
       kind: "repeat" as const,
       itemId: item.id,
+      title: item.title,
       ...(item.alarm ? { alarm: true } : {}),
     }));
   }
@@ -107,7 +126,7 @@ export function planReminderNotifications(
   }
   return out
     .filter((n) => n.date.getTime() > opts.now.getTime())
-    .map((n) => (item.alarm && n.kind !== "followup" ? { ...n, alarm: true } : n));
+    .map((n) => ({ ...n, title: item.title, ...(item.alarm && n.kind !== "followup" ? { alarm: true } : {}) }));
 }
 
 /** "{title} at {time}" templating for i18n strings. */

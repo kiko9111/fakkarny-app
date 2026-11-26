@@ -8,6 +8,7 @@ import { featureOfRoute } from "@/lib/unlock";
 import { unlock } from "@/lib/unlock-store";
 import { messagesChanged } from "@/sync";
 import { dataChanged } from "@/lib/live";
+import { pullItems } from "@/sync/items";
 import { t } from "@/i18n";
 import { notify } from "@/ui/feedback";
 import { Button, Icon, palette, radius, space, Text, type IconName } from "@/ui";
@@ -60,6 +61,9 @@ export const ActionCards = memo(function ActionCards({ serverId, actions }: { se
       await setActions(serverId, updated.actions);
       messagesChanged.emit();
       dataChanged.emit();
+      // The answer carries the cards only: a task accepted or cancelled, homework handed in or an
+      // undone reminder time changed plans too. Today shows them without being opened again.
+      void pullItems();
     } catch {
       setGuess(({ [card.id]: _back, ...rest }) => rest);
       notify(t.chat.actionOffline, "error");

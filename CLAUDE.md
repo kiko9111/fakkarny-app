@@ -311,7 +311,7 @@ Rules:
   circles left empty, and deletes circle_posts by or about the user (no FK on those ids).
 - The phone pulls items changed on the server outside the chat (accepted tasks, Session steps,
   cancelled tasks) on every foreground with `pullItems` (apps/mobile/src/sync/items.ts) and
-  re-plans their notifications.
+  re-plans their notifications in the background (see "Local notifications in the background").
 - Hardening (M7): @fastify/rate-limit (120/min per caller, 30/min on POST /messages,
   keyed by hashed identity), soft daily cap of 150 user messages (AI pauses, messages
   still saved, user told once), Sentry on API and app with all content collection off,
@@ -1027,6 +1027,100 @@ Rules:
   - More API instances, or a longer deploy overlap, need more room first: each instance holds up
     to 8 + 3. The pooler's pool size is a Supabase dashboard setting (Database settings,
     connection pooling); nobody has changed it.
+
+- Local notifications in the background (2026-11-26, kareem: "the today tab changes are somehow
+  late", always on the Pixel). On Android every expo-notifications schedule or cancel is a round
+  trip through the system (node_modules/expo-notifications/android: a package-manager lookup and
+  `sendBroadcast` to NotificationsService, `onReceive` on the main thread, a new thread for the
+  SharedPreferences write and AlarmManager, the answer posted back on the main looper). The old
+  `scheduleItem` cancelled 19 identifiers one by one before planning, for every item type, and it
+  was awaited: after a chat reply before `dataChanged` and the next outbox message, inside
+  `pullItems` before the next item's SQLite write, in `complete()` before the PATCH, and
+  `refresh()` re-planned every timed reminder on every return to the app and network change.
+  The browser build has no notifications (index.web.ts), which is why no browser run showed it.
+  - Now notifications/scheduler.ts (pure, tested with a stand-in phone) works in the background,
+    one native call at a time, and makes only the calls that change something
+    (notifications/reconcile.ts): a record identifier → signature (time | kind | alarm | hash of
+    the words) in localStorage `notif:scheduled`, and the phone's own list read once per launch
+    (`getAllScheduledNotificationsAsync`). Scheduling an identifier again replaces it, so a changed
+    time is one call. Each item's first pass after a launch schedules everything planned again (a
+    force stop drops alarms the record can't see). Repeats have one identifier per occurrence
+    (`item_<id>_r<minute>`), so a moving window only adds the new ones; "Later" is
+    `item_<id>_snooze` (left alone while the item is open, cleared when it closes); one whose time
+    has come is left to ring; a call with no answer counts as failed after 15 s; `soon` puts a reminder
+    just made ahead of a bulk top-up. First launch after this change: the old slot identifiers
+    (`_r0`…`_r15`) are cancelled once.
+  - Rules: never await `scheduleItem` / `scheduleItems` on the user's path. Write SQLite first,
+    fire `itemsChanged` (lib/signals.ts: every list of plans re-reads SQLite, also a tab not in
+    view), then plan notifications. An item a route answered with goes through `saveItem`
+    (sync/save-item.ts), which also clears a cancelled item's notifications (the Saved screen's
+    Remove used to leave them ringing). `pullItems` writes each change (`upsertItems`), fires
+    `itemsChanged`, then plans; a call made while a pull is on its way gets one more pull after it
+    (`oneAtATime`, lib/one-at-a-time.ts), so "accept" followed by a pull sees the new plan.
+    `useItems.complete` sends the PATCH right after the local write, and a reload that read SQLite
+    a moment before the write can't bring the ticked row back.
+  - No new `withTransactionAsync`: expo-sqlite shares one connection, a transaction begun while
+    another is open (a chat reply being saved, `markSynced`) fails with "cannot start a transaction
+    within a transaction", and statements from elsewhere run inside whichever one is open. Pulled
+    items are written one statement each for that reason (one pull wrapped in a transaction was
+    lost whole when a reply arrived during it); one that fails waits for the next pull.
+  - Answers that change plans without carrying them: a card's answer (POST /messages/:id/actions),
+    a reply with cards (a chat yes/no to a card, "undo", an app action such as a moved task
+    reminder) and a resend answered from what the server stored (only the plans the message made).
+    The phone pulls items after each (ActionCards, `markSynced` in sync/index.ts), so Today has the
+    change before it is opened. Network events refresh only when the phone comes back online:
+    Android reports every change of signal strength as one.
+  - Today's "Coming up" (`comingUp`, lib/coming-up.ts) lists plans from the last hour onward
+    soonest first, then plans with no time, then plans whose times have all passed (the latest
+    first). One-off reminders stay open after they ring, and old ones used to fill the five places
+    so a new plan only raised the "+N". A plan sorts by the next of its times (Zaki's reminder until
+    it has passed, then the plan's own time) and counts as passed only when both have: the persona
+    reminds an hour or a day before, and sorting by the reminder alone dropped tomorrow's dentist
+    behind the plans with no time an hour after the reminder. A row shows when Zaki reminds beside
+    the plan's own time when the two differ (`planTimes`, lib/plan-time.ts): a change to the
+    reminder alone used to show nothing. Upcoming places a plan with only a reminder time by that
+    time, not under "No date".
+  - Android rings late: without the exact-alarm permission (this app has none) Android 12 and later
+    may ring an alarm up to about an hour after its time, and the library keeps it scheduled until
+    it rings. So a record is forgotten only 3 hours past its time (`FIRED_GRACE_MS`): until then a
+    closed plan's is cancelled and an open plan's is left to ring. The phone's list gives each
+    notification's time on Android (`listedAt`), so one with no record is judged the same way. iOS
+    lists no time but rings on time, so at a launch a record whose time has passed for one it still
+    lists is taken as unknown (`launchSignature`): cancelled if not wanted, never forgotten.
+  - Leftovers: only open plans are planned again on a return to the app, so after them
+    `planTheRest` plans every other item the record or the phone's list still holds notifications
+    of (`scheduler.tracked()`): a plan closed while the app was stopped before its notifications
+    went, or whose cancel failed ("stop reminding me" left an hourly reminder ringing all day), and
+    a task with only a deadline (its alarm comes back after a force stop).
+  - The notification shade (notifications/shade.ts, pure): Android keeps a notification there after
+    Done or Later on it, and each occurrence of a repeating reminder has its own identifier, so an
+    hourly reminder stacked up and a plan ticked off in Today kept its reminder. Done / Later
+    dismiss the tapped one; `tidyShade` takes out every reminder of a closed plan and all but the
+    newest of an open one (follow-ups and Zaki's messages are left alone), on every refresh, when
+    a plan closes (`scheduleItems`) and when a reminder arrives with the app open.
+  - Later is two things: the local snooze (`item_<id>_snooze`, an hour on) and a chat line that asks
+    the server to move the plan an hour on. The snooze gives way when one of the plan's own
+    reminders rings from 15 minutes before it to an hour after it (`SNOOZE_BEFORE_MS`,
+    `SNOOZE_AFTER_MS`; never a follow-up): read at once, the moved reminder rang seconds after the
+    snooze; read late (Later tapped offline), up to an hour after. The
+    signature includes the plan's title, because Done and Later send it to the chat: a renamed plan
+    is scheduled again. The record is written after every item that changed it, and at a launch a
+    time the phone lists beats a record that says another time (a run stopped before writing).
+    The wipe (`clearScheduled`) drops plans enqueued while it runs (`reset` until `reopen`: they are
+    the last person's) and clears the shade.
+  - Done / Later tapped while the app was stopped: the buttons don't open the app
+    (`opensAppToForeground: false`), and with no JavaScript running Android only keeps the tap in
+    the app's process. `listenForNotifications` reads it at start (`getLastNotificationResponse`)
+    and answers it then: Done as usual, Later with its chat line only (the server moves the plan an
+    hour on from then). Each tap is answered once (notifications/taps.ts, localStorage
+    `notif:taps`), and the last answer is cleared after each, because an update that reloads the
+    app would find it again. A tap whose process ended before the app opened is lost: catching it
+    needs a background task (expo-task-manager, `Notifications.registerTaskAsync`, a new build
+    with the module optional) or buttons that open the app, which is the owner's call.
+  - Never roll the app back over the air to a bundle from before this scheduler (b62a7e2 or older):
+    its `scheduleItem` cancels only the old slot identifiers, so the per-occurrence repeats
+    (`item_<id>_r<minute>`) and the snooze it can't see would ring twice, and "stop reminding me"
+    would not stop them. Fix forward instead.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

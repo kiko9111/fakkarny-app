@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS } from "./schema";
-import { LIST_MESSAGES_SQL, MESSAGES_WITH_CARD_SQL, PENDING_MESSAGES_SQL, UPSERT_SERVER_MESSAGE_SQL } from "./sql";
+import { itemsByIdsSql, itemStatusesSql, LIST_MESSAGES_SQL, MESSAGES_WITH_CARD_SQL, PENDING_MESSAGES_SQL, UPSERT_SERVER_MESSAGE_SQL } from "./sql";
 
 function freshDb() {
   const db = new DatabaseSync(":memory:");
@@ -50,5 +50,30 @@ describe("chat SQL against a real SQLite", () => {
     upsert.run("r2", "s2", "friend", "chat", "Done", at, null);
     const found = db.prepare(MESSAGES_WITH_CARD_SQL).all("%card-1%", "r2") as { client_id: string }[];
     expect(found.map((r) => r.client_id)).toEqual(["r1"]);
+  });
+
+  it("reads the status of the items in the notification shade, only those the phone holds", () => {
+    const { db } = freshDb();
+    const add = db.prepare("INSERT INTO items (id, type, title, status, updated_at, created_at) VALUES (?, 'reminder', 'x', ?, ?, ?)");
+    const at = "2026-11-26T10:00:00.000Z";
+    add.run("a", "open", at, at);
+    add.run("b", "done", at, at);
+    add.run("c", "cancelled", at, at);
+    const rows = db.prepare(itemStatusesSql(3)).all("a", "b", "gone") as { id: string; status: string }[];
+    expect(new Map(rows.map((r) => [r.id, r.status]))).toEqual(new Map([["a", "open"], ["b", "done"]]));
+    expect(db.prepare(itemStatusesSql(1)).all("c")).toEqual([{ id: "c", status: "cancelled" }]);
+  });
+
+  it("reads whole items by id, only those the phone holds", () => {
+    const { db } = freshDb();
+    const add = db.prepare("INSERT INTO items (id, type, title, status, remind_at, updated_at, created_at) VALUES (?, 'reminder', ?, ?, ?, ?, ?)");
+    const at = "2026-11-26T10:00:00.000Z";
+    add.run("a", "Call mom", "done", at, at, at);
+    add.run("b", "Bread", "open", null, at, at);
+    const rows = db.prepare(itemsByIdsSql(3)).all("a", "gone", "b") as { id: string; title: string; status: string; remind_at: string | null }[];
+    expect(rows.map((r) => [r.id, r.title, r.status, r.remind_at]).sort()).toEqual([
+      ["a", "Call mom", "done", at],
+      ["b", "Bread", "open", null],
+    ]);
   });
 });
