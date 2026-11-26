@@ -60,7 +60,11 @@ export const syncQueue = createSyncQueue({
         first ||= Date.now() - started;
         replyWriting.emit({ clientId, kind: "words", bubble, delta });
       },
-      onReset: () => replyWriting.emit({ clientId, kind: "reset" }),
+      onReset: () => {
+        // Taken back: the words that count are the ones that come next (none: it came in one piece).
+        first = 0;
+        replyWriting.emit({ clientId, kind: "reset" });
+      },
     };
     const done = (ok: boolean) => {
       const total = Date.now() - started;

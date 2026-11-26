@@ -166,7 +166,39 @@ describe.skipIf(!hasTestDb)("POST /messages as a stream", () => {
     expect(kinds.indexOf("reset")).toBeGreaterThan(kinds.indexOf("draft"));
     expect(kinds.lastIndexOf("draft")).toBeGreaterThan(kinds.indexOf("reset"));
     expect(drawn(list)).toEqual(second);
+    // "First words" is about the words that stayed.
+    expect(list.at(-1)!.data.timing.first).toEqual(expect.any(Number));
     expect(PostMessageResponse.parse(list.at(-1)!.data.body).replies.map((r) => r.text)).toEqual(second);
+  });
+
+  it("takes the draft back before it says what could not be done", async () => {
+    // The model says it is done; the app then finds nothing to do it to.
+    const promise = ["تمام يا منى، لغيت دين عبد الكريم خلاص"];
+    const { model } = liveModel([{ result: ok({ reply: promise, app_actions: [{ kind: "daftar_cancel", person: "عبد الكريم" }] } as never) }]);
+    const res = await post(appWith(model), "الغي دين عبد الكريم", STREAM);
+    const list = events(res.payload);
+    const kinds = list.map((e) => e.event);
+    expect(kinds).toContain("draft");
+    // Taken back before the answer, and nothing shown after that.
+    expect(kinds.indexOf("reset")).toBeGreaterThan(kinds.lastIndexOf("draft"));
+    expect(kinds.at(-1)).toBe("done");
+    expect(drawn(list)).toEqual([]);
+    const stored = PostMessageResponse.parse(list.at(-1)!.data.body).replies.map((r) => r.text);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toContain("عبد الكريم");
+    expect(stored[0]).not.toContain("لغيت");
+    // The words that were taken back are not the turn's "first words".
+    expect(list.at(-1)!.data.timing.first).toBeUndefined();
+  });
+
+  it("records that a streamed try was lost and the turn read whole (kinds only)", async () => {
+    const lost = { ...ok({ reply: ["أهلا يا منى"] }), stream: undefined, streamLost: "timeout" } as FriendModelResult;
+    const { model } = liveModel([{ result: lost, write: [] }]);
+    const res = await post(appWith(model), "ازيك يا زكي", STREAM);
+    expect(res.statusCode).toBe(201);
+    const call = await prisma.event.findFirstOrThrow({ where: { name: "ai_call" } });
+    expect(call.propsJson).toMatchObject({ purpose: "chat", stream_lost: "timeout" });
+    expect(call.propsJson).not.toHaveProperty("stream");
   });
 
   it("never shows a reply in the wrong script", async () => {

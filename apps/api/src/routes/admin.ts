@@ -68,6 +68,12 @@ export async function adminStats(prisma: PrismaClient, metrics: Metrics, now: Da
   const aiErrors = await prisma.$queryRaw<{ kind: string; n: bigint }[]>`
     SELECT COALESCE(props_json->>'kind', '?') AS kind, COUNT(*) AS n FROM events
     WHERE created_at >= ${day} AND name = 'ai_error' GROUP BY 1 ORDER BY 2 DESC`;
+  // How the model's chat turns were read: while written ("eager" word by word, "plain" the
+  // reply in one piece ahead of the rest), or whole; and the streamed tries that were lost on
+  // the way and why.
+  const streams = await prisma.$queryRaw<{ how: string; lost: string; n: bigint }[]>`
+    SELECT COALESCE(props_json->>'stream', 'whole') AS how, COALESCE(props_json->>'stream_lost', '') AS lost, COUNT(*) AS n FROM events
+    WHERE created_at >= ${day} AND name = 'ai_call' AND props_json->>'purpose' IN ('chat', 'chat_free') GROUP BY 1, 2 ORDER BY 3 DESC`;
   const planCount = Object.fromEntries(plans.map((p) => [p.plan, p._count._all])) as Record<string, number>;
   const paying = (planCount["monthly"] ?? 0) + (planCount["yearly"] ?? 0);
   const everSubscribed = paying + (planCount["trial"] ?? 0) + (planCount["expired"] ?? 0);
@@ -104,6 +110,7 @@ export async function adminStats(prisma: PrismaClient, metrics: Metrics, now: Da
       first_words_p50_ms: Math.round(r.first_p50 ?? 0),
     })),
     ai_errors_24h: aiErrors.map((r) => ({ kind: r.kind, count: Number(r.n) })),
+    reply_streams_24h: streams.map((r) => ({ read: r.how, lost: r.lost || null, count: Number(r.n) })),
     growth_7d: {
       active_circles: Number(activeCircles?.n ?? 0),
       invites_created: Number(invites?.created ?? 0),
@@ -130,6 +137,7 @@ function page(s: Stats): string {
 <h2>AI cost (30 days)</h2><table>${row("Total", usd(c.total_usd))}${row("Per active user", usd(c.per_active_user_usd))}${row("Per paying user (target under $1.50)", usd(c.per_paying_user_usd), c.per_paying_user_usd > c.target_per_paying_user_usd ? "warn" : "")}
 ${c.top_users.map((u) => row(`User ${u.user}…`, `${usd(u.cost_usd)} · ${u.calls} calls`)).join("")}</table>
 <h2>Reply speed (24 h: median / slowest 10%)</h2><table>${s.reply_speed_24h.map((r) => row(r.source.replace(/[<>&]/g, ""), `${(r.p50_ms / 1000).toFixed(1)} s / ${(r.p90_ms / 1000).toFixed(1)} s · ${r.turns} turns${r.source.startsWith("server") ? ` · model ${(r.model_p50_ms / 1000).toFixed(1)} s` : ""}${r.streamed_turns ? ` · first words ${(r.first_words_p50_ms / 1000).toFixed(1)} s on ${r.streamed_turns}` : ""}`, r.p50_ms > 8000 ? "warn" : "")).join("") || row("No turns yet", "")}</table>
+<h2>How replies were read from the model (24 h)</h2><table>${s.reply_streams_24h.map((r) => row(`${r.read === "whole" ? "In one piece" : `While written (${r.read.replace(/[<>&]/g, "")})`}${r.lost ? `, after a stream was lost (${r.lost.replace(/[<>&]/g, "")})` : ""}`, r.count, r.lost ? "warn" : "")).join("") || row("No turns yet", 0)}</table>
 <h2>Model failures (24 h)</h2><table>${s.ai_errors_24h.map((e) => row(e.kind.replace(/[<>&]/g, ""), e.count, "warn")).join("") || row("None", 0)}</table>
 <h2>Health (24 h)</h2><table>${row("Requests", s.errors_24h.requests)}${row("5xx errors", s.errors_24h.errors)}${row("Error rate", pct(s.errors_24h.errorRate), s.errors_24h.errorRate > 0.01 ? "warn" : "")}${row("Crisis flags (7 days, safety review only)", s.crisis_flags_7d)}</table>
 </body></html>`;

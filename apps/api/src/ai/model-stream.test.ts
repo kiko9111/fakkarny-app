@@ -50,6 +50,7 @@ describe("a chat turn read while it is written", () => {
     expect(w.log.filter((l) => l === "words").length).toBeGreaterThan(3);
     expect(w.log.filter((l) => l === "end")).toHaveLength(1);
     expect(w.log).not.toContain("restart");
+    expect(out.ok && out.streamLost).toBeUndefined();
     // Asked for as a stream, the eager flag on `respond` only.
     expect(asked).toHaveLength(1);
     expect(asked[0]!.stream).toBe(true);
@@ -71,7 +72,8 @@ describe("a chat turn read while it is written", () => {
     const m = model();
     const first = watch();
     const one = await m.respond(input, first.live);
-    expect(one).toMatchObject({ ok: true, output: { reply: RESPOND.reply } });
+    // Refused before it began: nothing of it was paid for, and the turn says why it came whole.
+    expect(one).toMatchObject({ ok: true, output: { reply: RESPOND.reply }, streamLost: "refused", usage: { input_tokens: 100, output_tokens: 30 } });
     expect(one.ok && one.stream).toBeUndefined();
     expect(first.log).toEqual(["restart"]);
     expect(asked.map((a) => [a.stream, a.eager[0]])).toEqual([
@@ -103,7 +105,9 @@ describe("a chat turn read while it is written", () => {
     const m = model();
     const w = watch();
     const out = await m.respond(input, w.live);
-    expect(out).toMatchObject({ ok: true, output: { reply: RESPOND.reply } });
+    // What the lost stream had read is counted with the plain request that answered (its own
+    // writing is not known: the API tells that at the end of a stream).
+    expect(out).toMatchObject({ ok: true, output: { reply: RESPOND.reply }, streamLost: "cut", usage: { input_tokens: 200, output_tokens: 31 } });
     expect(out.ok && out.stream).toBeUndefined();
     // Some words were shown, then taken back.
     expect(w.log.at(-1)).toBe("restart");
@@ -143,7 +147,7 @@ describe("a chat turn read while it is written", () => {
     const started = Date.now();
     const out = await model({ streamTimeoutMs: 150 }).respond(input, w.live);
     expect(Date.now() - started).toBeLessThan(2_000);
-    expect(out).toMatchObject({ ok: true, output: { reply: RESPOND.reply } });
+    expect(out).toMatchObject({ ok: true, output: { reply: RESPOND.reply }, streamLost: "timeout", usage: { input_tokens: 200 } });
     expect(w.log.at(-1)).toBe("restart");
     expect(asked.map((a) => a.stream)).toEqual([true, false]);
   });

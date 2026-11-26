@@ -794,13 +794,25 @@ Rules:
     passes without the stream steps the mode down for the life of the process (eager → plain →
     off); two streams in a row that break or pass 25 s pause streaming for 10 minutes. Whether
     the API takes the eager flag on a strict tool was not checked with a real key before this
-    shipped: after a deploy read the `stream` prop on `ai_call` events and "first words" on /admin.
+    shipped: after a deploy read /admin, "How replies were read from the model" (the `stream`
+    and `stream_lost` props on `ai_call` events: eager / plain / whole, and refused / timeout /
+    cut for a streamed try that was lost and read whole instead) and "first words".
+  - Cost of a lost stream: it is paid for as far as it got. What it read is known from its
+    start and added to the turn's usage; what it had written is only told at a stream's end,
+    so the turn's cost is a floor. The eager flag changes the tools, which come before the
+    cached persona prompt, so eager turns and whole turns keep separate cache entries: a turn
+    that falls back to a whole request writes the cache again unless a whole turn ran in the
+    last 5 minutes. Compare cache_read and cache_creation tokens on `ai_call` after a deploy;
+    FAKKARNI_CHAT_STREAM=plain puts both kinds on one entry (the reply then arrives in one
+    piece, still ahead of the rest of the turn).
   - What may be shown (pipeline/draft.ts, pure): whole words, three words behind the writing;
     nothing from a sentence that says a reminder or alarm is set (`saysReminderSet`), or after
     it, until the turn is done (step 3c decides whether it is true); when the reply must be
     Arabic, a bubble only once it has an Arabic letter, and nothing more once one ended without;
     bubbles past the third fold into it. Nothing at all on a message the crisis keyword net
-    caught: that reply goes out whole with the helpline, as always. Any rewrite sends `reset`.
+    caught: that reply goes out whole with the helpline, as always. Any rewrite sends `reset`
+    first, also when the server replaces the reply with its own words (`honestReply`): call
+    `live?.onRestart()` before any new step that changes a reply after the model wrote it.
   - `reply.hijack()` takes the answer away from Fastify: its onSend hooks do not run (no gzip,
     which a stream needs; live-reply drops the caller's saved user row itself) and an error in
     the handler would only be logged, so the route catches it and ends the stream with `error`.
@@ -814,15 +826,25 @@ Rules:
     When a streamed send ends with no answer (cut after it began, or nothing at all), the same
     message goes out again at once the plain way (`sendForReply`; the server answers it from the
     turn in flight or from what it stored): a phone whose stream reading fails is answered as it
-    always was. A cut, or a plain send that works right after a streamed one got nothing, turns
-    streaming off on that phone for 10 minutes (`createStreamSwitch`). None of this was run on a
-    real phone before it shipped (the opener was run on a browser's XMLHttpRequest).
+    always was. An answer that was read is kept however the connection ends after it. Streaming
+    goes off on that phone for 10 minutes after two failed streams in a row with none read to
+    its end in between (`createStreamSwitch`): a cut counts at once, a send with no answer at
+    all only when the plain send after it is answered, and one that waited out the whole 60 s
+    counts double. One lost connection changes nothing. None of this was run on a real phone
+    before it shipped (the opener was run on a browser's XMLHttpRequest).
   - Tests: apps/api/test/anthropic-standin.ts is a stand-in Messages API on a real socket, so
     model-stream.test.ts and messages-live.test.ts run the SDK's own stream code. The e2e test
     sends one streamed message; E2E_EXPECT_WORDS=1 makes it require the words (against a local
     API started with ANTHROPIC_API_KEY and FAKKARNI_ANTHROPIC_BASE_URL pointing at the stand-in,
     or a real key). api-smoke.yml prints "first byte" for streamed turns. The browser preview has
     no server: it replays its sample answers word by word (apps/mobile/src/demo/replay.ts).
+  - The real app in a browser against a local API (the nearest thing to a phone a cloud
+    session has; run 2026-11-26 with the stand-in model: words from 0.65 s, the whole reply at
+    1.45 s, and with the first two streams cut each message was still answered at 1.4 s and
+    the third was asked for whole): export the web app without EXPO_PUBLIC_DEMO and with
+    EXPO_PUBLIC_API_URL set to the address of apps/mobile/scripts/web-live.mjs, which serves
+    the export and passes everything else to the API (how to run is in the file; CUT=<n> cuts
+    streamed answers).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

@@ -183,7 +183,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
             timing["first"] ??= Date.now() - started;
             live.text(bubble, delta);
           },
-          reset: () => live.reset(),
+          reset: () => {
+            // Taken back: "first" is for the words that stay (absent when none come before the answer).
+            delete timing["first"];
+            live.reset();
+          },
         }
       : undefined;
     const result = await pipeline({ prisma, user, message, now: now(), aiAllowance, requireSubscription: opts.requireSubscription ?? false, brain, timing, ...(draft ? { draft } : {}) });

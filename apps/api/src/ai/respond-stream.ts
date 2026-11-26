@@ -41,7 +41,11 @@ export class ReplyStreamTimeout extends Error {
  * `timeoutMs` (the SDK's own timeout only covers the wait for the stream to begin), and with
  * whatever the stream fails with.
  */
-export async function readToolTurn(stream: ToolTurnStream, live: Pick<ReplyLive, "onReply" | "onReplyEnd">, opts: { timeoutMs: number; tool?: string }): Promise<Anthropic.Message> {
+export async function readToolTurn(
+  stream: ToolTurnStream,
+  live: Pick<ReplyLive, "onReply" | "onReplyEnd">,
+  opts: { timeoutMs: number; tool?: string; /** What the request had used when the stream began (told also when it then breaks). */ onBegun?: (usage: Anthropic.Usage) => void },
+): Promise<Anthropic.Message> {
   const tool = opts.tool ?? "respond";
   let respondAt: number | null = null;
   let ended = false;
@@ -64,6 +68,7 @@ export async function readToolTurn(stream: ToolTurnStream, live: Pick<ReplyLive,
   const reader = createReplyReader((bubble, delta) => safely(() => live.onReply(bubble, delta)));
 
   stream.on("streamEvent", (event) => {
+    if (event.type === "message_start") opts.onBegun?.(event.message.usage);
     if (dead) return;
     safely(() => {
       if (event.type === "content_block_start") {
@@ -101,6 +106,9 @@ export async function readToolTurn(stream: ToolTurnStream, live: Pick<ReplyLive,
  * - "off": no stream; the turn arrives whole, as before.
  */
 export type StreamMode = "eager" | "plain" | "off";
+
+/** Why a streamed try was not the answer: the API refused it (400), it ran out of time, or it was cut off. */
+export type StreamLost = "refused" | "timeout" | "cut";
 
 /** After this many streamed turns in a row that broke or ran out of time, streams pause. */
 const BROKEN_BEFORE_PAUSE = 2;

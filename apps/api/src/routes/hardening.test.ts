@@ -59,6 +59,12 @@ describe.skipIf(!hasTestDb)("hardening (M7)", () => {
         // Answered in one piece (an older phone, or a turn the rules answered): no first words.
         { userId: user.id, name: "chat_timing", propsJson: { total: 900, brain: "cloud", pass: 1 } },
         { userId: user.id, name: "app:chat_reply", propsJson: { total: 3400, think: 0, brain: "cloud", ok: true, first: 1200 } },
+        // How the model's turns were read: two while written, one whole after its stream ran out of time.
+        { userId: user.id, name: "ai_call", propsJson: { purpose: "chat", stream: "eager", cost_usd: 0.001 } },
+        { userId: user.id, name: "ai_call", propsJson: { purpose: "chat_free", stream: "eager", cost_usd: 0.001 } },
+        { userId: user.id, name: "ai_call", propsJson: { purpose: "chat", stream_lost: "timeout", cost_usd: 0.002 } },
+        // Not a chat turn: not counted here.
+        { userId: user.id, name: "ai_call", propsJson: { purpose: "summary", cost_usd: 0.001 } },
       ],
     });
     const auth = { authorization: basic("s3cret-admin") };
@@ -69,6 +75,12 @@ describe.skipIf(!hasTestDb)("hardening (M7)", () => {
     expect(phone).toMatchObject({ turns: 1, streamed_turns: 1, first_words_p50_ms: 1200 });
     const page = await app.inject({ method: "GET", url: "/admin", headers: auth });
     expect(page.body).toContain("first words 0.8 s on 2");
+    expect(stats.reply_streams_24h).toEqual([
+      { read: "eager", lost: null, count: 2 },
+      { read: "whole", lost: "timeout", count: 1 },
+    ]);
+    expect(page.body).toContain("While written (eager)");
+    expect(page.body).toContain("In one piece, after a stream was lost (timeout)");
     await app.close();
   });
 

@@ -343,7 +343,7 @@ export async function postMessageRaw(body: PostMessageRequest, live?: ReplyHandl
         // As in `send`: the sign-in lookup counts against the same wait.
         let giveUp: ReturnType<typeof setTimeout> | undefined;
         const token = await Promise.race([accessToken(), new Promise<never>((_, reject) => (giveUp = setTimeout(() => reject(new HttpError(0)), REPLY_TIMEOUT_MS)))]).finally(() => clearTimeout(giveUp));
-        const { json } = await postForReply(
+        const answer = await postForReply(
           openReply,
           {
             url: `${API_URL}/messages`,
@@ -357,7 +357,7 @@ export async function postMessageRaw(body: PostMessageRequest, live?: ReplyHandl
           },
         );
         if (who !== person) throw new HttpError(401);
-        return json;
+        return answer;
       } finally {
         reads.changed();
       }

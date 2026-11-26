@@ -190,6 +190,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     /** The reply's words on their way to the phone while the model writes them (pipeline/draft.ts). */
     let live: ReturnType<typeof createDraftRelay> | undefined;
     let streamMode: string | null = null;
+    /** A streamed try of this turn was lost (refused, too slow, cut off) and the turn asked for again. */
+    let streamLost: string | null = null;
     /** Phone mode: what wrote the reply when the phone's model wasn't asked (counts only). */
     let codeReply: string | null = null;
     const nowLocal = toLocalIso(now, user.timezone).slice(0, 16);
@@ -278,6 +280,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
             actions = result.output;
             crisis ||= result.output.crisis;
             streamMode = result.stream ?? null;
+            streamLost = result.streamLost ?? null;
             if (n > 0) await event(prisma, user.id, "ai_recovered", { short_history: true }).catch(() => {});
             break;
           }
@@ -361,6 +364,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
           model: FRIEND_MODEL,
           persona: PERSONA_VERSION,
           ...(streamMode ? { stream: streamMode } : {}),
+          ...(streamLost ? { stream_lost: streamLost } : {}),
           ...usage,
           cost_usd: costUsd(usage),
           items_created: actions.create_items.length,
@@ -376,7 +380,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       const ran = await runAppActions(prisma, user, appActions, script, now, { requireSubscription: requireSubscription ?? false });
       // Nothing the model asked for could be done ("cancel Karim's debt" with no such debt): its
       // words ("I'll cancel it") would be a false promise, so the reply says what happened instead.
-      if (ran.cards.length && ran.cards.every((c) => c.status === "failed") && !applied.items.length) applied = await honestReply(prisma, applied, ran.cards, script);
+      if (ran.cards.length && ran.cards.every((c) => c.status === "failed") && !applied.items.length) {
+        // What the phone was shown of the model's words goes first, as with every rewrite.
+        live?.onRestart();
+        applied = await honestReply(prisma, applied, ran.cards, script);
+      }
       applied = await withCards(prisma, applied, ran.cards);
       applied = { ...applied, notices: [...(applied.notices ?? []), ...ran.notices] };
     }

@@ -84,6 +84,17 @@ describe("postForReply", () => {
     await expect(postForReply(answer(200, "text/event-stream", [half], new TypeError("Network request failed")), req, collect().handlers)).rejects.toBeInstanceOf(StreamCutError);
   });
 
+  it("keeps an answer it has read, however the connection ends after it", async () => {
+    const c = collect();
+    const body = { message: { id: "1" }, replies: [{ id: "2", text: "تمام" }] };
+    const text = sse([["draft", { i: 0, d: "تمام" }], ["done", { status: 201, body }]]);
+    // The connection was reset at its close, or the phone's own time limit fired right then.
+    const out = await postForReply(answer(200, "text/event-stream", [text], new TypeError("Network request failed")), req, c.handlers);
+    expect(out).toEqual({ json: body, streamed: true });
+    // A turn that failed keeps its status the same way.
+    await expect(postForReply(answer(200, "text/event-stream", [sse([["error", { status: 500 }]])], new TypeError("Network request failed")), req, collect().handlers)).rejects.toMatchObject({ status: 500 });
+  });
+
   it("passes a failure with no answer through untouched", async () => {
     const offline: Opener = async () => {
       throw new TypeError("Network request failed");
@@ -119,15 +130,30 @@ describe("createStreamSwitch", () => {
     expect(createStreamSwitch({ offered: true }).wanted(0)).toBe(true);
   });
 
-  it("switches streaming off for a while after a stream was cut", () => {
+  it("switches streaming off for a while after two streams in a row were cut, not after one", () => {
     const sw = createStreamSwitch({ offForMs: 1000, offered: true });
+    // A status is the server's answer: nothing about streams.
     sw.failed(new HttpError(500), 10);
     sw.failed(new HttpError(0), 10);
-    expect(sw.wanted(11)).toBe(true);
+    // One cut can be the connection: a plain send would have dropped too.
     sw.failed(new StreamCutError(), 20);
-    expect(sw.wanted(21)).toBe(false);
-    expect(sw.wanted(1019)).toBe(false);
-    expect(sw.wanted(1020)).toBe(true);
+    expect(sw.wanted(21)).toBe(true);
+    sw.failed(new StreamCutError(), 30);
+    expect(sw.wanted(31)).toBe(false);
+    expect(sw.wanted(1029)).toBe(false);
+    expect(sw.wanted(1030)).toBe(true);
+    // Still not one read to its end: the next cut switches it off again at once.
+    sw.failed(new StreamCutError(), 1040);
+    expect(sw.wanted(1041)).toBe(false);
+  });
+
+  it("forgets a cut once a stream is read to its end", () => {
+    const sw = createStreamSwitch({ offForMs: 1000, offered: true });
+    sw.failed(new StreamCutError(), 10);
+    sw.worked();
+    sw.failed(new StreamCutError(), 20);
+    // One, a good one, one: never two in a row.
+    expect(sw.wanted(21)).toBe(true);
   });
 
   it("finds out with a plain send whether no answer was the stream or the connection", () => {
@@ -135,28 +161,49 @@ describe("createStreamSwitch", () => {
     // No answer at all: the next send goes the plain way.
     sw.failed(new TypeError("Network request failed"), 10);
     expect(sw.wanted(11)).toBe(false);
-    // It was not answered either: the connection. Streams are asked for again.
+    // It was not answered either: the connection. Streams are asked for again, nothing held against them.
     sw.plain(false, 12);
     expect(sw.wanted(13)).toBe(true);
 
-    // This time the plain send is answered: it was the stream. Off for a while.
-    sw.failed(new TypeError("Network request timed out"), 20);
-    sw.plain(true, 30);
-    expect(sw.wanted(31)).toBe(false);
-    expect(sw.wanted(1029)).toBe(false);
-    expect(sw.wanted(1030)).toBe(true);
+    // The plain send is answered: that counts against the stream, once.
+    sw.failed(new TypeError("Network request failed"), 20);
+    sw.plain(true, 21);
+    expect(sw.wanted(22)).toBe(true);
+    // And again, with no stream read to its end in between: off for a while.
+    sw.failed(new TypeError("Network request failed"), 30);
+    sw.plain(true, 31);
+    expect(sw.wanted(32)).toBe(false);
+    expect(sw.wanted(1031)).toBe(true);
 
     // A plain send that works says nothing when no stream failed before it.
-    sw.plain(true, 2000);
-    expect(sw.wanted(2001)).toBe(true);
+    const calm = createStreamSwitch({ offForMs: 1000, offered: true });
+    calm.plain(true, 0);
+    calm.plain(true, 1);
+    expect(calm.wanted(2)).toBe(true);
+  });
+
+  it("does not wait out a whole time limit twice", () => {
+    const sw = createStreamSwitch({ offForMs: 1000, offered: true });
+    // A streamed send that hung to its limit, then a plain one that is answered: off at once.
+    sw.failed(new TypeError("Network request timed out"), 60, true);
+    expect(sw.wanted(61)).toBe(false);
+    sw.plain(true, 70);
+    expect(sw.wanted(71)).toBe(false);
+    expect(sw.wanted(1070)).toBe(true);
+    // The same for a stream that began and then hung to the limit.
+    const cut = createStreamSwitch({ offForMs: 1000, offered: true });
+    cut.failed(new StreamCutError(), 60, true);
+    expect(cut.wanted(61)).toBe(false);
   });
 });
 
 describe("sendForReply", () => {
-  /** One send with scripted tries; `clock` moves when a try says how long it took. */
-  function setup(opts: { offered?: boolean; stream?: () => Promise<string>; plain?: () => Promise<string> }) {
+  type Try = () => Promise<string>;
+  /** One phone with scripted tries; a try moves the clock with `pass`. */
+  function setup(opts: { offered?: boolean; stream?: Try; plain?: Try; streamed?: boolean } = {}) {
     let now = 0;
     const calls: string[] = [];
+    const script = { stream: opts.stream ?? (async () => "streamed"), plain: opts.plain ?? (async () => "plain") };
     const sw = createStreamSwitch({ offForMs: 10_000, offered: opts.offered ?? true });
     const send = () =>
       sendForReply({
@@ -165,16 +212,22 @@ describe("sendForReply", () => {
         limitMs: 60_000,
         stream: async () => {
           calls.push("stream");
-          return (opts.stream ?? (async () => "streamed"))();
+          return { json: await script.stream(), streamed: opts.streamed ?? true };
         },
         plain: async () => {
           calls.push("plain");
-          return (opts.plain ?? (async () => "plain"))();
+          return script.plain();
         },
         onGiveUp: () => void calls.push("give up"),
       });
-    return { calls, sw, send, pass: (ms: number) => void (now += ms), at: () => now };
+    return { calls, sw, send, script, pass: (ms: number) => void (now += ms), at: () => now };
   }
+  const noAnswer: Try = async () => {
+    throw new TypeError("Network request failed");
+  };
+  const cut: Try = async () => {
+    throw new StreamCutError();
+  };
 
   it("sends the plain way to a server that does not say it streams", async () => {
     const t = setup({ offered: false });
@@ -183,48 +236,61 @@ describe("sendForReply", () => {
   });
 
   it("reads the reply as it is written from a server that does", async () => {
-    const t = setup({});
+    const t = setup();
     expect(await t.send()).toBe("streamed");
     expect(t.calls).toEqual(["stream"]);
     expect(t.sw.wanted(t.at())).toBe(true);
   });
 
-  it("tries the plain way at once when a streamed send gets no answer, and then leaves streams alone for a while", async () => {
-    const t = setup({
-      stream: async () => {
-        throw new TypeError("Network request failed");
-      },
-    });
-    // Answered as it always was: this phone's stream reading is what failed.
+  it("answers a phone whose stream reading fails as it always was, then stops trying the stream", async () => {
+    const t = setup({ stream: noAnswer });
+    // Each message is answered by the plain try that follows at once.
     expect(await t.send()).toBe("plain");
-    expect(t.calls).toEqual(["stream", "give up", "plain"]);
-    expect(t.sw.wanted(t.at())).toBe(false);
-    // The next message does not try the stream first.
     expect(await t.send()).toBe("plain");
-    expect(t.calls).toEqual(["stream", "give up", "plain", "plain"]);
+    expect(t.calls).toEqual(["stream", "give up", "plain", "stream", "give up", "plain"]);
+    // Twice in a row: the stream is left alone for a while.
+    expect(await t.send()).toBe("plain");
+    expect(t.calls.slice(6)).toEqual(["plain"]);
     t.pass(10_000);
     expect(t.sw.wanted(t.at())).toBe(true);
   });
 
-  it("fails as before with no connection, and keeps asking for streams", async () => {
-    const offline = async (): Promise<string> => {
-      throw new TypeError("Network request failed");
-    };
-    const t = setup({ stream: offline, plain: offline });
-    await expect(t.send()).rejects.toBeInstanceOf(TypeError);
-    expect(t.calls).toEqual(["stream", "give up", "plain"]);
-    // Nothing was learned about the stream: back online, it is asked for again.
+  it("does not hold one lost connection against the stream", async () => {
+    const t = setup({ stream: noAnswer });
+    expect(await t.send()).toBe("plain");
+    // The next reply is read as a stream again, to its end: the slate is clean.
+    t.script.stream = async () => "streamed";
+    expect(await t.send()).toBe("streamed");
+    t.script.stream = noAnswer;
+    expect(await t.send()).toBe("plain");
+    expect(t.sw.wanted(t.at())).toBe(true);
+  });
+
+  it("does not take a whole answer through the same request for a stream read to its end", async () => {
+    // The rules answer some turns whole. That says nothing about streams on this phone, so a
+    // cut before it and a cut after it are still two in a row.
+    const t = setup({ streamed: false, stream: async () => "whole, by the rules" });
+    t.sw.failed(new StreamCutError(), 0);
+    expect(await t.send()).toBe("whole, by the rules");
+    expect(t.calls).toEqual(["stream"]);
+    t.sw.failed(new StreamCutError(), 1);
+    expect(t.sw.wanted(2)).toBe(false);
+  });
+
+  it("fails as before with no connection, and holds nothing against the stream", async () => {
+    const t = setup({ stream: noAnswer, plain: noAnswer });
+    for (let n = 0; n < 3; n++) await expect(t.send()).rejects.toBeInstanceOf(TypeError);
+    expect(t.calls).toEqual(["stream", "give up", "plain", "stream", "give up", "plain", "stream", "give up", "plain"]);
+    // Back online, the reply is read as a stream.
     expect(t.sw.wanted(t.at())).toBe(true);
   });
 
   it("sends a message whose stream was cut again at once, the plain way", async () => {
-    const t = setup({
-      stream: async () => {
-        throw new StreamCutError();
-      },
-    });
+    const t = setup({ stream: cut });
     expect(await t.send()).toBe("plain");
     expect(t.calls).toEqual(["stream", "give up", "plain"]);
+    expect(t.sw.wanted(t.at())).toBe(true);
+    expect(await t.send()).toBe("plain");
     expect(t.sw.wanted(t.at())).toBe(false);
   });
 
@@ -242,16 +308,14 @@ describe("sendForReply", () => {
   });
 
   it("leaves the second try to the outbox when the first used up the time, and that one goes the plain way", async () => {
-    let t!: ReturnType<typeof setup>;
-    t = setup({
-      stream: async () => {
-        t.pass(60_000);
-        throw new TypeError("Network request timed out");
-      },
-    });
+    const t = setup();
+    t.script.stream = async () => {
+      t.pass(60_000);
+      throw new TypeError("Network request timed out");
+    };
     await expect(t.send()).rejects.toBeInstanceOf(TypeError);
     expect(t.calls).toEqual(["stream"]);
-    // The outbox sends again: plain. Answered, so it was the stream that hung.
+    // The outbox sends again: plain. Answered, so it was the stream that hung: once is enough.
     expect(await t.send()).toBe("plain");
     expect(t.calls).toEqual(["stream", "plain"]);
     expect(t.sw.wanted(t.at())).toBe(false);
@@ -259,9 +323,7 @@ describe("sendForReply", () => {
 
   it("hands on the plain try's own failure", async () => {
     const t = setup({
-      stream: async () => {
-        throw new StreamCutError();
-      },
+      stream: cut,
       plain: async () => {
         throw new HttpError(503);
       },

@@ -3,7 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { APP_ACTION_KINDS, AppAction, FriendResponse, MAX_APP_ACTIONS, MoneyKind, Receipt, TrackerKind, type PhotoUpload } from "@fakkarni/shared";
 import { friendTools, readToolCalls, RespondInput } from "./tools";
-import { createStreamModes, readToolTurn, streamModeFromEnv, type ReplyLive, type StreamMode } from "./respond-stream";
+import { createStreamModes, readToolTurn, ReplyStreamTimeout, streamModeFromEnv, type ReplyLive, type StreamLost, type StreamMode } from "./respond-stream";
 
 /** PRD §6: Claude Haiku for every conversation turn. */
 export const FRIEND_MODEL = process.env["FAKKARNI_FRIEND_MODEL"] || "claude-haiku-5-5";
@@ -55,8 +55,11 @@ export interface FriendModelInput {
 /** The model's validated answer. app_actions may be left out (scripted test models). */
 export type FriendOutput = Omit<FriendResponse, "app_actions"> & { app_actions?: FriendResponse["app_actions"] };
 export type FriendModelResult =
-  /** `stream`: how the answer was read when its words were passed on while written (absent otherwise). */
-  | { ok: true; output: FriendOutput; usage: Usage; stream?: StreamMode }
+  /**
+   * `stream`: how the answer was read when its words were passed on while written (absent otherwise).
+   * `streamLost`: a streamed try of this turn was not the answer, and why (the turn was asked for again, whole).
+   */
+  | { ok: true; output: FriendOutput; usage: Usage; stream?: StreamMode; streamLost?: StreamLost }
   | { ok: false; reason: "refusal" | "invalid_output" | "max_tokens"; usage: Usage };
 
 /** One Session turn: what Zaki says, whether this is a crisis, and at most one small step. */
@@ -334,6 +337,7 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; 
     },
     async respond(input, live) {
       let usage = zeroUsage;
+      let lost: StreamLost | null = null;
       // One retry if the output doesn't validate. The first try uses tools; when that turn has
       // no usable `respond` (or the tools request fails), the retry uses the structured output.
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -360,8 +364,9 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; 
             let res: Anthropic.Message;
             const mode: StreamMode = live ? modes.mode : "off";
             if (live && mode !== "off") {
+              const begun: { usage: Anthropic.Usage | null } = { usage: null };
               try {
-                res = await readToolTurn(client.messages.stream(turn(mode === "eager")), live, { timeoutMs: opts.streamTimeoutMs ?? STREAM_TIMEOUT_MS });
+                res = await readToolTurn(client.messages.stream(turn(mode === "eager")), live, { timeoutMs: opts.streamTimeoutMs ?? STREAM_TIMEOUT_MS, onBegun: (u) => (begun.usage = u) });
                 streamed = mode;
                 modes.worked();
               } catch (err) {
@@ -370,6 +375,10 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; 
                 const status = err instanceof Anthropic.APIError ? err.status : undefined;
                 // An outage or an account problem is not the stream's doing: handled as before.
                 if (typeof status === "number" && status !== 400) throw err;
+                // A stream that began is paid for as far as it got. What it read is known from
+                // its start; what it had written is only told at its end, so this is a floor.
+                if (begun.usage) usage = addUsage(usage, toUsage(begun.usage));
+                lost = status === 400 ? "refused" : err instanceof ReplyStreamTimeout ? "timeout" : "cut";
                 // Cut off or too slow: two of those in a row and streams pause for a while.
                 if (status !== 400) modes.broke();
                 // After a slow or broken stream there is time for one plain try, not two.
@@ -419,7 +428,7 @@ export function createAnthropicModel(opts: { apiKey?: string; baseURL?: string; 
             dropDraft();
             continue;
           }
-          return { ok: true, output, usage, ...(streamed ? { stream: streamed } : {}) };
+          return { ok: true, output, usage, ...(streamed ? { stream: streamed } : {}), ...(lost ? { streamLost: lost } : {}) };
         }
       }
       return { ok: false, reason: "invalid_output", usage };

@@ -96,9 +96,12 @@ export async function postForReply(
       },
     });
   } catch (err) {
-    // Lost after the stream began: the stream's fault as far as anyone can tell (see the switch below).
-    if (streaming()) throw new StreamCutError();
-    throw err;
+    // The answer was already read: how the connection ended after it does not matter.
+    if (!end) {
+      // Lost after the stream began: the stream's fault as far as anyone can tell (see the switch below).
+      if (streaming()) throw new StreamCutError();
+      throw err;
+    }
   }
 
   const start = opened as Opened | null;
@@ -118,17 +121,26 @@ export async function postForReply(
  *  - Only from a server that says it sends one (`offer`: the REPLY_STREAM_HEADER on its
  *    answers). A server from before streams never says so, and one that stops saying so stops
  *    the asking on every phone without an app update.
- *  - A stream that broke after it started (a proxy that holds the text back, a server that cut
- *    it) switches streaming off for a while: the plain POST always works.
- *  - A streamed send with no answer at all is the connection, or this phone's way of reading a
- *    stream. The next send goes the plain way to find out: answered, it was the stream (off for
- *    a while); not answered, it was the connection and nothing changes.
+ *  - A streamed send that ends without its answer is a strike against streams on this phone
+ *    (a proxy that cuts them, a way of reading them that fails here). One can be the
+ *    connection, which fails plain sends just as often; two in a row with no stream read to
+ *    its end in between switch streaming off for a while: the plain POST always works.
+ *  - Cut after it began, it counts at once. With no answer at all it may be that there is no
+ *    connection, so it counts only if the plain send after it is answered.
+ *  - A send that waited out its whole time counts double: a phone must not sit through that
+ *    twice to find out.
  */
 export function createStreamSwitch(opts: { offForMs?: number; offered?: boolean } = {}) {
   const offForMs = opts.offForMs ?? 10 * 60_000;
   let offered = opts.offered ?? false;
   let offUntil = 0;
-  let doubt = false;
+  let strikes = 0;
+  /** A streamed send got no answer at all: what it weighs if the plain send after it is answered. */
+  let doubt = 0;
+  const strike = (weight: number, now: number) => {
+    strikes += weight;
+    if (strikes >= 2) offUntil = now + offForMs;
+  };
   return {
     /** What the server last said about itself. */
     get offered(): boolean {
@@ -137,16 +149,21 @@ export function createStreamSwitch(opts: { offForMs?: number; offered?: boolean 
     offer(yes: boolean): void {
       offered = yes;
     },
-    wanted: (now: number) => offered && !doubt && now >= offUntil,
-    /** A send that asked for a stream failed with `err`. */
-    failed(err: unknown, now: number): void {
-      if (err instanceof StreamCutError) offUntil = now + offForMs;
-      else if (!(err instanceof HttpError)) doubt = true;
+    wanted: (now: number) => offered && doubt === 0 && now >= offUntil,
+    /** A reply was read as a stream, to its end. */
+    worked(): void {
+      strikes = 0;
+    },
+    /** A send that asked for a stream failed with `err`; `slow`: it had used up its time. */
+    failed(err: unknown, now: number, slow = false): void {
+      if (err instanceof HttpError) return;
+      if (err instanceof StreamCutError) strike(slow ? 2 : 1, now);
+      else doubt = slow ? 2 : 1;
     },
     /** A plain send ended, answered (2xx) or not. */
     plain(answered: boolean, now: number): void {
-      if (doubt && answered) offUntil = now + offForMs;
-      doubt = false;
+      if (doubt && answered) strike(doubt, now);
+      doubt = 0;
     },
   };
 }
@@ -170,7 +187,8 @@ export async function sendForReply<T>(deps: {
   now: () => number;
   /** How long one try may take. */
   limitMs: number;
-  stream: () => Promise<T>;
+  /** `streamed`: the answer came as a stream (a turn the rules answer comes whole either way). */
+  stream: () => Promise<{ json: T; streamed: boolean }>;
   plain: () => Promise<T>;
   /** What was shown of the streamed try is void: the plain answer comes whole. */
   onGiveUp: () => void;
@@ -188,11 +206,14 @@ export async function sendForReply<T>(deps: {
   if (!deps.switch.wanted(deps.now())) return plain();
   const started = deps.now();
   try {
-    return await deps.stream();
+    const { json, streamed } = await deps.stream();
+    if (streamed) deps.switch.worked();
+    return json;
   } catch (err) {
     const now = deps.now();
-    deps.switch.failed(err, now);
-    if (err instanceof HttpError || now - started >= deps.limitMs - NO_TIME_LEFT_MS) throw err;
+    const slow = now - started >= deps.limitMs - NO_TIME_LEFT_MS;
+    deps.switch.failed(err, now, slow);
+    if (err instanceof HttpError || slow) throw err;
     deps.onGiveUp();
     return plain();
   }
