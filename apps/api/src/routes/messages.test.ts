@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { INSTALL_ID_HEADER, ListMessagesResponse, PostMessageResponse } from "@fakkarni/shared";
 import { buildApp } from "../app";
+import { backgroundSettled } from "../lib/background";
 import { hasTestDb, resetDb, testPrisma } from "../../test/db";
 
 describe.skipIf(!hasTestDb)("messages routes", () => {
@@ -124,5 +125,15 @@ describe.skipIf(!hasTestDb)("a retry while the reply is being written", () => {
     const b = PostMessageResponse.parse(second.json());
     expect(b.replies.map((m) => m.id)).toEqual(a.replies.map((m) => m.id));
     expect(await prisma.message.count({ where: { role: "friend" } })).toBe(1);
+  });
+
+  it("is waited for by the server's stop, which also covers a turn whose phone has gone", async () => {
+    const answered = app.inject({ method: "POST", url: "/messages", headers, payload: { client_id: "slow-2", text: "alo", created_at: fixedNow.toISOString() } });
+    await new Promise((r) => setTimeout(r, 100)); // the reply is being written
+    const before = Date.now();
+    await backgroundSettled(5_000);
+    expect(Date.now() - before).toBeGreaterThanOrEqual(150);
+    expect(await prisma.message.count({ where: { role: "friend" } })).toBe(1); // stored before the stop went on
+    expect((await answered).statusCode).toBe(201);
   });
 });

@@ -6,6 +6,7 @@ import { createExpoPushSender, createExpoReceiptChecker } from "./proactive/push
 import { trackPush } from "./proactive/push-receipts";
 import { db } from "./db";
 import { loadEnv } from "./env";
+import { backgroundSettled } from "./lib/background";
 import { initSentry } from "./observability/sentry";
 
 const env = loadEnv();
@@ -55,30 +56,74 @@ if (!supabaseUrl && !env.SUPABASE_JWT_SECRET) app.log.warn("Supabase not configu
 if (!prisma) app.log.warn("DATABASE_URL not set: only /health is served");
 if (!model) app.log.warn("ANTHROPIC_API_KEY not set: messages are stored but the friend won't reply");
 
-const boss =
-  prisma && env.DATABASE_URL && env.DISABLE_JOBS !== "1"
-    ? await startJobs(env.DATABASE_URL, {
-        prisma,
-        model,
-        push,
-        receipts: createExpoReceiptChecker(fetch, env.EXPO_ACCESS_TOKEN),
-        log: app.log,
-        requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
-      })
-    : undefined;
-
+// A deploy tells the old server to stop (SIGTERM) once the new one answers, and kills it when
+// its drain ends (railway.json: 60 s). The container starts this file as its first process
+// (Dockerfile), so the signal arrives here. A first process with no handler drops the signal,
+// so the handlers go in before the first wait (pg-boss's start, the listen).
+const STOP = {
+  /** Connections still busy this long after the signal are closed (a phone resends its message). */
+  closeAllAfterMs: 40_000,
+  /** pg-boss's wait for a running job (the proactive tick) to end. */
+  jobsMs: 20_000,
+  /** The wait for chat turns whose caller has gone, and for pushes and dashboard rows the last requests started. */
+  backgroundMs: 10_000,
+  /** If anything still hangs, the process ends anyway, before the platform kills it. */
+  giveUpAfterMs: 55_000,
+};
+let boss: Awaited<ReturnType<typeof startJobs>> | undefined;
+let starting: Promise<unknown> = Promise.resolve();
+let stopping = false;
+/** Where the stop is, for the log line if it has to give up. */
+let step = "start";
 const shutdown = async (signal: string) => {
+  if (stopping) return;
+  stopping = true;
   app.log.info({ signal }, "shutting down");
-  await boss?.stop();
-  await app.close();
-  await prisma?.$disconnect();
-  process.exit(0);
+  setTimeout(() => {
+    app.log.error({ step }, "shutdown gave up");
+    process.exit(1);
+  }, STOP.giveUpAfterMs).unref();
+  try {
+    await starting.catch(() => {});
+    // No new connections; the replies in flight finish whole, and each connection is closed as
+    // soon as its reply is out, streamed replies included (plugins/closing.ts). One still busy
+    // after closeAllAfterMs is closed then.
+    step = "requests";
+    const closing = app.close();
+    const cutoff = setTimeout(() => app.server.closeAllConnections(), STOP.closeAllAfterMs);
+    await Promise.all([closing.finally(() => clearTimeout(cutoff)), boss?.stop({ timeout: STOP.jobsMs })]);
+    // Chat turns whose caller went away, and pushes and rows started by the last requests
+    // (lib/background.ts), before the database goes.
+    step = "background";
+    await backgroundSettled(STOP.backgroundMs);
+    step = "database";
+    await prisma?.$disconnect();
+    process.exit(0);
+  } catch (err) {
+    app.log.error({ err: err instanceof Error ? err.name : "unknown" }, "shutdown failed");
+    process.exit(1);
+  }
 };
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+starting = (async () => {
+  if (prisma && env.DATABASE_URL && env.DISABLE_JOBS !== "1") {
+    boss = await startJobs(env.DATABASE_URL, {
+      prisma,
+      model,
+      push,
+      receipts: createExpoReceiptChecker(fetch, env.EXPO_ACCESS_TOKEN),
+      log: app.log,
+      requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
+    });
+  }
+  // A signal during the start: stop instead of opening the port.
+  if (!stopping) await app.listen({ port: env.PORT, host: env.HOST });
+})();
+
 try {
-  await app.listen({ port: env.PORT, host: env.HOST });
+  await starting;
 } catch (err) {
   app.log.error(err);
   process.exit(1);

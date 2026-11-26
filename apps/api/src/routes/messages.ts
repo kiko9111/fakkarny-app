@@ -20,7 +20,7 @@ import type { PushSender } from "../proactive/push";
 import type { preHandlerAsyncHookHandler } from "fastify";
 import { readsNewKinds, toWireItem, toWireMemory, toWireMessage } from "../serialize";
 import type { Message } from "../generated/prisma/client";
-import { inBackground } from "../lib/background";
+import { inBackground, track } from "../lib/background";
 import { Sentry } from "../observability/sentry";
 import { createLiveReply, wantsLiveReply } from "./live-reply";
 
@@ -153,7 +153,9 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
 
     function answer(message: Message): Promise<PostMessageResponse | NeedsBrainResponse> {
       const key = flightKey(user.id, message.clientId);
-      const work = answerNow(message);
+      // The server's stop waits for the turn (server.ts): Fastify waits for connections, and a
+      // phone that went away mid-turn leaves none, while the turn goes on and is paid for.
+      const work = track(answerNow(message));
       inFlight.set(key, work);
       return work.finally(() => {
         if (inFlight.get(key) === work) inFlight.delete(key);

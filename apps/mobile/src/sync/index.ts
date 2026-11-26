@@ -1,5 +1,5 @@
 import { AppState } from "react-native";
-import { addNetworkStateListener } from "expo-network";
+import { addNetworkStateListener, getNetworkStateAsync } from "expo-network";
 import { addUserMessage, insertServerMessages, latestServerMessageAt, sqliteOutbox } from "@/db/messages";
 import { getMe, listMessagesAfter, patchMe, postMessageRaw, screenCache, writeOutbox } from "@/lib/api";
 import { PostMessageResponse } from "@fakkarni/shared";
@@ -10,10 +10,11 @@ import { prefs } from "@/lib/prefs";
 import { track } from "@/lib/analytics";
 import { createEmitter } from "@/lib/emitter";
 import { dataChanged } from "@/lib/live";
+import { itemsChanged } from "@/lib/signals";
 import { LIVE_EVERY_MS } from "@/lib/live-plan";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
-import { ensurePermissionAndRegister, listenForNotifications, scheduleItems, setupNotifications, watchPushToken } from "@/notifications";
+import { ensurePermissionAndRegister, listenForNotifications, planTheRest, scheduleItems, setupNotifications, tidyShade, watchPushToken } from "@/notifications";
 import { pullItems } from "./items";
 import { prefetchAll, prefetchSoon, setChatBusy } from "@/lib/prefetch";
 import { createSyncQueue, type OutboxStore } from "./queue";
@@ -37,8 +38,17 @@ const store: OutboxStore = {
   ...sqliteOutbox,
   async markSynced(clientId, res) {
     await sqliteOutbox.markSynced(clientId, res);
-    // New or changed reminders become local notifications (they fire offline).
-    await scheduleItems(res.items).catch(() => {});
+    if (res.items.length) {
+      // Saved: every list of plans shows them now. Their local notifications (they fire offline)
+      // are planned in the background: on Android each one is a trip through the system, and
+      // the reply, the next message and the screens used to wait for all of them.
+      itemsChanged.emit();
+      void scheduleItems(res.items, true);
+    }
+    // Plans the answer does not carry: a yes to a card (a task accepted), an undo, a reminder time
+    // an app action moved, or a resend answered from what the server stored (it holds only the
+    // plans the message made). Bring them down now instead of when Today is next opened.
+    if (res.duplicate || res.replies.some((m) => m.actions.length > 0)) void pullItems();
     // Zaki may have changed anything (money, trackers, tasks, circles): open screens reload now.
     dataChanged.emit();
   },
@@ -154,8 +164,16 @@ export function startSync() {
       .then((r) => (r === "done" && waiting > 0 ? dataChanged.emit() : undefined))
       .catch(() => {});
     void pullMessages();
-    // Repeating reminders are planned a day ahead: top them up whenever the app comes back.
-    void listScheduled().then(scheduleItems).catch(() => {});
+    // Repeating reminders are planned a day ahead: top them up whenever the app comes back. Then
+    // any other plan the phone still holds notifications of (one closed while the app was stopped).
+    void listScheduled()
+      .then((open) => {
+        void scheduleItems(open);
+        return planTheRest(open);
+      })
+      .catch(() => {});
+    // Reminders in the shade that no longer help: a closed plan's, an hourly reminder's older ones.
+    void tidyShade();
     // Items made or closed on the server outside the chat (circle tasks, Session steps).
     void pullItems();
     // Every tab loads in the background, so each screen opens at once with fresh numbers.
@@ -168,8 +186,20 @@ export function startSync() {
   void syncLanguage();
   // The on-phone model takes a few seconds to load: do it now, not when the first message waits.
   warmBrain();
-  addNetworkStateListener(({ isConnected, isInternetReachable }) => {
-    if (isConnected && isInternetReachable !== false) refresh();
+  // Back online: refresh. Only then: Android reports every change of signal strength or
+  // bandwidth as a network event (expo-network emits on each onCapabilitiesChanged), and each one
+  // used to start a whole refresh. Unknown at start (the refresh above has just run).
+  let online: boolean | null = null;
+  const reachable = (s: { isConnected?: boolean; isInternetReachable?: boolean | null }) => s.isConnected === true && s.isInternetReachable !== false;
+  void getNetworkStateAsync()
+    .then((s) => {
+      online ??= reachable(s);
+    })
+    .catch(() => {});
+  addNetworkStateListener((s) => {
+    const was = online;
+    online = reachable(s);
+    if (online && was === false) refresh();
   });
   AppState.addEventListener("change", (state) => {
     if (state === "active") refresh();

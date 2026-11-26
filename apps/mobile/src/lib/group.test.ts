@@ -45,6 +45,23 @@ describe("groupUpcoming", () => {
       ["noDate", ["someday"]],
     ]);
   });
+
+  it("places a plan with only a reminder time by that time, in order", () => {
+    const groups = groupUpcoming(
+      [
+        item({ title: "evening", due_at: new Date(2026, 10, 19, 20).toISOString() }),
+        item({ title: "remind at noon", remind_at: new Date(2026, 10, 19, 12).toISOString() }),
+        item({ title: "remind tomorrow", remind_at: new Date(2026, 10, 20, 9).toISOString() }),
+        item({ title: "someday" }),
+      ],
+      now,
+    );
+    expect(groups.map((g) => [g.bucket, g.items.map((i) => i.title)])).toEqual([
+      ["today", ["remind at noon", "evening"]],
+      ["tomorrow", ["remind tomorrow"]],
+      ["noDate", ["someday"]],
+    ]);
+  });
 });
 
 describe("summarizeDebts", () => {
