@@ -15,7 +15,11 @@ export const DEFAULT_VAT_PCT = 14;
 export const MAX_SPLIT_PEOPLE = 30;
 export const MAX_SPLIT_ITEMS = 100;
 
-export const SplitPersonInput = z.object({ name: z.string().trim().min(1).max(40) });
+export const SplitPersonInput = z.object({
+  name: z.string().trim().min(1).max(40),
+  /** A member of the split's circle: they see the bill and their share in their own Zaki. */
+  user_id: z.uuid().optional(),
+});
 export type SplitPersonInput = z.infer<typeof SplitPersonInput>;
 
 export const SplitItem = z.object({
@@ -45,6 +49,11 @@ export const SplitInput = z.object({
   tip: z.number().min(0).max(1_000_000).default(0),
   /** Index in `people` of who paid the bill (everyone else owes them their share). */
   paid_by: z.number().int().min(0).nullable().default(null),
+  /**
+   * A group split: people with a `user_id` must be members of this circle. Each of them gets
+   * their share in their own Zaki chat with an "I paid" button (template words, no AI call).
+   */
+  circle_id: z.uuid().nullable().default(null),
 });
 export type SplitInput = z.infer<typeof SplitInput>;
 
@@ -118,6 +127,8 @@ export const SplitPerson = z.object({
   ordered: z.number(),
   share: z.number(),
   paid: z.boolean(),
+  /** Set for a member of the split's circle (they see it in their app). */
+  user_id: z.string().nullable().optional(),
 });
 export type SplitPerson = z.infer<typeof SplitPerson>;
 
@@ -142,6 +153,16 @@ export const Split = z.object({
   /** The public page everyone at the table opens. */
   url: z.string(),
   created_at: Instant,
+  /** The circle it was split in, if any. */
+  circle_id: z.string().nullable().optional(),
+  /** False when someone else made it and the caller is one of the people (read-only for them). */
+  mine: z.boolean().optional(),
+  /** The caller's own row when they are a member, else null. */
+  me: z.number().nullable().optional(),
+  /** Who made it, for a split someone else made. */
+  owner_name: z.string().nullable().optional(),
+  /** The payer's InstaPay link, when the payer made the split and saved one in Settings. */
+  instapay: z.string().nullable().optional(),
 });
 export type Split = z.infer<typeof Split>;
 

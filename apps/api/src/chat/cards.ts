@@ -40,7 +40,9 @@ export type PendingPayload =
   | { kind: "checkin"; circleId: string; checkinKind: "arrived" | "home" | "on_way" | "medicine" | "ok"; note: string | null }
   | { kind: "ask_checkin"; circleId: string; userId: string }
   | { kind: "leave_circle"; circleId: string }
-  | { kind: "iftar"; circleId: string; on: string; note: string | null };
+  | { kind: "iftar"; circleId: string; on: string; note: string | null }
+  | { kind: "split_circle"; circleId: string; amount: number; title: string }
+  | { kind: "split_i_paid"; splitId: string };
 
 /** How to take back a done card. Only the user's own things; nothing that reached other people. */
 export type UndoPayload =
@@ -224,6 +226,9 @@ export const LABEL = {
   splitMade: (l: ReplyLang, total: number, people: number, share: number) =>
     l === "english" ? `Split ${egp(l, total)} between ${people} · about ${egp(l, share)} each · tap to send the link` : `اتقسم ${egp(l, total)} على ${people} · حوالي ${egp(l, share)} للفرد · دوس وابعت اللينك`,
   splitPaid: (l: ReplyLang, person: string) => (l === "english" ? `${person} paid their share` : `${person} دفع نصيبه`),
+  splitCircleAsk: (l: ReplyLang, total: number, circle: string, people: number) =>
+    l === "english" ? `Split ${egp(l, total)} in ${circle} between ${people}, and tell each one their share?` : `أقسم ${egp(l, total)} في ${circle} على ${people}، وأقول لكل واحد نصيبه؟`,
+  splitIPaid: (l: ReplyLang) => (l === "english" ? "Marked your share as paid ✓" : "اتسجّل إنك دفعت نصيبك ✓"),
   noSplit: (l: ReplyLang) => (l === "english" ? "I couldn't find that split" : "مالقيتش القسمة دي"),
   forgot: (l: ReplyLang, n: number) => (l === "english" ? `Forgot ${n} thing${n === 1 ? "" : "s"}` : n === 1 ? "نسيت الحاجة دي" : `نسيت ${n} حاجات`),
   nothingToForget: (l: ReplyLang) => (l === "english" ? "I don't have that saved" : "مش محفوظة عندي أصلاً"),

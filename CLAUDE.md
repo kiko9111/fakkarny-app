@@ -528,6 +528,17 @@ Rules:
   already in builds): tap the streak flame, or "Share as a picture" on a split.
 - Split to Daftar: "Put what's left in the Daftar" on a split creates Daftar entries from the
   creator's side (`daftarFromSplit`, mobile split/logic.ts; the creator is the first person).
+- Group splits (2026-11-26, kareem's "E7sebly" ask; the feature keeps its own name): splits.circle_id
+  and splits.member_ids (GIN index). `SplitInput.circle_id` + people `user_id` (kept only for members
+  of that circle, `groupOf` in apps/api/src/split/group.ts). Each member besides the creator sees the
+  split in GET /splits (wire `mine: false`, `me`, `owner_name`) and gets their share as a chat line
+  (kind "update", client_id `split:<id>:share:<user>`) with an "I paid" card (payload `split_i_paid`)
+  plus push. A member may tick only their own row; PUT / DELETE stay the creator's. Friends without
+  Zaki say "I paid my share" on GET /s/:code (POST /s/:code/paid; anyone with the link can, so the
+  creator is told and can untick). The payer's InstaPay link (`instapay`, only when the payer is the
+  creator: `payerIsCreator`) shows on the page, in the member's screen and in the WhatsApp text.
+  Chat: the split tool takes `circle`; that is a pending card (`split_circle`) because it reaches
+  others. DELETE /me removes the user from member_ids; /me/export includes splits they are in.
 - Photos (owner decision, 2026-11-23, the only exception to text-only): limits in
   packages/shared/src/photos.ts. Receipts: POST /receipts/read (apps/api/src/routes/photos.ts)
   sends the photo to `readReceipt` (src/ai/model.ts, RECEIPT_SYSTEM, non-nullable schema) once,
