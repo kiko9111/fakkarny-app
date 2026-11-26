@@ -95,6 +95,10 @@ export const Item = z.object({
   follow_up_at: Instant.nullable(),
   /** Set for a repeating reminder ("every hour"): minutes between occurrences. */
   repeat_every_minutes: z.number().int().positive().nullable().default(null),
+  /** A place reminder: the words for the place ("the supermarket"). Where it is stays on the phone. Old servers omit it. */
+  place: z.string().nullable().default(null),
+  /** Fire on arriving at the place or on leaving it. */
+  place_on: z.enum(["arrive", "leave"]).nullable().default(null),
   source_message_id: Id.nullable(),
   updated_at: Instant,
   created_at: Instant,

@@ -10,6 +10,8 @@ import { routePattern } from "@/lib/analytics-queue";
 import { isDemo } from "@/lib/demo";
 import { initSentry } from "@/lib/sentry";
 import { startSync } from "@/sync";
+// Defines the place reminders' geofence task as the bundle loads (also when the system starts the app only for it).
+import "@/places/fire";
 import { startUpdates } from "@/lib/updates";
 import { Backdrop, FeedbackHost, fonts, GlassHeader, glassBar, palette, Text, withGround } from "@/ui";
 import { appFonts } from "@/ui/fonts";
@@ -76,6 +78,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
           <Stack.Screen name="memories" options={{ title: t.memories.title }} />
+          <Stack.Screen name="places" options={{ title: t.places.title }} />
           <Stack.Screen
             name="paywall"
             options={{ presentation: "modal", title: "" }}
