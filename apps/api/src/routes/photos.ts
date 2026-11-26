@@ -3,9 +3,7 @@ import { z } from "zod";
 import { ReadReceiptRequest, type ReadReceiptResponse } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
 import { costUsd, FRIEND_MODEL, type FriendModel } from "../ai/model";
-import { coveredByFamilyPlan } from "../billing/family";
-import { dailyAiAllowance } from "../billing/plan";
-import { localToUtc, toLocalIso } from "../lib/time";
+import { aiAllowanceToday } from "../billing/allowance";
 
 /**
  * Photos, for two things only (owner decision, 2026-11-23):
@@ -33,10 +31,7 @@ export const photoRoutes: FastifyPluginAsync<PhotoRoutesOptions> = async (app, o
     const user = req.user;
     const at = now();
     // Same daily allowance as chat: a receipt is one AI message.
-    let limit = opts.requireSubscription ? dailyAiAllowance(user, at) : null;
-    if (limit !== null && (await coveredByFamilyPlan(prisma, user.id, at))) limit = null;
-    const dayStart = localToUtc(`${toLocalIso(at, user.timezone).slice(0, 10)}T00:00`, user.timezone);
-    const used = await prisma.event.count({ where: { userId: user.id, name: "ai_call", createdAt: { gte: dayStart }, propsJson: { path: ["purpose"], equals: "chat" } } });
+    const { limit, used } = await aiAllowanceToday(prisma, user, at, opts.requireSubscription);
     if (limit !== null && used >= limit) {
       const res: ReadReceiptResponse = { receipt: null, error: "limit", ai_allowance: { limit, used } };
       return res;

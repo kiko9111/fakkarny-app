@@ -129,6 +129,15 @@ describe.skipIf(!hasTestDb)("chat actions: Zaki acts in the app from the chat", 
     expect((original.actionsJson as { status: string }[])[0]!.status).toBe("done");
   });
 
+  it("carries a pocket-money reward on homework asked for in the chat, and shows it on the card", async () => {
+    const { kareem, mona } = await home();
+    queue.push(ok({ reply: ["أبعته لمنى؟"], app_actions: [{ kind: "assign_task", person: "منى", title: "واجب العربي", homework: true, amount: 20 }] }));
+    const asked = cardsOf(await say(kareem, "ابعت لمنى واجب العربي ولو خلصته ليها ٢٠ جنيه"))[0]!;
+    expect(asked.label).toContain("20 جنيه");
+    await say(kareem, "اه");
+    expect(await prisma.circleTask.findFirstOrThrow()).toMatchObject({ assigneeId: mona.id, homework: true, reward: 20 });
+  });
+
   it("posts an ask in the circle only after the card is confirmed, and cancel does nothing", async () => {
     const { kareem, circleId } = await home();
     queue.push(ok({ reply: ["أنزلها في البيت؟"], app_actions: [{ kind: "ask_circle", text: "فكر الكل بغدا الجمعة" }] }));

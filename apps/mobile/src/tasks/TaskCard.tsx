@@ -10,7 +10,7 @@ import { pullItems } from "@/sync/items";
 import { track } from "@/lib/analytics";
 import { photosAvailable, pickPhotos } from "@/lib/photos";
 import { HomeworkPhotos } from "./HomeworkPhotos";
-import { Badge, Button, Card, Chip, confirm, DateTimePicker, Icon, notify, palette, space, Text, TextField } from "@/ui";
+import { Badge, Button, Card, Chip, confirm, DateTimePicker, Icon, notify, palette, plain, space, Text, TextField } from "@/ui";
 import { firstLink, guessTask, remindAt, remindChoices, taskActions, type RemindChoice, type TaskAction } from "./logic";
 import { useGuess } from "@/lib/optimistic";
 
@@ -89,6 +89,8 @@ export function TaskCard({ task: fromList, showCircle, onChanged }: { task: Circ
   const homeworkOpen = task.homework && task.role === "assignee" && open;
   const actions = taskActions(task).filter((a) => !(homeworkOpen && a === "done"));
   const toReview = task.homework && task.role === "assigner" && task.status === "done" && task.submission !== null && task.review === null;
+  // The parent can ask Zaki to explain the lesson while the homework is open.
+  const helpParent = task.homework && task.role === "assigner" && open;
   const sendDraft = () => {
     const value = text.trim();
     if (draft === "hand_in" && (value || photos.length)) {
@@ -109,7 +111,8 @@ export function TaskCard({ task: fromList, showCircle, onChanged }: { task: Circ
         <Text variant="bodyStrong" color={task.status === "done" ? palette.inkFaint : palette.ink} style={[styles.title, task.status === "done" && styles.struck]}>
           {task.title}
         </Text>
-        {task.homework ? <Badge label={t.tasks.homework} tone="primary" /> : null}
+        {task.homework ? <Badge label={task.subject ?? t.tasks.homework} tone="primary" /> : null}
+        {task.homework && task.reward ? <Badge label={fill(t.homework.rewardBadge, { n: task.reward })} tone="ok" /> : null}
         <Badge label={t.tasks.status[task.status]} tone={TONE[task.status]} />
       </View>
       <View style={styles.meta}>
@@ -213,9 +216,11 @@ export function TaskCard({ task: fromList, showCircle, onChanged }: { task: Circ
           </View>
         </View>
       ) : null}
-      {!draft && (homeworkOpen || toReview) ? (
+      {!draft && (homeworkOpen || toReview || helpParent) ? (
         <View style={styles.actions}>
           {homeworkOpen ? <Button label={t.tasks.handIn} size="sm" icon="cloud-upload-outline" disabled={busy} onPress={() => setDraft("hand_in")} /> : null}
+          {homeworkOpen ? <Button label={plain(t.homework.checkOpen)} size="sm" kind="outline" icon="sparkles-outline" onPress={() => router.push({ pathname: "/homework/check", params: { task: task.id } })} /> : null}
+          {helpParent ? <Button label={plain(t.homework.helpOpen)} size="sm" kind="text" icon="bulb-outline" onPress={() => router.push({ pathname: "/homework/help", params: { task: task.id } })} /> : null}
           {toReview ? <Button label={t.tasks.wellDone} size="sm" icon="star" disabled={busy} onPress={() => void work(() => reviewHomework(task.id, "approved"), t.tasks.approvedSent)} /> : null}
           {toReview ? <Button label={t.tasks.redo} size="sm" kind="outline" icon="refresh" disabled={busy} onPress={() => setDraft("redo")} /> : null}
         </View>

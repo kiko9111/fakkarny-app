@@ -1133,6 +1133,31 @@ Rules:
     (`item_<id>_r<minute>`) and the snooze it can't see would ring twice, and "stop reminding me"
     would not stop them. Fix forward instead.
 
+- Homework, grown up (2026-11-26, kareem: "attach pocket money to homework, enhance it, and Zaki
+  helps the mom"). Shared rules and wire types in packages/shared/src/homework.ts (pure + tested),
+  routes apps/api/src/routes/homework.ts, writes apps/api/src/homework/store.ts, wording
+  homework/rules.ts, prompts apps/api/src/persona/homework.ts.
+  - circle_tasks.subject / reward (whole EGP, ≤ MAX_REWARD, homework only). "Well done" adds one
+    `earned` row to table pocket_money (unique task_id, so a second Well done adds nothing; redo earns
+    nothing) and tells the child their total. The parent marks money handed over (POST
+    /pocket-money/paid, never more than is owed, 422 otherwise; a phone-made id makes resends
+    harmless). GET /pocket-money = every record the caller is in, as child or parent (in /bootstrap,
+    the phone's PARSERS and prefetchAll). Records only: Zaki never holds or moves money. In /me/export.
+  - A week at once: the phone parses the school's pasted WhatsApp text with `parseHomeworkMessage`
+    (subjects, day headers, "بكرة", greetings skipped) and POSTs /circles/:id/homework (≤ 15). The
+    child gets ONE chat line for all of them; each is a normal pending homework; due 08:00 local and
+    Zaki reminds the evening before (`remindBefore`).
+  - Zaki helps: POST /homework/help (the parent who set the homework, or free text) explains the
+    lesson, how to teach it, 3-5 practice questions and their answers (parent only; "Send as homework"
+    makes a new homework for the same child). POST /tasks/:id/check (the child, open homework only,
+    5 a day per homework) gives praise and hints, never answers. One AI call each, counted like a chat
+    message (`ai_call` purpose "chat", `aiAllowanceToday` in billing/allowance.ts, shared with
+    receipts); words and up to 3 page photos are read once and never stored. The crisis keyword net
+    runs first and answers with the helpline, no AI call.
+  - Chat: the task tool takes `amount` on homework as the reward; the confirm card shows it.
+  - Screens: app/homework/plan.tsx, help.tsx, check.tsx, app/pocket.tsx; entry points on the circle
+    screen and on each homework card (parent: "Zaki, explain the lesson"; child: "Check with Zaki").
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

@@ -137,6 +137,7 @@ export const AREA_TOOLS = [
       remind_at_local: Local.optional(),
       homework: z.boolean().optional(),
       note: Str.optional(),
+      amount: z.number().optional().describe("homework only: pocket money the child earns when it is marked well done, whole EGP"),
       ref: Str.optional().describe("A task id from TASKS in the context"),
       answer: z.enum(["yes", "no"]).optional(),
       text: Str.optional().describe("homework_submit: the answer or link"),

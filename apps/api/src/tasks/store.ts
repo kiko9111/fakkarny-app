@@ -4,6 +4,8 @@ import { postUpdate } from "../daftar/store";
 import { activityCard, LABEL } from "../chat/cards";
 import type { Notice } from "../proactive/notify";
 import { zakiCommentLine } from "../circles/zaki";
+import { creditReward } from "../homework/store";
+import { rewardLine, rewardTag } from "../homework/rules";
 import { canNudge, homeworkLine, MAX_OPEN_PER_PAIR, postLine, taskLine, type Lang, type TaskEvent } from "./rules";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -29,6 +31,8 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
     remind_at: t.remindAt?.toISOString() ?? null,
     homework: t.homework,
     note: t.note,
+    subject: t.subject,
+    reward: t.reward,
     submission: t.submission,
     submitted_at: t.submittedAt?.toISOString() ?? null,
     photo_ids: t.photos.map((p) => p.id),
@@ -38,6 +42,7 @@ export function toWireTask(t: TaskWithPeople, viewerId: string, now: Date): Wire
     role,
     assigner_name: t.assigner.name,
     assignee_name: t.assignee.name,
+    assignee_id: t.assigneeId,
     can_nudge: canNudge(t, role, now),
     created_at: t.createdAt.toISOString(),
     responded_at: t.respondedAt?.toISOString() ?? null,
@@ -106,7 +111,7 @@ const post = (db: Db, t: CircleTask, event: TaskEvent, now: Date) =>
 async function tell(db: Db, t: TaskWithPeople, to: "assigner" | "assignee", kind: Parameters<typeof taskLine>[1], key: string, now: Date): Promise<Notice> {
   const reader = to === "assigner" ? t.assigner : t.assignee;
   const about = to === "assigner" ? t.assignee : t.assigner;
-  const text = taskLine(langOf(reader), kind, about.name, t.title, t.circle.name);
+  const text = taskLine(langOf(reader), kind, about.name, t.title, t.circle.name) + (kind === "asked" && t.reward ? rewardTag(langOf(reader), t.reward) : "");
   // A new request is answered right under it: Yes accepts, No declines (also a plain yes/no in the chat).
   const lang = langOf(reader) === "en" ? "english" : "arabic";
   const cards = kind === "asked" ? [activityCard(lang, "task_answer", LABEL.taskRequestCard(lang, t.title), `/circle/${t.circleId}`, { kind: "task_answer", taskId: t.id, answer: "accept" }, { kind: "task_answer", taskId: t.id, answer: "decline" })] : [];
@@ -205,7 +210,7 @@ export async function nudge(prisma: PrismaClient, t: TaskWithPeople, now: Date):
  */
 export async function assignTask(
   prisma: PrismaClient,
-  input: { circleId: string; assignerId: string; assigneeId: string; title: string; dueAt: Date | null; remindAt: Date | null; homework: boolean; note: string | null },
+  input: { circleId: string; assignerId: string; assigneeId: string; title: string; dueAt: Date | null; remindAt: Date | null; homework: boolean; note: string | null; subject?: string | null; reward?: number | null },
   now: Date,
 ): Promise<Outcome | "not_members" | "too_many"> {
   if (input.assignerId === input.assigneeId) return "not_members";
@@ -215,10 +220,23 @@ export async function assignTask(
   const open = await prisma.circleTask.count({ where: { assignerId: input.assignerId, assigneeId: input.assigneeId, status: { in: ["pending", "accepted"] } } });
   if (open >= MAX_OPEN_PER_PAIR) return "too_many";
   const task = await prisma.circleTask.create({
-    data: { circleId: input.circleId, assignerId: input.assignerId, assigneeId: input.assigneeId, title: input.title, dueAt: input.dueAt, remindAt: input.remindAt, homework: input.homework, note: input.note, createdAt: now },
+    data: {
+      circleId: input.circleId,
+      assignerId: input.assignerId,
+      assigneeId: input.assigneeId,
+      title: input.title,
+      dueAt: input.dueAt,
+      remindAt: input.remindAt,
+      homework: input.homework,
+      note: input.note,
+      // Subject and reward belong to homework only.
+      subject: input.homework ? input.subject || null : null,
+      reward: input.homework && input.reward && input.reward > 0 ? input.reward : null,
+      createdAt: now,
+    },
     include: withPeople,
   });
-  await prisma.event.create({ data: { userId: input.assignerId, name: "task_assigned", propsJson: { has_due: Boolean(task.dueAt), has_remind: Boolean(task.remindAt), homework: task.homework } } });
+  await prisma.event.create({ data: { userId: input.assignerId, name: "task_assigned", propsJson: { has_due: Boolean(task.dueAt), has_remind: Boolean(task.remindAt), homework: task.homework, reward: Boolean(task.reward) } } });
   return { task, notices: await announce(prisma, task, now) };
 }
 
@@ -266,7 +284,12 @@ export async function reviewHomework(prisma: PrismaClient, taskId: string, verdi
     const t = await tx.circleTask.findUniqueOrThrow({ where: { id: taskId }, include: withPeople });
     if (verdict === "redo" && t.itemId) await tx.item.updateMany({ where: { id: t.itemId }, data: { status: "open", doneAt: null, updatedAt: now } });
     const reader = t.assignee;
-    const line = homeworkLine(langOf(reader), verdict, t.assigner.name, t.title, note);
+    let line = homeworkLine(langOf(reader), verdict, t.assigner.name, t.title, note);
+    // Pocket money: Well done adds the reward to the child's record, once per homework.
+    if (verdict === "approved" && t.reward && t.reward > 0) {
+      const balance = await creditReward(tx, t, now);
+      if (balance !== null) line += `\n${rewardLine(langOf(reader), t.assigner.name, t.reward, balance)}`;
+    }
     await postUpdate(tx, reader.id, `task:${t.id}:${verdict}:${now.getTime()}`, line, now);
     await tx.event.create({ data: { userId: t.assignerId, name: `homework_${verdict}`, propsJson: {} } });
     return { task: t, notices: [{ userId: reader.id, text: line }] };

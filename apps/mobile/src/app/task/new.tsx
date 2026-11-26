@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import type { CircleMember, FamilyType } from "@fakkarni/shared";
+import { REWARD_CHOICES, type CircleMember, type FamilyType } from "@fakkarni/shared";
+import { fill } from "@/circles/logic";
+import { parseReward } from "@/homework/logic";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
 import { dueAt, dueChoices, remindAt, remindChoices, type DueChoice, type RemindChoice } from "@/tasks/logic";
@@ -25,6 +27,11 @@ export default function NewTaskScreen() {
   const [picking, setPicking] = useState<"due" | "remind" | null>(null);
   const [homework, setHomework] = useState(false);
   const [note, setNote] = useState("");
+  // Homework extras (2026-11-26): the subject, and pocket money earned on Well done.
+  const [subject, setSubject] = useState<string | null>(null);
+  const [reward, setReward] = useState<number | "custom" | null>(null);
+  const [customReward, setCustomReward] = useState("");
+  const rewardValue = reward === "custom" ? parseReward(customReward) : reward;
   const [busy, setBusy] = useState(false);
   const [choices] = useState(() => dueChoices(new Date()));
   const dueFor = (now: Date) => (due === "custom" ? customDue?.toISOString() ?? null : dueAt(due, now));
@@ -58,6 +65,7 @@ export default function NewTaskScreen() {
         remind_at: remindFor(now, dueAtIso),
         homework,
         note: homework && note.trim() ? note.trim() : null,
+        ...(homework ? { subject, reward: rewardValue } : {}),
       });
       router.back();
     } catch {
@@ -90,6 +98,30 @@ export default function NewTaskScreen() {
             <Chip icon="school-outline" label={t.tasks.homeworkToggle} selected={homework} onPress={() => setHomework((h) => !h)} />
           </View>
           {homework ? <TextField label={t.tasks.homeworkNote} value={note} onChangeText={setNote} placeholder="https://…" maxLength={500} multiline /> : null}
+          {homework ? (
+            <>
+              {label(t.homework.subject)}
+              <View style={styles.row}>
+                {t.homework.subjects.split("|").map((name) => (
+                  <Chip key={name} label={name} selected={subject === name} onPress={() => setSubject((s) => (s === name ? null : name))} />
+                ))}
+              </View>
+              {label(t.homework.reward)}
+              <View style={styles.row}>
+                <Chip label={t.homework.rewardNone} selected={reward === null} onPress={() => setReward(null)} />
+                {REWARD_CHOICES.map((n) => (
+                  <Chip key={n} icon="wallet-outline" label={fill(t.homework.rewardBadge, { n })} selected={reward === n} onPress={() => setReward(n)} />
+                ))}
+                <Chip label={t.homework.rewardCustom} selected={reward === "custom"} onPress={() => setReward("custom")} />
+              </View>
+              {reward === "custom" ? <TextField value={customReward} onChangeText={setCustomReward} keyboardType="number-pad" placeholder="25" maxLength={4} /> : null}
+              {reward !== null ? (
+                <Text variant="caption" color={palette.inkSoft}>
+                  {t.homework.rewardHint}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
           {familyType && !title.trim() ? (
             <>
               {label(t.family.ideasTitle)}
