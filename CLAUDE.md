@@ -67,8 +67,9 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Live by 2026-11-26 21:00Z: main at
-  c83ab25 (through #67, homework and pocket money, with #66 and #68; the branch's tree equals main's).
+  server answers, a 404 that the old one still does. Deployed 2026-11-26 21:06Z (the live checks
+  at 21:13Z and 21:19Z passed): main at 9964160 (through #69, the stop fixes, on top of the 20:55Z
+  deploy of #67 with #66 and #68; the branch's tree equals main's).
   railway.json (#59, on the deploy branch only since that deploy) asks that traffic moves to a new
   deploy only after its /health answers, that the old one keeps serving 20 s more, then gets
   SIGTERM and 60 s to finish replies in flight. Deploys used to drop chat for a minute (messages
@@ -93,6 +94,15 @@ Rules:
   published for Expo Go on branch `expo-go` with runtime `exposdk:58.0.0` (temporarily
   set runtimeVersion policy to sdkVersion for that publish, do not commit it); open it
   from Expo Go signed in to the Expo account. Purchases, Sentry and push do not work there.
+  Other people's iPhones: since 2026-05-12 Expo Go loads EAS updates only for an account that
+  owns the project or is a member of the organization that owns it (a 403 otherwise), and the
+  project belongs to the owner's personal account, so a link or QR code alone opens nothing. A
+  tester needs Expo Go signed in to the owner's account (Projects > fakkarni > Branches >
+  expo-go > the top update; a branch-page open stays on that update), or an Expo organization
+  that owns the project with the tester as a Viewer (owner's decision: a transfer changes
+  app.json `owner`, a conversion changes his login). `eas update --branch` creates no channel,
+  so there is no always-newest exp://u.expo.dev/<projectId>?channel-name=expo-go link until an
+  expo-go channel is created.
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
@@ -1010,9 +1020,11 @@ Rules:
     connection whose reply has ended for idle and destroys it while the end of that reply still
     waits to be written, so the close first waits (up to 5 s) for ended replies to be written
     out; after that, each connection is closed as soon as its last reply has been handed to the
-    network ('finish', which streamed replies reach too), and that reply says `Connection:
-    close`. A caller may send its next request before the last answer (pipelining): Node hands
-    the connection to the next reply inside its own 'finish' listener, before Fastify's
+    network ('finish', which streamed replies reach too), and a plain reply says `Connection:
+    close` (a streamed reply is hijacked, so the onSend hook that adds it never runs: it ends
+    without the header, and its connection is still closed once it is out). A caller may send
+    its next request before the last answer (pipelining): Node hands the connection to the next
+    reply inside its own 'finish' listener, before Fastify's
     onResponse, so the plugin closes a connection only when `socket._httpMessage` is empty (what
     Node's own close() reads) and says `Connection: close` only on a connection's last request
     (Node drops the replies queued behind one that says it). A reply queued behind another on a
@@ -1030,11 +1042,13 @@ Rules:
     database's sessions after the exit could not fail: the system closes them anyway). Still
     deaf: a signal during module loading, and during `prisma migrate deploy` (sh is the first
     process then); a deploy superseded while it starts runs until it is killed.
-  - Live: neither is deployed when this is written. After the deploy, the smoke test's turn
-    "after the quiet" and the one "right after" should show the same "first byte" and the same
-    "context" in "server ms" (they were 483 ms against 279 ms), and its /health line `"pid":1`;
-    run it once with `quiet` 240 to see that a connection kept for minutes still answers. The
-    deploy that brings this in still replaces a server that does not hear the signal.
+  - Live since the deploys of 2026-11-26 evening: #66 with the deploy of main at c83ab25
+    (20:55Z), the stop fixes of #69 with the next one (21:06Z), so the 21:06Z deploy was the
+    first to stop a server that hears the signal (its log was not looked at: Railway's logs are
+    out of the cloud session's reach). Smoke tests after them: /health `"pid":1`; after 35 quiet
+    seconds the turn's "context" was 62 ms against 57 ms right after (it was 483 against 279
+    before), first words 1.96 s against 1.87 s; after 240 quiet seconds 170 ms against 67 ms and
+    2.17 s against 1.98 s, so a connection kept for minutes still answers.
   - More API instances, or a longer deploy overlap, need more room first: each instance holds up
     to 8 + 3. The pooler's pool size is a Supabase dashboard setting (Database settings,
     connection pooling); nobody has changed it.
