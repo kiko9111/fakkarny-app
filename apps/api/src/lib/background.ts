@@ -6,5 +6,37 @@
  */
 export function inBackground(work: PromiseLike<unknown>): void {
   // Prisma starts a query only when it is awaited: `then` is what sends it.
-  void Promise.resolve(work).catch(() => {});
+  track(Promise.resolve(work).catch(() => {}));
+}
+
+/** Work started and not awaited by the request that started it, until it ends. */
+const running = new Set<Promise<unknown>>();
+
+/**
+ * Lets the server's stop wait for `work` (a push to another person, a row for the dashboard)
+ * before it closes the database pool. Returns `work` itself.
+ */
+export function track<T>(work: Promise<T>): Promise<T> {
+  running.add(work);
+  const done = () => running.delete(work);
+  work.then(done, done);
+  return work;
+}
+
+/** Resolves when every tracked piece of work has ended, or after `ms`, whichever comes first. */
+export async function backgroundSettled(ms: number): Promise<void> {
+  if (running.size === 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    Promise.allSettled([...running]),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+    }),
+  ]);
+  clearTimeout(timer);
+}
+
+/** How many tracked pieces of work are still running (for tests). */
+export function backgroundCount(): number {
+  return running.size;
 }

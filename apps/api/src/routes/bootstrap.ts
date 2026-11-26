@@ -79,8 +79,11 @@ export const bootstrapRoutes: FastifyPluginAsync<{ authenticate: preHandlerAsync
     const turn = limiter(AT_ONCE);
     const get = (path: string) =>
       turn(async () => {
-        const res = await app.inject({ method: "GET", url: path, headers });
-        return res.statusCode === 200 ? res.payload : null;
+        // Once the server is stopping (a deploy), Fastify refuses requests to itself: a part that
+        // had not started by then is left out, as a part that failed is, and the phone keeps its
+        // saved copy of that tab.
+        const res = await app.inject({ method: "GET", url: path, headers }).catch(() => null);
+        return res?.statusCode === 200 ? res.payload : null;
       });
 
     // The circle list decides which circles follow; they start as soon as it is in, while the

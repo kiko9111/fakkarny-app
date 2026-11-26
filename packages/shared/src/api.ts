@@ -8,6 +8,11 @@ export const HealthResponse = z.object({
   service: z.literal("fakkarni-api"),
   version: z.string(),
   time: z.iso.datetime({ offset: true }),
+  /**
+   * The server's process id. In a container, 1 is the first process: the one a deploy's stop
+   * signal goes to, so the server hears it and can finish what it is doing.
+   */
+  pid: z.number().int().positive().optional(),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;
 

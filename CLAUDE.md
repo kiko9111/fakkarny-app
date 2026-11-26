@@ -73,7 +73,8 @@ Rules:
   deploy only after its /health answers, that the old one keeps serving 20 s more, then gets
   SIGTERM and 60 s to finish replies in flight. Deploys used to drop chat for a minute (messages
   sat on "Sending…"). Whether Railway reads the file for this service is not confirmed: see
-  "Railway stops reading railway.json" below.
+  "Railway stops reading railway.json" below. The server itself did not hear SIGTERM until the
+  Dockerfile started it with `exec node` (see "Kept database connections").
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
@@ -584,7 +585,10 @@ Rules:
   (a pushed commit message containing "[api-smoke]", or started by hand: it has `workflow_dispatch`,
   which is the way after a deploy because nothing needs pushing) times the screens' GETs and runs
   the e2e test against production, with this commit's phone client and with the client of the
-  installed build. The log of a running job cannot be read; it is there when the job ends (~2 min).
+  installed build. The log of a running job cannot be read; it is there when the job ends (~3 min).
+  Its last two streamed chat turns come after a quiet pause (35 s; started by hand, the `quiet`
+  input sets the seconds, up to 280): they show what a message costs after the server sat idle
+  (see "Kept database connections").
 - Rate limit: 600 requests a minute per caller (120 refused whole screens while chat, which has its
   own 30/min bucket, kept working). 429s are logged as "rate_limited". The phone shows busy / server /
   sign-in text from `failText` (src/lib/errors.ts) instead of always "no connection".
@@ -675,7 +679,8 @@ Rules:
   are refused and old twins merged into the oldest on GET /money (`mergeDuplicateSections`). Money
   routes answer 422 (not 409) for writes that will never pass, because the phone resends 409s. GET
   /money reads every section's month in one query (`toWireSections`). DB pools: API 8
-  (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all.
+  (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all
+  (what the API's pool does when that is used up: "Kept database connections").
 - OTA fixes apply without a restart: src/lib/updates.ts checks on start and on return (at most every
   10 min), downloads in the background and reloads when the user leaves the app.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
@@ -804,7 +809,8 @@ Rules:
   in, which Railway adds because the test sends `x-railway-debug`) no longer says
   `railway/us-east4-eqdc4a`. The `x-railway-edge` line only names the edge nearest the runner
   (iad1 and lax1 on that day's two runs). During an overlap two servers run: the DB pools are
-  sized for one (8 + 3 of the session pooler's ~15).
+  sized for one (8 + 3 of the session pooler's ~15), so the new server waits its turn on the
+  few connections it gets until the old one is gone ("Kept database connections").
 - Replies that show while they are written (2026-11-26, same speed thread). Only how soon the
   words show changes: the stored answer and everything a turn decides are as before.
   - Wire: the phone POSTs /messages with `Accept: text/event-stream, application/json`
@@ -914,6 +920,113 @@ Rules:
     in the Daftar are laid out like `DaftarCard`). A streak beside a title is a flame and the
     number (`TrackerStreak`), with the words read out.
   - The browser preview has sample split bills (demo/server.web.ts, the shared `splitBill` math).
+- Kept database connections (2026-11-26, same speed thread; apps/api/src/db-pool.ts). Opening a
+  connection to the database is several round trips in a row (TCP, TLS, sign-in: about 0.5 s
+  from US East). The pool let a connection go after 30 idle seconds, and one person using the
+  app leaves the server quiet that long all the time, so most of their messages opened
+  connections before anything else. Measured live before the fix (smoke run of 08:12Z, the last
+  two streamed turns): first words 2.61 s after 35 quiet seconds, 1.46 s on the turn right after
+  it; with the model's own time to its first words taken out, 1.54 s against 0.59 s.
+  - Now a connection stays 5 minutes after its last use (DB_POOL_IDLE_MS, in ms, at most
+    2^31-1: Node fires a longer timer at once), with a TCP sign of life every 10 s, so an idle one
+    that died without a word is dropped within about 20 s. A query sent on a connection whose
+    other end vanished still waits for TCP to give up (minutes), as before. The proactive tick goes through the same pool every minute, so a running server always has a
+    few warm ones. `poolSettings()` holds the numbers; the server (db.ts), the API's tests
+    (test/db.ts) and the speed harnesses all open their pool with `openPool` / `pgAdapter`.
+  - Kept connections count against the pooler's ~15. `PatientPool` is pg's pool with one change:
+    when a new connection is refused for lack of room (`isNoRoom`: Postgres 53300, Supabase's
+    "max clients reached", PgBouncer's "no more connections allowed"), the pool stops growing
+    at the connections it has and the query queues for one of them (pg's own queue; a refused
+    query joins it at the back) instead of failing with a 500. Three seconds later it lets one
+    more attempt through; the first connection that is let in lifts the limit and opens
+    connections for the queries still waiting (pg only does that when its queue is stirred: they
+    stayed on the few old connections; `#serveWaiting` calls pg's private `_pulseQueue`, and a
+    test fails if it goes). Those that the pooler refuses on the way queue again too: while the
+    pool has connections, a refused query waits for one for what is left of its 15 s
+    (`#ask` cuts pg's timeout to it), however long it had already waited (second review,
+    2026-11-26: one that had waited past 10 s failed with a 500). A transaction waits for a
+    connection as long as a query does (`PRISMA_OPTIONS` in db.ts, `transactionOptions.maxWait`
+    15 s, also used by test/db.ts; Prisma's own 2 s turned a full pooler into 500s for every write
+    in a transaction; a test fails without it). With no connection at all a
+    query tries again for 10 s, then fails with the server's own words. Any other failure to
+    connect passes through at once. The server's log says "db: no room for another connection
+    at the pooler" (at most every 30 s) when it happens. Tests: db-pool.test.ts, with a
+    stand-in client and on the real Postgres through a role that may hold two connections (the
+    whole app runs on those two).
+  - The pool counts its connections with pg's "connect" and "remove" events, because pg's own
+    `totalCount` includes attempts that are still on their way, and pg starts the next queued
+    query's attempt before it reports a failed one.
+  - `PatientPool.connect(callback)` calls the callback in the same turn as pg's own, as pg's
+    plain pool does: `pool.query()` puts its 'error' listener on the connection there. The first
+    version went through a promise in between; a FATAL read together with the end of the last
+    answer (a database restart or failover, 57P01) then reached a connection with no listener,
+    was thrown out of the socket's handler and would have stopped the server (independent
+    review, 2026-11-26; db-pool.test.ts runs both cases on a stand-in server on a real socket).
+    Never put an `await` or `.then` between pg's callback and the caller's. The promise form
+    (`await pool.connect()`, which Prisma uses for every transaction and adds its own listener
+    only after) gets the connection with a listener already on it, kept until `setImmediate`
+    (second review: a plain pg pool crashes the same way there); the transaction then fails
+    with "not queryable" and its release drops the connection.
+  - `pg` is a direct dependency of the API now. There must be one copy of it in the tree: the
+    Prisma adapter takes a pool only if it is `instanceof` its own `pg.Pool` (the "is the pool
+    Prisma runs on" test fails otherwise).
+  - Measure: `npm run perf:quiet -w @fakkarni/evals -- [--rtt 100] [--quiet 35000] [--idle <ms>]`
+    (evals/perf/quiet.ts; same database rule as `perf`) times a request after a quiet pause and
+    the same one right after. At a 0.1 s round trip and 35 quiet seconds, the old pool
+    (`--idle 30000`) → the new one: every tab's data 1.26 s → 0.74 s (0.63 s right after), one
+    tab 0.53 s → 0.21 s (0.10 s), a chat turn besides the model 1.57 s → 0.74 s (0.74 s). The
+    0.1 s that is left on a GET is the sign-in row (USER_CACHE_MS is 15 s) being looked up
+    again. A local connection has no TLS (3 round trips, about 5 live): the live gain is larger.
+  - The server hears a deploy's stop signal (same day). The container ran `sh -c "npx prisma
+    migrate deploy && npx tsx src/server.ts"`: its first process was the shell, a stop signal
+    (SIGTERM) goes to the first process only, and the shell does not pass it on. Seen in a
+    process namespace (`unshare --pid --fork --mount-proc`, which gives the command a
+    container's process 1): six seconds after the signal the server still answered. So
+    `shutdown` in server.ts never ran in production, and an old server kept its connections
+    until it was killed. The Dockerfile now ends in `exec node --import tsx src/server.ts` (tsx
+    as the loader; no shell, npm or tsx command in front). In the same namespace, from an
+    install made the way the image is: the stop signal came 1.2 s into a reply that takes 4 s,
+    the reply arrived whole (streamed and plain), the server closed its connections and exited
+    0 a tenth of a second later; a new connection after the signal is refused, which is what
+    the deploy's overlap is for. GET /health says `pid`: 1 on the live server means the server
+    is the first process (a start command set in Railway's dashboard would replace the
+    Dockerfile's), and `version` now comes from apps/api/package.json (no npm in front, so no
+    npm_package_version). server.test.ts keeps the command and the clean stop.
+  - The stop (server.ts `shutdown`, after the independent reviews of 2026-11-26). Node's close()
+    only closes connections that are idle at that moment: a reply in flight at the signal ended
+    with `Connection: keep-alive`, and a caller that keeps its connections (the deploy's proxy)
+    held the server open for Fastify's 72 s keep-alive, past the 60 s drain, so it was killed
+    still holding its database connections; the first measurement above had a caller that
+    closed its own. Now: the signal handlers go in before the first wait (a first process with
+    no handler drops the signal); then the HTTP close and pg-boss's stop (20 s for a running
+    tick) together, every connection closed at 40 s; then up to 10 s for chat turns whose phone
+    has gone (Fastify waits for connections, not handlers) and pushes and dashboard rows the
+    last requests started (`track` in lib/background.ts: messages.ts `answer`, `pushNotices`,
+    `inBackground`); then the pool closes and the process exits 0, and at 55 s it exits
+    whatever still hangs, logging "shutdown gave up" with the step it was on.
+    How the HTTP close treats connections is plugins/closing.ts: Node's close() takes a
+    connection whose reply has ended for idle and destroys it while the end of that reply still
+    waits to be written, so the close first waits (up to 5 s) for ended replies to be written
+    out; after that, each connection is closed as soon as its reply has been handed to the
+    network ('finish', which streamed replies reach too). A sweep of idle connections every
+    250 ms, the first version, cut big answers to slow callers in 4 of 4 runs (second review).
+    GET /bootstrap leaves out the parts it had not started when the close began (Fastify
+    refuses requests to itself from then on; it used to answer 500). Tests: plugins/closing.test.ts
+    (8 MB answers to a caller that stops reading, plain and streamed), and server.test.ts runs
+    a reply through a slow proxy to the database with SIGTERM in the middle and a caller that
+    keeps its connection: exit within 5 s of the answer, and every database connection ended
+    with pg's goodbye (Terminate), which only a pool that closes itself sends (a count of the
+    database's sessions after the exit could not fail: the system closes them anyway). Still
+    deaf: a signal during module loading, and during `prisma migrate deploy` (sh is the first
+    process then); a deploy superseded while it starts runs until it is killed.
+  - Live: neither is deployed when this is written. After the deploy, the smoke test's turn
+    "after the quiet" and the one "right after" should show the same "first byte" and the same
+    "context" in "server ms" (they were 483 ms against 279 ms), and its /health line `"pid":1`;
+    run it once with `quiet` 240 to see that a connection kept for minutes still answers. The
+    deploy that brings this in still replaces a server that does not hear the signal.
+  - More API instances, or a longer deploy overlap, need more room first: each instance holds up
+    to 8 + 3. The pooler's pool size is a Supabase dashboard setting (Database settings,
+    connection pooling); nobody has changed it.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

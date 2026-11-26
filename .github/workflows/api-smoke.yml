@@ -8,6 +8,10 @@ name: Live API smoke test
 on:
   push:
   workflow_dispatch:
+    inputs:
+      quiet:
+        description: "Seconds the server is left quiet before the timed chat turn (35 is one person between two messages; up to 280 checks that the server's kept database connections last)"
+        default: "35"
 
 jobs:
   smoke:
@@ -22,6 +26,8 @@ jobs:
       - name: Time the screens' requests
         run: |
           U=$(cat /proc/sys/kernel/random/uuid)
+          # /health says the server's process id: "pid":1 means it is the container's first
+          # process, the one a deploy's stop signal goes to (Dockerfile).
           curl -s -m 30 -w "  /health %{http_code} %{time_total}s\n" "$API/health"
           for p in /me /circles /tasks /trackers /daftar /money /splits "/items?status=open" /me/referral; do
             curl -s -m 30 -o /tmp/body -w "$p %{http_code} %{time_total}s " -H "x-install-id: $U" -H "x-message-kinds: 2" "$API$p"; head -c 300 /tmp/body; echo
@@ -34,6 +40,8 @@ jobs:
           echo "--- 20 quick /circles calls (rate limit check)"
           for i in $(seq 1 20); do curl -s -m 30 -o /dev/null -w "%{http_code} " -H "x-install-id: $U" "$API/circles"; done; echo
       - name: Time a chat turn and one database round trip
+        env:
+          QUIET: ${{ inputs.quiet || '35' }}
         run: |
           U=$(cat /proc/sys/kernel/random/uuid)
           H=(-H "x-install-id: $U" -H "x-message-kinds: 2" -H "content-type: application/json")
@@ -83,12 +91,14 @@ jobs:
           stream "يومي كان طويل اوي ومحتاج افصل شوية" "small talk 2 (AI)"
           stream "فكرني بكره الساعة 9 الصبح اكلم الدكتور" "reminder with a time (AI: the line that says it is set comes with the answer)"
           # One person using the app leaves the server quiet for more than half a minute all the
-          # time, and the API's database pool lets a connection go once it has been idle that long.
-          # The first burst of lookups after that opens connections again, each several round trips
-          # to the database. "context" in "server ms" is the part of a turn that pays for it:
-          # compare the turn after the quiet with the one right after it.
-          echo "--- after 35 quiet seconds: a chat turn, then the same kind of turn again"
-          sleep 35
+          # time. Until 2026-11-26 the API's database pool let a connection go after 30 idle
+          # seconds, and the turn after such a pause opened connections again, several round
+          # trips each: its first words came about 0.9 s later than the next turn's. The pool
+          # now keeps a connection five minutes (apps/api/src/db-pool.ts), so the two turns
+          # below should take the same: compare "first byte", and "context" in "server ms".
+          case "$QUIET" in '' | *[!0-9]*) QUIET=35 ;; esac
+          echo "--- after $QUIET quiet seconds: a chat turn, then the same kind of turn again"
+          sleep "$QUIET"
           stream "قولي حاجة تفرحني" "small talk after the quiet (AI)"
           stream "وقولي حاجة كمان" "small talk right after (AI)"
       - uses: actions/setup-node@v4
