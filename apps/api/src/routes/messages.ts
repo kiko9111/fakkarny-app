@@ -217,9 +217,9 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOptions> = async (ap
       spent = { ...timing, total };
       // (A stream's headers are long gone: its timing goes with the `done` event.)
       if (!live?.opened) reply.header("Server-Timing", [...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`), `total;dur=${total}`].join(", "));
-      void prisma.event
-        .create({ data: { userId: user.id, name: "chat_timing", propsJson: { ...timing, total, brain: body.data!.brain ?? "cloud", pass: body.data!.phone_output ? 2 : 1 } } })
-        .catch(() => {});
+      inBackground(
+        prisma.event.create({ data: { userId: user.id, name: "chat_timing", propsJson: { ...timing, total, brain: body.data!.brain ?? "cloud", pass: body.data!.phone_output ? 2 : 1 } } }),
+      );
     }
     }
   });
