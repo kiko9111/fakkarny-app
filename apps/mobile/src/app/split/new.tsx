@@ -1,16 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, Share, StyleSheet, Switch, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT } from "@fakkarni/shared";
+import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT, type Circle } from "@fakkarni/shared";
 import { fill, whatsappShareUrl } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
-import { createSplit } from "@/lib/api";
+import { createSplit, getCircle, listCircles, peekCircles } from "@/lib/api";
 import { contactsAvailable, pickContactName } from "@/lib/contacts";
 import { photosAvailable } from "@/lib/photos";
 import { takeDraft } from "@/split/handoff";
-import { previewSplit, removePerson, startPeople, type Draft } from "@/split/logic";
+import { previewSplit, removePerson, startPeople, withCircle, type Draft } from "@/split/logic";
 import { Button, Card, Chip, Icon, IconButton, notify, palette, radius, Screen, space, Text, TextField } from "@/ui";
 
 /**
@@ -32,12 +32,27 @@ export default function NewSplitScreen() {
     paidBy: 0,
   });
   const [busy, setBusy] = useState(false);
+  // A group split: the people come from a circle and each of them sees their share in their Zaki.
+  const [circles, setCircles] = useState<Circle[]>(() => peekCircles() ?? []);
+  useEffect(() => {
+    listCircles().then(setCircles).catch(() => undefined);
+  }, []);
+  const unnamed = (n: number) => fill(t.split.personN, { n });
+  const pickCircle = async (id: string) => {
+    if (d.circleId === id) return setD((x) => withCircle(x, null, t.split.me, unnamed));
+    try {
+      const circle = await getCircle(id);
+      setD((x) => withCircle(x, circle, t.split.me, unnamed));
+    } catch {
+      notify(t.split.offline, "error");
+    }
+  };
   // Back from a receipt photo: take its items, keep the names already typed.
   useFocusEffect(
     useCallback(() => {
       const r = takeDraft();
       if (!r) return;
-      setD((x) => ({ ...r, people: x.people, paidBy: x.paidBy, title: x.title.trim() || r.title }));
+      setD((x) => ({ ...r, people: x.people, userIds: x.userIds, circleId: x.circleId, paidBy: x.paidBy, title: x.title.trim() || r.title }));
       notify(t.receipt.filled);
     }, []),
   );
@@ -58,7 +73,7 @@ export default function NewSplitScreen() {
         return;
       }
     }
-    set({ people: [...d.people, name] });
+    set({ people: [...d.people, name], ...(d.userIds ? { userIds: [...d.userIds, null] } : {}) });
   };
 
   const toggleEater = (item: number, person: number) => {
@@ -71,7 +86,7 @@ export default function NewSplitScreen() {
     setBusy(true);
     try {
       const { split, share_text } = await createSplit(preview.input);
-      track("split_created", { people: d.people.length, items: preview.input.items.length, quick: preview.input.items.length === 0 });
+      track("split_created", { people: d.people.length, items: preview.input.items.length, quick: preview.input.items.length === 0, circle: Boolean(d.circleId) });
       await Linking.openURL(whatsappShareUrl(share_text)).catch(() => Share.share({ message: share_text }));
       router.replace({ pathname: "/split/[id]", params: { id: split.id } });
     } catch {
@@ -99,6 +114,19 @@ export default function NewSplitScreen() {
       <TextField label={t.split.subtotal} hint={t.split.subtotalHint} value={d.subtotal} onChangeText={(v) => set({ subtotal: v })} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
       <TextField label={t.split.what} value={d.title} onChangeText={(v) => set({ title: v })} maxLength={60} placeholder={t.split.whatHint} />
 
+      {circles.length ? (
+        <>
+          <Text variant="headline">{t.split.withCircle}</Text>
+          <Text variant="small" color={palette.inkSoft}>
+            {t.split.circleHint}
+          </Text>
+          <View style={styles.wrap}>
+            {circles.map((c) => (
+              <Chip key={c.id} label={c.name} selected={d.circleId === c.id} onPress={() => void pickCircle(c.id)} />
+            ))}
+          </View>
+        </>
+      ) : null}
       <Text variant="headline">{t.split.who}</Text>
       <Text variant="small" color={palette.inkSoft}>
         {t.split.paidHint}

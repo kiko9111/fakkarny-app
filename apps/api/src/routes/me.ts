@@ -85,7 +85,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
         orderBy: { createdAt: "asc" },
       }),
       prisma.postComment.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" } }),
-      prisma.split.findMany({ where, orderBy: { createdAt: "asc" } }),
+      prisma.split.findMany({ where: { OR: [{ userId: id }, { memberIds: { has: id } }] }, orderBy: { createdAt: "asc" } }),
       prisma.photo.findMany({ where, include: { task: { select: { title: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.pocketMoneyEntry.findMany({ where: { OR: [{ childId: id }, { parentId: id }] }, orderBy: { createdAt: "asc" } }),
     ]);
@@ -121,6 +121,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       // Circle posts point at users by plain id (no foreign key), so remove the user's own
       // words (check-in notes, iftar notes, RSVPs) and posts about them here.
       await tx.circlePost.deleteMany({ where: { OR: [{ actorId: user.id }, { targetId: user.id }] } });
+      // Group splits others made keep the name (their record) but stop pointing at this account.
+      await tx.$executeRaw`UPDATE splits SET member_ids = array_remove(member_ids, ${user.id}::uuid) WHERE ${user.id}::uuid = ANY(member_ids)`;
       // Circles they own pass to the longest-standing member, as when an owner leaves;
       // a circle left with nobody in it goes too.
       const owned = await tx.circleMember.findMany({ where: { userId: user.id, role: "owner" }, select: { circleId: true } });
