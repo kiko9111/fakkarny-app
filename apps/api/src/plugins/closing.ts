@@ -16,10 +16,10 @@ export const CLOSE_WAIT_MS = 5_000;
  *
  * The connections of replies still in flight stay open, and once its reply is sent a caller may
  * keep its connection (keep-alive: up to 72 s, past a deploy's drain). So while the app closes,
- * the last reply asked for on a connection says `Connection: close`, and each connection is
- * closed as soon as its last reply has been handed to the network ('finish'), streamed replies
- * included. Closing "idle" connections on a timer instead cut the end off answers still being
- * written.
+ * the last reply asked for on a connection says `Connection: close` (not a streamed reply: it is
+ * hijacked, so onSend never runs for it), and each connection is closed as soon as its last reply
+ * has been handed to the network ('finish'), streamed replies included. Closing "idle"
+ * connections on a timer instead cut the end off answers still being written.
  *
  * A caller may send its next request on a connection before the answer to the last one
  * (pipelining). Node answers them in order, and hands the connection to the next reply as soon
