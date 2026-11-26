@@ -12,6 +12,8 @@ describe("GET /health", () => {
     const body = HealthResponse.parse(res.json());
     expect(body.status).toBe("ok");
     expect(body.pid).toBe(process.pid);
+    // From the API's package.json, which the server reads itself (no npm in front of it).
+    expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   it("404s unknown routes", async () => {

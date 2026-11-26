@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
 import type { FastifyPluginAsync } from "fastify";
 import type { HealthResponse } from "@fakkarni/shared";
 
-const VERSION = process.env["npm_package_version"] ?? "0.1.0";
+// Read from the API's package.json: the container starts node directly, so npm's
+// npm_package_version is not set.
+const VERSION = (JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version?: string }).version ?? "0.1.0";
 
 export const healthRoutes: FastifyPluginAsync = async (app) => {
   app.get("/health", async (): Promise<HealthResponse> => ({

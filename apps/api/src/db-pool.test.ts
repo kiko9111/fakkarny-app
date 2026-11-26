@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { type AddressInfo, createServer } from "node:net";
 import { INSTALL_ID_HEADER } from "@fakkarni/shared";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
@@ -63,6 +64,8 @@ describe("the pool's settings", () => {
     expect(poolSettings({ DB_POOL_MAX: "5", DB_POOL_IDLE_MS: "60000" })).toMatchObject({ max: 5, idleTimeoutMillis: 60_000 });
     expect(poolSettings({ DB_POOL_MAX: "", DB_POOL_IDLE_MS: "soon" })).toMatchObject({ max: 8, idleTimeoutMillis: 300_000 });
     expect(poolSettings({ DB_POOL_MAX: "0", DB_POOL_IDLE_MS: "-1" })).toMatchObject({ max: 8, idleTimeoutMillis: 300_000 });
+    // Past what Node's timers hold (2^31-1 ms) a timer fires at once: kept as long as they allow.
+    expect(poolSettings({ DB_POOL_IDLE_MS: "2592000000" })).toMatchObject({ idleTimeoutMillis: 2_147_483_647 });
   });
 });
 
@@ -159,6 +162,22 @@ describe("a pool that waits its turn", () => {
     await pool.end();
   });
 
+  it("once there is room again, opens connections for the queries that were waiting, not only for new ones", async () => {
+    const { server, pool: make } = standIn(2);
+    const pool = make({ regrowMs: 40 });
+    await burst(pool, 12);
+    expect(pool.room).toBe(2);
+    server.places = 20;
+    await sleep(60);
+    server.most = server.open;
+    // The burst queues on the two connections; the one try is let in and lifts the limit, and
+    // the queries still waiting get connections of their own instead of waiting for the three.
+    await burst(pool, 12);
+    expect(pool.room).toBe(8);
+    expect(server.most).toBe(8);
+    await pool.end();
+  });
+
   it("counts the connections it was given: a refused attempt that reports an error afterwards changes nothing", async () => {
     const { server, pool: make } = standIn(2);
     server.lateError = true;
@@ -227,6 +246,92 @@ describe("a pool that waits its turn", () => {
     expect(server.most).toBe(1);
     await pool.end();
     await expect(pool.connect()).rejects.toThrow("Cannot use a pool after calling end on the pool");
+  });
+});
+
+/**
+ * A stand-in Postgres on a real socket that ends a session the way a restart or a failover does:
+ * FATAL 57P01, read together with what came just before it (the end of a query, or of the start).
+ */
+async function endingServer(when: "after-answer" | "after-start") {
+  const msg = (type: string, body: Buffer) => {
+    const out = Buffer.alloc(5 + body.length);
+    out.write(type, 0, "latin1");
+    out.writeInt32BE(4 + body.length, 1);
+    body.copy(out, 5);
+    return out;
+  };
+  const int32 = (n: number) => {
+    const out = Buffer.alloc(4);
+    out.writeInt32BE(n);
+    return out;
+  };
+  const text = (s: string) => Buffer.concat([Buffer.from(s), Buffer.from([0])]);
+  const ready = msg("Z", Buffer.from("I"));
+  const start = Buffer.concat([msg("R", int32(0)), msg("K", Buffer.concat([int32(7), int32(8)])), ready]);
+  const fatal = msg("E", Buffer.concat([Buffer.from("S"), text("FATAL"), Buffer.from("C"), text("57P01"), Buffer.from("M"), text("terminating connection due to administrator command"), Buffer.from([0])]));
+  const server = createServer((socket) => {
+    let started = false;
+    socket.on("error", () => {});
+    socket.on("data", (chunk: Buffer) => {
+      if (!started) {
+        started = true;
+        socket.write(when === "after-start" ? Buffer.concat([start, fatal]) : start);
+        if (when === "after-start") setTimeout(() => socket.destroy(), 20);
+        return;
+      }
+      if (chunk[0] !== 0x51) return; // "Q": a query
+      setTimeout(() => {
+        socket.write(Buffer.concat([msg("C", text("SELECT 0")), ready, fatal]));
+        setTimeout(() => socket.destroy(), 20);
+      }, 20);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    url: `postgresql://zaki:test@127.0.0.1:${(server.address() as AddressInfo).port}/zaki`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+describe("a session the server ends (a restart, a failover)", () => {
+  // pg hands a connection to the next query from inside the read that ended the last one. If
+  // the query's 'error' listener is not on the connection by the time the FATAL in that same
+  // read is parsed, the error is thrown out of the socket's handler and the process stops.
+  const thrown: Error[] = [];
+  const onThrown = (err: Error) => thrown.push(err);
+
+  it("fails the query that was waiting for the connection, and nothing is thrown", async () => {
+    const server = await endingServer("after-answer");
+    process.on("uncaughtException", onThrown);
+    const pool = openPool(server.url, { max: 1 });
+    try {
+      const first = pool.query("select 1");
+      const second = pool.query("select 2");
+      await expect(first).resolves.toBeDefined();
+      await expect(second).rejects.toThrow("terminating connection due to administrator command");
+      await sleep(50);
+      expect(thrown).toEqual([]);
+    } finally {
+      process.off("uncaughtException", onThrown);
+      await pool.end().catch(() => {});
+      await server.close();
+    }
+  });
+
+  it("fails the query of a connection ended right after it opened, and nothing is thrown", async () => {
+    const server = await endingServer("after-start");
+    process.on("uncaughtException", onThrown);
+    const pool = openPool(server.url);
+    try {
+      await expect(pool.query("select 1")).rejects.toThrow("terminating connection due to administrator command");
+      await sleep(50);
+      expect(thrown).toEqual([]);
+    } finally {
+      process.off("uncaughtException", onThrown);
+      await pool.end().catch(() => {});
+      await server.close();
+    }
   });
 });
 

@@ -927,17 +927,23 @@ Rules:
   connections before anything else. Measured live before the fix (smoke run of 08:12Z, the last
   two streamed turns): first words 2.61 s after 35 quiet seconds, 1.46 s on the turn right after
   it; with the model's own time to its first words taken out, 1.54 s against 0.59 s.
-  - Now a connection stays 5 minutes after its last use (DB_POOL_IDLE_MS, in ms), with a TCP
-    sign of life every 10 s, so one that died without a word is dropped within about 20 s. The
-    proactive tick goes through the same pool every minute, so a running server always has a
+  - Now a connection stays 5 minutes after its last use (DB_POOL_IDLE_MS, in ms, at most
+    2^31-1: Node fires a longer timer at once), with a TCP sign of life every 10 s, so an idle one
+    that died without a word is dropped within about 20 s. A query sent on a connection whose
+    other end vanished still waits for TCP to give up (minutes), as before. The proactive tick goes through the same pool every minute, so a running server always has a
     few warm ones. `poolSettings()` holds the numbers; the server (db.ts), the API's tests
     (test/db.ts) and the speed harnesses all open their pool with `openPool` / `pgAdapter`.
   - Kept connections count against the pooler's ~15. `PatientPool` is pg's pool with one change:
     when a new connection is refused for lack of room (`isNoRoom`: Postgres 53300, Supabase's
     "max clients reached", PgBouncer's "no more connections allowed"), the pool stops growing
-    at the connections it has and the query queues for one of them (pg's own queue, first come
-    first served) instead of failing with a 500. Three seconds later it lets one more attempt
-    through; the first connection that is let in lifts the limit. With no connection at all a
+    at the connections it has and the query queues for one of them (pg's own queue; a refused
+    query joins it at the back) instead of failing with a 500. Three seconds later it lets one
+    more attempt through; the first connection that is let in lifts the limit and opens
+    connections for the queries still waiting (pg only does that when its queue is stirred: they
+    stayed on the few old connections; `#serveWaiting` calls pg's private `_pulseQueue`, and a
+    test fails if it goes). A transaction waits for a connection as long as a query does
+    (`transactionOptions.maxWait` 15 s in db.ts; Prisma's own 2 s turned a full pooler into
+    500s for every write in a transaction). With no connection at all a
     query tries again for 10 s, then fails with the server's own words. Any other failure to
     connect passes through at once. The server's log says "db: no room for another connection
     at the pooler" (at most every 30 s) when it happens. Tests: db-pool.test.ts, with a
@@ -946,6 +952,13 @@ Rules:
   - The pool counts its connections with pg's "connect" and "remove" events, because pg's own
     `totalCount` includes attempts that are still on their way, and pg starts the next queued
     query's attempt before it reports a failed one.
+  - `PatientPool.connect(callback)` calls the callback in the same turn as pg's own, as pg's
+    plain pool does: `pool.query()` puts its 'error' listener on the connection there. The first
+    version went through a promise in between; a FATAL read together with the end of the last
+    answer (a database restart or failover, 57P01) then reached a connection with no listener,
+    was thrown out of the socket's handler and would have stopped the server (independent
+    review, 2026-11-26; db-pool.test.ts runs both cases on a stand-in server on a real socket).
+    Never put an `await` or `.then` between pg's callback and the caller's.
   - `pg` is a direct dependency of the API now. There must be one copy of it in the tree: the
     Prisma adapter takes a pool only if it is `instanceof` its own `pg.Pool` (the "is the pool
     Prisma runs on" test fails otherwise).
@@ -969,7 +982,23 @@ Rules:
     0 a tenth of a second later; a new connection after the signal is refused, which is what
     the deploy's overlap is for. GET /health says `pid`: 1 on the live server means the server
     is the first process (a start command set in Railway's dashboard would replace the
-    Dockerfile's). server.test.ts keeps the command and the clean stop.
+    Dockerfile's), and `version` now comes from apps/api/package.json (no npm in front, so no
+    npm_package_version). server.test.ts keeps the command and the clean stop.
+  - The stop (server.ts `shutdown`, after the independent review of 2026-11-26). Node's close()
+    only closes connections that are idle at that moment: a reply in flight at the signal ended
+    with `Connection: keep-alive`, and a caller that keeps its connections (the deploy's proxy)
+    held the server open for Fastify's 72 s keep-alive, past the 60 s drain, so it was killed
+    still holding its database connections; the first measurement above had a caller that
+    closed its own. Now: the signal handlers go in before the first wait (a first process with
+    no handler drops the signal); then the HTTP close and pg-boss's stop (20 s for a running
+    tick) together, with idle connections closed every 250 ms and every connection at 40 s;
+    then up to 5 s for pushes and dashboard rows the last requests started (`track` in
+    lib/background.ts: `pushNotices`, `inBackground`); then the pool closes and the process
+    exits 0, and at 55 s it exits whatever still hangs. server.test.ts runs a reply through a
+    slow proxy to the database with SIGTERM in the middle and a caller that keeps its
+    connection: exit within 5 s of the answer, no database connection left. Still deaf: a
+    signal during module loading, and during `prisma migrate deploy` (sh is the first process
+    then); a deploy superseded while it starts runs until it is killed.
   - Live: neither is deployed when this is written. After the deploy, the smoke test's turn
     "after the quiet" and the one "right after" should show the same "first byte" and the same
     "context" in "server ms" (they were 483 ms against 279 ms), and its /health line `"pid":1`;

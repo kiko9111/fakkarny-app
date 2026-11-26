@@ -1,4 +1,4 @@
-import { pgAdapter } from "./db-pool";
+import { CHECKOUT_TIMEOUT_MS, pgAdapter } from "./db-pool";
 import { PrismaClient } from "./generated/prisma/client";
 
 let client: PrismaClient | undefined;
@@ -9,8 +9,13 @@ export function db(): PrismaClient {
   if (!client) {
     const connectionString = process.env["DATABASE_URL"];
     if (!connectionString) throw new Error("DATABASE_URL is not set");
-    // The pool's numbers and what it does when the pooler is full: db-pool.ts.
-    client = new PrismaClient({ adapter: pgAdapter(connectionString, {}, { onNoRoom: warnNoRoom }) });
+    // The pool's numbers and what it does when the pooler is full: db-pool.ts. A transaction
+    // waits for a connection as long as a single query does (Prisma's own default is 2 s, after
+    // which the request failed with a 500 while the pool waited for room).
+    client = new PrismaClient({
+      adapter: pgAdapter(connectionString, {}, { onNoRoom: warnNoRoom }),
+      transactionOptions: { maxWait: CHECKOUT_TIMEOUT_MS },
+    });
   }
   return client;
 }

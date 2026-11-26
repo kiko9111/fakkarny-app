@@ -23,16 +23,22 @@ export function poolSettings(env: Record<string, string | undefined> = process.e
     max: positive(env["DB_POOL_MAX"], 8),
     // How long a connection is kept after its last use. Long enough to span the pauses between
     // one person's messages; short enough that a server nobody talks to gives its places back.
-    idleTimeoutMillis: positive(env["DB_POOL_IDLE_MS"], 5 * 60_000),
+    // Node's timers stop at 2^31-1 ms: a larger number would fire at once and drop every connection.
+    idleTimeoutMillis: Math.min(positive(env["DB_POOL_IDLE_MS"], 5 * 60_000), MAX_TIMER_MS),
     // A query waits this long for a free connection before it fails.
-    connectionTimeoutMillis: 15_000,
+    connectionTimeoutMillis: CHECKOUT_TIMEOUT_MS,
     // A kept connection crosses the internet: a sign of life every 10 s keeps the boxes on the
-    // way from forgetting it, and a connection that died without a word is noticed within
-    // about 20 s and dropped, instead of being handed to a query.
+    // way from forgetting it, and an idle connection that died without a word is noticed within
+    // about 20 s and dropped. This covers idle connections only: a query sent on a connection
+    // whose other end vanished waits for TCP to give up (minutes), as it always did.
     keepAlive: true,
     keepAliveInitialDelayMillis: 10_000,
   };
 }
+
+/** How long a query waits for a connection (pg's connectionTimeoutMillis; transactions too, db.ts). */
+export const CHECKOUT_TIMEOUT_MS = 15_000;
+const MAX_TIMER_MS = 2_147_483_647;
 
 function positive(value: string | undefined, fallback: number): number {
   const n = Number(value);
@@ -67,14 +73,14 @@ type Checkout = Parameters<pg.Pool["connect"]>[0];
 
 const FIRST_WAIT_MS = 100;
 const MAX_WAIT_MS = 1_000;
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * pg's pool, which opens a new connection whenever none is free and it is under `max`, with
  * one change: when the server says there is no room for another, `max` drops to the
- * connections the pool has, so every waiting query queues for one of those (pg's own queue,
- * first come first served) instead of failing. After `regrowMs` it allows itself one more
- * attempt; the first connection that is let in puts `max` back.
+ * connections the pool has, so every waiting query queues for one of those (pg's own queue; a
+ * query that was refused joins it at the back) instead of failing. After `regrowMs` it allows
+ * itself one more attempt; the first connection that is let in puts `max` back and opens
+ * connections for the queries still waiting.
  */
 export class PatientPool extends pg.Pool {
   readonly #ceiling: number;
@@ -96,7 +102,13 @@ export class PatientPool extends pg.Pool {
       this.#let.add(client);
       // A new connection was let in: there is room again.
       this.#growAt = 0;
+      if (this.options.max >= this.#ceiling) return;
       this.options.max = this.#ceiling;
+      // pg opens a connection for a waiting query only when something stirs its queue (a
+      // release, a new caller), so the queries that queued while the pool was held back would
+      // stay on its few connections. Open one for each of them, up to the size. pg is in the
+      // middle of handing this connection over: wait for it to finish.
+      process.nextTick(() => this.#serveWaiting());
     });
     this.on("remove", (client) => {
       this.#let.delete(client);
@@ -114,38 +126,42 @@ export class PatientPool extends pg.Pool {
   }
 
   // Every query goes through here: `pool.query()` calls it with a callback, a transaction
-  // without one.
+  // without one. The callback runs in the same turn as pg's own, as with pg's plain pool:
+  // pool.query() puts its 'error' listener on the connection there, before anything more is
+  // read from it. One step through a promise in between left the connection without a
+  // listener for that moment, and a session the server ended (a restart: FATAL right after an
+  // answer, in the same read) was thrown out of the socket's handler and stopped the process.
   override connect(): Promise<pg.PoolClient>;
   override connect(callback: Checkout): void;
   override connect(callback?: Checkout): Promise<pg.PoolClient> | void {
-    const client = this.#connect();
-    if (!callback) return client;
-    client.then(
-      (c) => callback(undefined, c, c.release),
-      (err: Error) => callback(err, undefined, () => {}),
+    if (callback) return this.#checkout(callback, Date.now(), FIRST_WAIT_MS);
+    return new Promise<pg.PoolClient>((resolve, reject) =>
+      this.#checkout((err, client) => (err || !client ? reject(err) : resolve(client)), Date.now(), FIRST_WAIT_MS),
     );
   }
 
-  async #connect(): Promise<pg.PoolClient> {
-    const started = Date.now();
-    let wait = FIRST_WAIT_MS;
-    for (;;) {
-      this.#growAgain();
-      try {
-        return await super.connect();
-      } catch (err) {
-        if (!isNoRoom(err)) throw err;
-        this.#stopGrowing();
-        const left = this.#patienceMs - (Date.now() - started);
-        if (left <= 0) throw err;
-        // With connections of its own the pool is now "full" at its size: asking again queues
-        // this query for one of them. With none there is nothing to queue for: it tries a new
-        // connection again, a little later each time and not in step with the others.
-        if (this.#open > 0) continue;
-        await sleep(Math.min(left, wait * (0.75 + Math.random() / 2)));
-        wait = Math.min(wait * 2, MAX_WAIT_MS);
-      }
-    }
+  #checkout(callback: Checkout, started: number, wait: number): void {
+    this.#growAgain();
+    super.connect((err, client, release) => {
+      if (!err || !isNoRoom(err)) return callback(err, client, release);
+      this.#stopGrowing();
+      const left = this.#patienceMs - (Date.now() - started);
+      if (left <= 0) return callback(err, undefined, () => {});
+      // With connections of its own the pool is now "full" at its size: asking again queues
+      // this query for one of them. With none there is nothing to queue for: it tries a new
+      // connection again, a little later each time and not in step with the others.
+      if (this.#open > 0) return this.#checkout(callback, started, wait);
+      const next = Math.min(wait * 2, MAX_WAIT_MS);
+      setTimeout(() => this.#checkout(callback, started, next), Math.min(left, wait * (0.75 + Math.random() / 2)));
+    });
+  }
+
+  /** Opens a connection for each query in pg's queue, up to `max` (pg's own step for one waiting query). */
+  #serveWaiting() {
+    if (this.ending) return;
+    const pulse = (this as unknown as { _pulseQueue?: () => void })._pulseQueue;
+    if (typeof pulse !== "function") return;
+    for (let n = Math.min(this.waitingCount, this.options.max - this.totalCount); n > 0; n--) pulse.call(this);
   }
 
   #stopGrowing() {
