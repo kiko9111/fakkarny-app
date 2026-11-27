@@ -21,6 +21,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      # The Android builds ask EAS for updates on channel "preview". A build made with `eas build
+      # --local` never creates that channel or links it, and `eas update --branch` doesn't either,
+      # so phones got "There are no branches linked to the channel" and stayed on the built-in
+      # bundle (seen 2026-11-27 on build android-local-110). Make sure preview → preview first.
+      - name: Link the preview channel to the preview branch
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli@latest channel:create preview --non-interactive || true
+          npx eas-cli@latest channel:edit preview --branch preview --non-interactive
+          npx eas-cli@latest channel:view preview --non-interactive || true
       - name: Publish the update
         working-directory: apps/mobile
         env:
