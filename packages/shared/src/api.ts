@@ -184,5 +184,19 @@ export const ExportResponse = z.object({
   link_tasks: z
     .array(z.object({ other_name: z.string(), title: z.string(), note: z.string().nullable(), status: z.string(), due_at: z.string().nullable(), done_at: z.string().nullable(), created_at: z.string() }))
     .default([]),
+  gameyas: z
+    .array(
+      z.object({
+        name: z.string(),
+        role: z.enum(["organizer", "member"]),
+        amount: z.number(),
+        currency: z.string(),
+        pay_day: z.number(),
+        start_month: z.string(),
+        members: z.array(z.object({ name: z.string(), turn: z.number(), is_me: z.boolean(), received: z.boolean(), paid_rounds: z.array(z.number()) })),
+        created_at: z.string(),
+      }),
+    )
+    .default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

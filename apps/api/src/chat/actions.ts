@@ -1,3 +1,4 @@
+import { visibleGameyas, withBook, type BookRow } from "../gameya/store";
 import { randomUUID } from "node:crypto";
 import { MAX_REWARD, MAX_SECTIONS, TRACKER_TEMPLATES, type AppAction, type TrackerKind } from "@fakkarni/shared";
 import { rewardTag } from "../homework/rules";
@@ -23,6 +24,8 @@ export interface AppData {
   trackers: (Tracker & { circle: { name: string } | null })[];
   /** Household lists with their open things (absent in evals and older callers). */
   lists?: { id: string; name: string; place: string; circle: { name: string } | null; items: { title: string }[] }[];
+  /** Gam'eyas the user organizes or is in (absent in evals and older callers). */
+  gameyas?: BookRow[];
   /** The numbers (loaded for the model's context; absent in evals and name-only loads). */
   numbers?: AppNumbers;
 }
@@ -87,7 +90,7 @@ export async function loadAppNumbers(prisma: PrismaClient, user: Pick<User, "id"
 }
 
 export async function loadAppData(prisma: PrismaClient, userId: string): Promise<AppData> {
-  const [circles, sections, trackers, lists] = await Promise.all([
+  const [circles, sections, trackers, lists, gameyas] = await Promise.all([
     prisma.circle.findMany({
       where: { members: { some: { userId } } },
       include: { members: { include: { user: { select: { name: true } } }, orderBy: { joinedAt: "asc" } } },
@@ -102,9 +105,11 @@ export async function loadAppData(prisma: PrismaClient, userId: string): Promise
       orderBy: { updatedAt: "desc" },
       take: 10,
     }),
+    prisma.gameya.findMany({ where: visibleGameyas(userId), include: withBook, orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
   return {
     lists,
+    gameyas,
     circles: circles.map((c) => ({ id: c.id, name: c.name, kind: c.kind, createdAt: c.createdAt, members: c.members.map((m) => ({ userId: m.userId, name: m.user.name })) })),
     sections,
     trackers,

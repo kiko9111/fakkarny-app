@@ -68,7 +68,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, linkTasks] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, linkTasks, gameyas] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -90,6 +90,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.pocketMoneyEntry.findMany({ where: { OR: [{ childId: id }, { parentId: id }] }, orderBy: { createdAt: "asc" } }),
       prisma.houseListItem.findMany({ where: { OR: [{ addedById: id }, { doneById: id }] }, include: { list: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.linkTask.findMany({ where: { creatorId: id }, orderBy: { createdAt: "asc" } }),
+      prisma.gameya.findMany({ where: { OR: [{ ownerId: id }, { members: { some: { userId: id } } }] }, include: { members: { orderBy: { turn: "asc" } }, payments: true }, orderBy: { createdAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -114,6 +115,16 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       pocket_money: pocket.map((e) => ({ role: e.childId === id ? ("child" as const) : ("parent" as const), kind: e.kind, amount: e.amount, title: e.title, at: e.createdAt.toISOString() })),
       list_items: listItems.map((i) => ({ list: i.list.name, title: i.title, qty: i.qty, added: i.addedById === id, done_at: i.doneAt?.toISOString() ?? null, created_at: i.createdAt.toISOString() })),
       link_tasks: linkTasks.map((t) => ({ other_name: t.otherName, title: t.title, note: t.note, status: t.status, due_at: t.dueAt?.toISOString() ?? null, done_at: t.doneAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
+      gameyas: gameyas.map((g) => ({
+        name: g.name,
+        role: g.ownerId === id ? ("organizer" as const) : ("member" as const),
+        amount: g.amount,
+        currency: g.currency,
+        pay_day: g.payDay,
+        start_month: g.startMonth,
+        members: g.members.map((m) => ({ name: m.name, turn: m.turn, is_me: m.userId === id, received: m.receivedAt !== null, paid_rounds: g.payments.filter((p) => p.memberId === m.id).map((p) => p.round) })),
+        created_at: g.createdAt.toISOString(),
+      })),
     };
     return res;
   });
@@ -127,6 +138,13 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       await tx.circlePost.deleteMany({ where: { OR: [{ actorId: user.id }, { targetId: user.id }] } });
       // Private lists go with the account; a circle's lists stay for the others.
       await tx.houseList.deleteMany({ where: { ownerId: user.id, circleId: null } });
+      // Gam'eyas they organize pass to the first Zaki member by turn (the book is everyone's
+      // record); one with no other Zaki member goes. In others' gam'eyas their name stays as text.
+      for (const g of await tx.gameya.findMany({ where: { ownerId: user.id }, select: { id: true, members: { where: { userId: { not: null } }, orderBy: { turn: "asc" }, select: { userId: true } } } })) {
+        const next = g.members.find((m) => m.userId !== user.id);
+        if (next) await tx.gameya.update({ where: { id: g.id }, data: { ownerId: next.userId! } });
+        else await tx.gameya.delete({ where: { id: g.id } });
+      }
       // Group splits others made keep the name (their record) but stop pointing at this account.
       await tx.$executeRaw`UPDATE splits SET member_ids = array_remove(member_ids, ${user.id}::uuid) WHERE ${user.id}::uuid = ANY(member_ids)`;
       // Circles they own pass to the longest-standing member, as when an owner leaves;
