@@ -39,6 +39,8 @@ export const APP_EVENTS = [
   "list_item_done", // a thing ticked off on a household list
   "list_trip", // "I'm going shopping" tapped
   "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
+  "forward_in", // something shared or pasted for Zaki: props.kind "chat" | "receipt" | "none", props.source "share" | "paste"
+  "forward_sent", // the chat sent a forwarded message (props.chars: its length, rounded to 100)
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;

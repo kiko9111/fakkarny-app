@@ -93,6 +93,8 @@ export async function undoCard(prisma: PrismaClient, user: User, c: StoredCard, 
         const r = await prisma.item.updateMany({ where: { id: u.itemId, userId: user.id }, data: { status: u.status } });
         return r.count > 0;
       }
+      case "items_cancel":
+        return (await prisma.item.updateMany({ where: { id: { in: u.itemIds }, userId: user.id, status: "open" }, data: { status: "cancelled" } })).count > 0;
       case "list_items":
         // Only what is still open: something already ticked off by someone stays.
         return (await prisma.houseListItem.deleteMany({ where: { id: { in: u.itemIds }, listId: u.listId, addedById: user.id, doneAt: null } })).count > 0;

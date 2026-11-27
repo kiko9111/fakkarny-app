@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import type { MessageKind } from "@fakkarni/shared";
+import { readForwarded, type MessageKind } from "@fakkarni/shared";
 import type { LocalMessage } from "@/db/messages";
 import { t, dateLocale } from "@/i18n";
 import { track } from "@/lib/analytics";
@@ -20,6 +20,10 @@ const KIND: Partial<Record<MessageKind, { icon: IconName; label: () => string; c
   checkin: { icon: "hand-left", label: () => t.ui.kindCheckin, color: palette.primaryInk },
   update: { icon: "people", label: () => t.ui.kindUpdate, color: palette.family },
 };
+
+/** A forwarded message shows as its words under a small "Forwarded" line, folded when long. */
+const FOLDED_LINES = 10;
+const forwardedWords = (body: string) => body.replace(/^\(sent [^)\n]*\)\n/, "");
 
 const time = (iso: string) => {
   const d = new Date(iso);
@@ -54,6 +58,8 @@ export const MessageBubble = memo(function MessageBubble({
   entrance?: Entrance;
 }) {
   const mine = message.role === "user";
+  const fwd = mine ? readForwarded(message.text) : null;
+  const [open, setOpen] = useState(false);
   const kind = !mine ? KIND[message.kind] : undefined;
   // Decided once, when the bubble first shows. The words of a reply still being written and the
   // stored reply that takes their place are the same bubble, so it arrives once.
@@ -80,9 +86,23 @@ export const MessageBubble = memo(function MessageBubble({
             </View>
           ) : null}
           <View style={[styles.bubble, mine ? styles.mine : styles.friend, mine ? (lastInRun ? styles.tailMine : null) : lastInRun ? styles.tailFriend : null]}>
-            <Text variant="body" color={mine ? palette.onPrimary : palette.ink}>
-              {message.text}
-            </Text>
+            {fwd?.forwarded ? (
+              <Pressable onPress={() => setOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={t.lay.chat.forwarded}>
+                <View style={styles.forwarded}>
+                  <Icon name="arrow-redo" size={13} color={palette.onPrimary} />
+                  <Text variant="caption" color={palette.onPrimary}>
+                    {t.lay.chat.forwarded}
+                  </Text>
+                </View>
+                <Text variant="body" color={palette.onPrimary} numberOfLines={open ? undefined : FOLDED_LINES}>
+                  {forwardedWords(fwd.body)}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text variant="body" color={mine ? palette.onPrimary : palette.ink}>
+                {message.text}
+              </Text>
+            )}
             {writing && lastInRun ? <TypingDots small /> : null}
           </View>
           {!mine && message.actions.length ? <ActionCards serverId={message.server_id} actions={message.actions} /> : null}
@@ -139,6 +159,7 @@ const styles = StyleSheet.create({
   colMine: { alignItems: "flex-end" },
   colFriend: { alignItems: "flex-start" },
   kind: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },
+  forwarded: { flexDirection: "row", alignItems: "center", gap: 4, opacity: 0.85, marginBottom: 2 },
   bubble: { borderRadius: 20, paddingHorizontal: space.lg - 2, paddingVertical: space.sm + 1 },
   mine: { backgroundColor: palette.primary, ...shadow.button },
   friend: { ...glass },
