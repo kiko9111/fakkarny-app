@@ -10,7 +10,7 @@ import type { BriefTopic } from "@fakkarni/shared";
  * VentureBeat (429) refused the runner and were replaced.
  *
  * A feed that fails or goes quiet is skipped (news.ts), so a topic keeps working while any one of
- * its feeds answers. `npm run brief:feeds -w @fakkarni/api` (scripts/brief-feeds.ts) lists which
+ * its feeds answers. `npm run brief:feeds -w @fakkarni/api` (src/brief/check-feeds.ts) lists which
  * answer; the cloud session can't reach them, so .github/workflows/brief-feeds.yml runs it on
  * GitHub ("[brief-feeds]" in a commit message, or by hand).
  *
