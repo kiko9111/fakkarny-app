@@ -67,7 +67,9 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:10Z (db553d7; the live check at 22:16Z passed, server in
+  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:41Z (153c511; the live check at
+  22:48Z passed): main at ab604e0 (through #77, household lists, migration household_lists).
+  Before that, 22:10Z (db553d7; the live check at 22:16Z passed, server in
   `europe-west4-drams3a`): main at 8313c9e (through #74, group bill split, migration group_splits;
   the branch's tree equals main at that commit). Earlier the same evening: 21:06Z (#69) and 20:55Z
   (#67 with #66 and #68).
@@ -579,7 +581,7 @@ Rules:
   - User.gender ("female"/"male", PATCH /me, onboarding in Arabic, Settings, chat setting "address")
     decides ADDRESS THE USER AS before the old memory rule; while unset the context asks Zaki to ask once.
   - Item.alarm: only when the user asks or says yes; the phone schedules it on the "alarms" channel
-    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). A full-screen alarm needs a new native build.
+    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). Full-screen alarm: see "Full-screen alarm".
 
 - Saved copies and lenient lists (2026-11-23): server-only screens (circles list, a circle with its
   feed and trackers, Daftar, money, sections, tasks, trackers, splits) read through `cachedGet` in
@@ -1219,6 +1221,22 @@ Rules:
     disclosure → permission flow before a release with it; the in-app disclosure (places.tsx) comes
     before the system question. Privacy text says what is kept (legal/content.ts).
   - Needs a new Android build (native modules). Until then the screen says "needs a newer version".
+- Full-screen alarm (2026-11-26, Android, native): modules/zaki-alarm (local Expo module, Kotlin).
+  `withNativeAlarms` (src/notifications/alarm.ts, pure + tested) sends every planned notification
+  with `alarm` to it instead of expo-notifications (and cancels an expo copy of the same identifier,
+  so a phone moving to the new build never rings twice); a plan that stops being an alarm goes back.
+  Native side: kept in SharedPreferences "zaki_alarms", AlarmManager.setAlarmClock when exact alarms
+  are allowed (SCHEDULE_EXACT_ALARM, user-granted on Android 14+), else setAndAllowWhileIdle (may be
+  late); re-armed on boot, app update and permission change (missed by < 30 min: rings at once). It
+  rings as an insistent notification on channel "zaki_alarm_ring" (alarm sound, USAGE_ALARM) with a
+  full-screen intent to AlarmActivity (over the lock screen: time, words, Stop / 10 more minutes /
+  Open Zaki), stopping by itself after 10 min. A snooze is `<id>~snooze`, never listed to JS. Words
+  come from JS at schedule time (i18n `t.alarms`). Me › Alarms shows buttons to the two system
+  settings when they are off, and "Try an alarm" (10 s). Optional module: builds before it, iPhone
+  and Expo Go keep the loud "alarms" channel. Google Play: USE_FULL_SCREEN_INTENT is only granted by
+  default to alarm/calling apps on Android 14+, so the Play listing needs the full-screen intent
+  declaration (else it silently becomes a banner; the app shows the setting button). Not yet run on
+  a real phone when written.
 
 - Shared household lists (2026-11-26, kareem: "shared household list"): tables house_lists /
   house_list_items, routes apps/api/src/routes/lists.ts, writes apps/api/src/lists/store.ts, wording
