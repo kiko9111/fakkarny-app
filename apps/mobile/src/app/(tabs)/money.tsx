@@ -1,7 +1,7 @@
-import { useLayoutEffect, useMemo, useState } from "react";
-import { router, useNavigation } from "expo-router";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import type { MoneySection } from "@fakkarni/shared";
-import { spendTarget, type DaftarPart } from "@/daftar/layout";
+import { partFrom, spendTarget, type DaftarPart } from "@/daftar/layout";
 import { PeopleView } from "@/daftar/PeopleView";
 import { t } from "@/i18n";
 import { peekMoney } from "@/lib/api";
@@ -26,6 +26,14 @@ export default function MoneyScreen() {
     lastPart = p;
     setPartState(p);
   };
+  // A link to one part (Today's Daftar rows open People): shown on arrival, then the word is
+  // used up, so the switch is hers again and the next arrival with it works too.
+  const asked = partFrom(useLocalSearchParams<{ part?: string }>().part);
+  useEffect(() => {
+    if (!asked) return;
+    setPart(asked);
+    router.setParams({ part: undefined });
+  }, [asked]);
 
   const openSection = (id: string) => router.push({ pathname: "/money/[id]", params: { id } });
   // An amount is typed on a section's own screen, so this row leads to one (see `spendTarget`).

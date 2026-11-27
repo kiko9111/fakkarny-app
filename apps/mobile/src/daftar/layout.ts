@@ -2,6 +2,12 @@
 
 export type DaftarPart = "spend" | "people" | "split";
 
+/** The part a link asks for (`/money?part=people`), or null when it names none. */
+export function partFrom(value: string | string[] | undefined): DaftarPart | null {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v === "spend" || v === "people" || v === "split" ? v : null;
+}
+
 interface SectionLike {
   id: string;
   circle_id?: string | null;

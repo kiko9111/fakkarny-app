@@ -2,9 +2,9 @@ import { Stack } from "expo-router";
 import { language, t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { reloadApp } from "@/lib/reload";
-import { Field, FieldGroup } from "@/me/parts";
+import { Choice, Field, FieldGroup } from "@/me/parts";
 import { useMe } from "@/me/useMe";
-import { ask, Screen, Segmented, ThemePicker } from "@/ui";
+import { ask, Screen, ThemePicker } from "@/ui";
 
 /** Look and language: the theme and the app's language. Either change reopens the app. */
 export default function LookScreen() {
@@ -26,7 +26,7 @@ export default function LookScreen() {
           <ThemePicker />
         </Field>
         <Field label={t.settings.language}>
-          <Segmented
+          <Choice
             value={language}
             onChange={changeLanguage}
             options={[

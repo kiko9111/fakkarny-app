@@ -9,19 +9,19 @@ const ar = {
   planUntil: "{plan} لحد {date}",
 
   /** The rows on Me. Each opens one page with the same title. */
-  zaki: "زكي وأنا",
+  zaki: "أنا وزكي",
   look: "الشكل واللغة",
   reminders: "التذكيرات والمنبّهات",
   payments: "الدفع",
   memory: "زكي فاكر إيه",
   privacy: "الخصوصية وبياناتي",
   advanced: "متقدم",
-  invite: "ادعي صاحب",
+  invite: "اعزم صاحبك",
 
   /** Value lines under the rows. */
-  checkEvery2: "يطمّن كل ساعتين",
-  checkEvery4: "يطمّن كل 4 ساعات",
-  checkOff: "من غير اطمئنان",
+  checkEvery2: "كل ساعتين",
+  checkEvery4: "كل 4 ساعات",
+  checkOff: "مش بيطمّن",
   alarmsCount: "منبّهات: {n}",
   alarmsOne: "منبّه واحد",
   placesCount: "أماكن: {n}",
@@ -30,7 +30,7 @@ const ar = {
   instapayNone: "مفيش لينك إنستاباي",
 
   /** Zaki and me. */
-  aboutYou: "إنت",
+  aboutYou: "عنك",
   howZakiTalks: "كلام زكي",
   yourDay: "يومك",
   direct: "فكّرني بوضوح",
@@ -43,9 +43,6 @@ const ar = {
 
   /** Payments. */
   plan: "باقتك",
-
-  /** What Zaki remembers. */
-  memoryRow: "اللي فاكره عنك",
 
   /** Privacy and my data. */
   account: "الحساب",
@@ -67,8 +64,8 @@ const en: SameKeys<typeof ar> = {
   advanced: "Advanced",
   invite: "Invite a friend",
 
-  checkEvery2: "Checks in every 2 hours",
-  checkEvery4: "Checks in every 4 hours",
+  checkEvery2: "Every 2 hours",
+  checkEvery4: "Every 4 hours",
   checkOff: "No check-ins",
   alarmsCount: "{n} alarms",
   alarmsOne: "1 alarm",
@@ -87,8 +84,6 @@ const en: SameKeys<typeof ar> = {
   theme: "Colour",
 
   plan: "Your plan",
-
-  memoryRow: "What he knows about you",
 
   account: "Account",
   yourData: "Your data",

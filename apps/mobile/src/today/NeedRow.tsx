@@ -39,7 +39,7 @@ export function NeedRow({ need, onAnswered }: { need: Need; onAnswered: () => vo
     <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={`${need.title}, ${need.line}`} style={({ pressed }) => [styles.row, pressed && styles.pressed, busy && styles.dim]}>
       <IconTile name={ICON[need.kind]} kind={KIND[need.kind]} size={40} />
       <View style={styles.text}>
-        <Text variant="bodyStrong" numberOfLines={1}>
+        <Text variant="bodyStrong" numberOfLines={2}>
           {need.title}
         </Text>
         <Text variant="small" color={palette.inkSoft} numberOfLines={1}>

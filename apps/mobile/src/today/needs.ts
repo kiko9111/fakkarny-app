@@ -76,7 +76,7 @@ export function needsYou(input: NeedsInput, words: NeedWords): NeedRow[] {
   }
   for (const e of oldestFirst((input.daftar ?? []).filter(isDaftarToConfirm), (e) => e.created_at)) {
     const line = (e.direction === "i_owe" ? words.youOwe : words.owedToYou).replace("{amount}", words.money(e.amount));
-    rows.push({ kind: "daftar", id: e.id, title: name(e.other_name), line, route: "/money", action: { type: "confirm_daftar" } });
+    rows.push({ kind: "daftar", id: e.id, title: name(e.other_name), line, route: "/money?part=people", action: { type: "confirm_daftar" } });
   }
   for (const s of oldestFirst(input.splits ?? [], (s) => s.created_at)) {
     const share = myOpenShare(s);

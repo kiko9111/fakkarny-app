@@ -32,6 +32,8 @@ export interface PlusInput {
   photos: boolean;
   /** The server has answered GET /lists (an older server has no lists). */
   lists: boolean;
+  /** The lists she has, when known: "Add to a list" opens the only one, or starts the first. */
+  listIds?: readonly string[];
   circles: readonly PlusCircle[];
 }
 
@@ -50,9 +52,16 @@ function toCircle(circles: readonly PlusCircle[], path: string): PlusStep | null
   return { pick: circles.map((c) => ({ id: c.id, name: c.name, route: withId(path, c.id) })) };
 }
 
-export function plusActions({ photos, lists, circles }: PlusInput): PlusRow[] {
+/** "Add to a list": the only list opens (its add box is there), none starts one, several ask which. */
+function toList(ids: readonly string[] | undefined): PlusStep {
+  if (!ids) return { go: "/list" };
+  if (ids.length === 0) return { go: "/list?new=1" };
+  return { go: ids.length === 1 ? `/list/${encodeURIComponent(ids[0]!)}` : "/list" };
+}
+
+export function plusActions({ photos, lists, listIds, circles }: PlusInput): PlusRow[] {
   const rows: PlusRow[] = [{ key: "remind", place: null, step: { compose: "remind" } }];
-  if (lists) rows.push({ key: "list", place: "today", step: { go: "/list" } });
+  if (lists) rows.push({ key: "list", place: "today", step: toList(listIds) });
   // With no circle yet, asking someone starts by making one.
   rows.push({ key: "ask", place: "people", step: toCircle(withPeople(circles), "/task/new") ?? { go: "/circle/new" } });
   const homework = toCircle(withPeople(circles.filter((c) => c.kind === "family")), "/homework/plan");

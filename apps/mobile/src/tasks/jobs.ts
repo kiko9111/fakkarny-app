@@ -35,7 +35,8 @@ export const waitsForReview = (t: Pick<CircleTask, "homework" | "role" | "status
 
 /**
  * A circle's homework: to review first (the oldest hand-in first), then the open ones by due day
- * (late, then the days in order, then those with no day), then what was finished in the last week.
+ * (late, then the days in order, then those with no day), then what was finished in the last week
+ * and what the child said no to (the parent has to see that, as on the tasks screen).
  */
 export function homeworkSections<T extends HomeworkBit>(tasks: readonly T[], now: Date): { review: T[]; days: HomeworkDay<T>[]; done: T[] } {
   const all = tasks.filter((t) => t.homework);
@@ -50,9 +51,10 @@ export function homeworkSections<T extends HomeworkBit>(tasks: readonly T[], now
   const rank = (key: string) => (key === "late" ? "0" : key === "none" ? "9" : `1${key}`);
   const days = [...groups].map(([key, list]) => ({ key, tasks: list })).sort((a, b) => rank(a.key).localeCompare(rank(b.key)));
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  const ended = (t: T) => t.done_at ?? t.created_at;
   const done = all
-    .filter((t) => t.status === "done" && !waitsForReview(t) && (t.done_at ?? "") >= weekAgo)
-    .sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""))
+    .filter((t) => (t.status === "done" && !waitsForReview(t) && (t.done_at ?? "") >= weekAgo) || t.status === "declined")
+    .sort((a, b) => Number(b.status === "declined") - Number(a.status === "declined") || ended(b).localeCompare(ended(a)))
     .slice(0, DONE_SHOWN);
   return { review, days, done };
 }

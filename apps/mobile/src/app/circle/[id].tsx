@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
-import { checkinOrder, type CheckinKind, type CircleDetail, type CircleFeedResponse, type HouseList, type MoneySection, type PocketAccount, type SharedTracker } from "@fakkarni/shared";
+import { checkinOrder, type CheckinKind, type CircleDetail, type CircleFeedResponse, type HouseList, type MoneySection, type PocketAccount, type SharedTracker, type Split } from "@fakkarni/shared";
 import { fill, guessCheckin } from "@/circles/logic";
-import { bookSummary, latestCheckin, listSummary, moreCheckins, pocketOwed, taskCounts } from "@/circles/summary";
+import { latestCheckin, listSummary, moneyTile, moreCheckins, pocketOwed, showsHomework, taskCounts } from "@/circles/summary";
 import { ago, CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
 import { dateLocale, t } from "@/i18n";
-import { checkIn, getCircleFeed, getCircleTrackers, getMoney, getPocketMoney, listLists, peekCircleFeed, peekCircleTrackers, peekLists, peekMoney, peekPocketMoney, saveCircle } from "@/lib/api";
+import { checkIn, getCircleFeed, getCircleTrackers, getMoney, getPocketMoney, listLists, listSplits, peekCircleFeed, peekCircleTrackers, peekLists, peekMoney, peekPocketMoney, peekSplits, saveCircle } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { QueuedOffline } from "@/sync/writes";
 import { Button, Card, Chip, IconButton, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, Tile, TileGrid, ZakiAvatar, type IconName } from "@/ui";
@@ -30,6 +30,7 @@ export default function CircleScreen() {
   const [lists, setLists] = useState<HouseList[] | null>(() => peekLists());
   const [sections, setSections] = useState<MoneySection[] | null>(() => peekMoney()?.sections ?? null);
   const [pocket, setPocket] = useState<PocketAccount[] | null>(() => peekPocketMoney());
+  const [splits, setSplits] = useState<Split[] | null>(() => peekSplits());
   const [more, setMore] = useState(false);
 
   // Each part loads on its own: the circle shows as soon as it arrives, and a feed or tracker
@@ -37,12 +38,13 @@ export default function CircleScreen() {
   const load = useCallback(async () => {
     // What the phone holds first (the same objects when nothing changed: no redraw), then the server.
     showHeld();
-    const held = { feed: peekCircleFeed(id), trackers: peekCircleTrackers(id), lists: peekLists(), money: peekMoney(), pocket: peekPocketMoney() };
+    const held = { feed: peekCircleFeed(id), trackers: peekCircleTrackers(id), lists: peekLists(), money: peekMoney(), pocket: peekPocketMoney(), splits: peekSplits() };
     if (held.feed) setFeed(held.feed);
     if (held.trackers) setTrackers(held.trackers);
     if (held.lists) setLists(held.lists);
     if (held.money) setSections(held.money.sections);
     if (held.pocket) setPocket(held.pocket);
+    if (held.splits) setSplits(held.splits);
     const feedDone = getCircleFeed(id).then(setFeed, () => {});
     const trackersDone = getCircleTrackers(id).then(setTrackers, () => {});
     void listLists().then(setLists, () => {});
@@ -51,6 +53,7 @@ export default function CircleScreen() {
       () => {},
     );
     void getPocketMoney().then(setPocket, () => {});
+    void listSplits().then(setSplits, () => {});
     await loadCircle();
     await Promise.all([feedDone, trackersDone]);
   }, [id, showHeld, loadCircle]);
@@ -103,7 +106,14 @@ export default function CircleScreen() {
   const counts = taskCounts(feed.tasks);
   const owed = pocketOwed(pocket, id);
   const list = listSummary(lists, id);
-  const books = bookSummary(sections, id);
+  const money = moneyTile(sections, splits, id);
+  const checkinChips = (
+    <View style={styles.chips}>
+      {(others ? moreCheckins(checkinOrder(circle.family_type)) : checkinOrder(circle.family_type)).map((kind) => (
+        <Chip key={kind} label={plain(t.family.checkins[kind])} icon={CHECKIN_ICON[kind]} tone="family" onPress={() => sendCheckin(kind)} />
+      ))}
+    </View>
+  );
   const posts = feed.posts.slice(0, LATEST);
 
   return (
@@ -138,18 +148,14 @@ export default function CircleScreen() {
             </View>
             <Button label={t.lay.circle.more} kind="text" onPress={() => setMore((m) => !m)} />
           </View>
-          {more ? (
-            <View style={styles.chips}>
-              {moreCheckins(checkinOrder(circle.family_type)).map((kind) => (
-                <Chip key={kind} label={plain(t.family.checkins[kind])} icon={CHECKIN_ICON[kind]} tone="family" onPress={() => sendCheckin(kind)} />
-              ))}
-            </View>
-          ) : null}
+          {more ? checkinChips : null}
         </Card>
       ) : (
         <Card style={styles.top}>
           <Text variant="headline">{t.lay.circle.inviteFirst}</Text>
           <Button label={t.circles.invite} kind="whatsapp" icon="logo-whatsapp" busy={inviting} block onPress={() => void invite()} />
+          {/* A check-in made before the others join is what they see first. */}
+          {checkinChips}
         </Card>
       )}
 
@@ -163,7 +169,7 @@ export default function CircleScreen() {
           tone="primary"
           onPress={open("/circle/tasks")}
         />
-        {family ? (
+        {showsHomework(family, feed.tasks) ? (
           <Tile
             title={t.lay.circle.homework}
             icon="school-outline"
@@ -179,8 +185,9 @@ export default function CircleScreen() {
           title={t.lay.circle.money}
           icon="wallet-outline"
           kind="money"
-          value={books.books ? amount(books.share) : undefined}
-          line={books.books ? t.lay.circle.yourShare : t.lay.circle.startBook}
+          value={money.value === null ? undefined : money.says === "splits" ? String(money.value) : amount(money.value)}
+          line={{ pay: t.lay.circle.toPay, share: t.lay.circle.yourShare, splits: t.lay.circle.openSplits, start: t.lay.circle.startBook }[money.says]}
+          tone={money.says === "pay" ? "warn" : undefined}
           onPress={open("/circle/money")}
         />
         <Tile

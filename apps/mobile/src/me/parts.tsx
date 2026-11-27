@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Switch, TextInput, View, type TextInputProps } from "react-native";
-import { fonts, glass, NavRow, palette, plain, radius, RowGroup, space, Text, textStart } from "@/ui";
+import { Chip, fonts, glass, NavRow, palette, plain, radius, RowGroup, space, Text, textStart } from "@/ui";
 
 /** The pieces the /me pages share: a titled card of fields, a field, a text box, a switch row. */
 
@@ -28,6 +28,17 @@ export function Field({ label, children, first }: { label?: string; children: Re
         </Text>
       ) : null}
       {children}
+    </View>
+  );
+}
+
+/** An answer to pick: chips (a switch is for views). The picked one is filled. */
+export function Choice<K extends string>({ options, value, onChange }: { options: readonly { key: K; label: string }[]; value: K | "" | null; onChange: (key: K) => void }) {
+  return (
+    <View style={styles.choice} accessibilityRole="radiogroup">
+      {options.map((o) => (
+        <Chip key={o.key} label={o.label} selected={o.key === value} onPress={() => (o.key === value ? undefined : onChange(o.key))} />
+      ))}
     </View>
   );
 }
@@ -64,6 +75,7 @@ const styles = StyleSheet.create({
   groupTitle: { paddingHorizontal: space.lg },
   card: { ...glass, borderRadius: radius.lg, paddingHorizontal: space.lg },
   field: { gap: space.sm, paddingVertical: space.md },
+  choice: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineStrong },
   input: { minHeight: 46, backgroundColor: palette.wash, borderRadius: radius.md, paddingHorizontal: space.md, fontSize: 16, fontFamily: fonts.body, color: palette.ink },
   switchRow: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 56, paddingVertical: space.sm },

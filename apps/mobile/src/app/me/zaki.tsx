@@ -3,9 +3,9 @@ import { StyleSheet, View } from "react-native";
 import { Stack } from "expo-router";
 import { t } from "@/i18n";
 import { prefs } from "@/lib/prefs";
-import { Field, FieldGroup, MeInput, SwitchRow } from "@/me/parts";
+import { Choice, Field, FieldGroup, MeInput, SwitchRow } from "@/me/parts";
 import { useMe } from "@/me/useMe";
-import { notify, Screen, Segmented, space } from "@/ui";
+import { notify, Screen, space } from "@/ui";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -42,7 +42,7 @@ export default function ZakiAndMeScreen() {
           <MeInput value={name} onChangeText={setName} onEnd={saveName} />
         </Field>
         <Field label={t.settings.addressAs}>
-          <Segmented
+          <Choice
             value={user?.gender ?? ""}
             onChange={(v) => void save({ gender: v || null })}
             options={[
@@ -55,7 +55,7 @@ export default function ZakiAndMeScreen() {
 
       <FieldGroup title={m.howZakiTalks}>
         <Field label={t.settings.tone} first>
-          <Segmented
+          <Choice
             value={user?.tone ?? "balanced"}
             onChange={(v) => void save({ tone: v })}
             options={[
@@ -85,7 +85,7 @@ export default function ZakiAndMeScreen() {
           </Field>
         </View>
         <Field label={t.settings.checkins}>
-          <Segmented
+          <Choice
             value={user?.checkin_interval_h ?? "2"}
             onChange={(v) => void save({ checkin_interval_h: v })}
             options={[

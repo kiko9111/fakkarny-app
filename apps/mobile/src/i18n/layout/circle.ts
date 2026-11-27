@@ -9,23 +9,26 @@ const ar = {
   inviteFirst: "اعزم ناسك",
   // The tiles.
   tasks: "المهام",
-  waiting: "{n} مستنيينك",
-  homework: "الواجب",
+  waiting: "{n} مستنياك",
+  homework: "الواجبات",
   pocket: "المصروف {n}",
   lists: "القوايم",
   money: "الفلوس",
   yourShare: "نصيبك",
   startBook: "ابدأ دفتر مشترك",
+  toPay: "عليك",
+  openSplits: "حسابات مفتوحة",
   trackers: "المتابعات",
   startTracker: "ابدأ واحدة",
   // The newest lines and the feed's own screen.
   latest: "آخر الأخبار",
   weekTitle: "أسبوع زكي",
   weekLocked: "ملخص الأسبوع من إضافات زكي برو.",
-  trialDays: "{n} يوم ببلاش",
+  trialDays: "أيام ببلاش: {n}",
   // Circle info.
   infoTitle: "معلومات الدايرة",
   members: "الأعضاء",
+  memberMore: "اختيارات {name}",
   // The circle's shared trackers.
   trackersEmpty: "لسه مفيش متابعات مشتركة.",
 };
@@ -43,6 +46,8 @@ const en: SameKeys<typeof ar> = {
   money: "Money",
   yourShare: "Your share",
   startBook: "Start a shared book",
+  toPay: "To pay",
+  openSplits: "Open splits",
   trackers: "Trackers",
   startTracker: "Start one",
   latest: "Latest",
@@ -51,6 +56,7 @@ const en: SameKeys<typeof ar> = {
   trialDays: "{n} free days",
   infoTitle: "Circle info",
   members: "Members",
+  memberMore: "Options for {name}",
   trackersEmpty: "No shared trackers yet.",
 };
 

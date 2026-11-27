@@ -15,7 +15,7 @@ import { needsYou } from "@/today/needs";
 import { PlanRow } from "@/today/PlanRow";
 import { needsChanged, needWords } from "@/today/useNeeds";
 import { canAdd } from "@/trackers/logic";
-import { TrackerCard } from "@/trackers/TrackerCard";
+import { TrackerRow } from "@/trackers/TrackerRow";
 import { Badge, Card, IconTile, IntroPanel, NavRow, palette, RowGroup, Screen, SectionHeader, space, Text, useAddSheet, type AddAction } from "@/ui";
 
 /** How many lists with something open Today shows before "See all". */
@@ -90,8 +90,11 @@ export default function TodayScreen() {
   const actions: AddAction[] = [
     { key: "remind", icon: "notifications-outline", kind: "alarm", label: t.lay.today.addRemind, onPress: remind },
     // A server from before lists has none to make.
-    ...(lists === null ? [] : [{ key: "list", icon: "cart-outline", label: t.lay.today.addList, onPress: () => router.push("/list") } satisfies AddAction]),
-    { key: "tracker", icon: "stats-chart-outline", kind: "people", label: t.lay.today.addTracker, onPress: () => router.push(canAdd(own, limit) ? "/tracker/new" : "/paywall") },
+    ...(lists === null ? [] : [{ key: "list", icon: "cart-outline", label: t.lay.today.addList, onPress: () => router.push({ pathname: "/list", params: { new: "1" } }) } satisfies AddAction]),
+    // At the free limit the row says so before it is tapped: it opens Zaki Pro, not the form.
+    canAdd(own, limit)
+      ? { key: "tracker", icon: "stats-chart-outline", kind: "people", label: t.lay.today.addTracker, onPress: () => router.push("/tracker/new") }
+      : { key: "tracker", icon: "sparkles", label: t.lay.today.addTracker, hint: t.trackers.addPro, onPress: () => router.push("/paywall") },
   ];
   const add = useAddSheet(actions);
   const navigation = useNavigation();
@@ -128,14 +131,10 @@ export default function TodayScreen() {
           {soon.map((i) => (
             <PlanRow key={i.id} item={i} onDone={done(i)} />
           ))}
-          {repeating.length ? (
-            <>
-              <SectionHeader title={t.ui.repeating} />
-              {repeating.map((i) => (
-                <PlanRow key={i.id} item={i} onDone={done(i)} />
-              ))}
-            </>
-          ) : null}
+          {/* Repeating plans follow the dated ones under the same title (a row says when it rings). */}
+          {repeating.map((i) => (
+            <PlanRow key={i.id} item={i} onDone={done(i)} />
+          ))}
         </>
       )}
 
@@ -163,9 +162,9 @@ export default function TodayScreen() {
 
       {trackers?.length ? (
         <>
-          <SectionHeader title={t.ui.tracking} />
+          <SectionHeader title={t.ui.tracking} action={t.lay.common.seeAll} onAction={() => router.push("/trackers")} />
           {trackers.map((tr) => (
-            <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={loadOnline} />
+            <TrackerRow key={tr.id} tracker={tr} onChanged={replace} />
           ))}
         </>
       ) : null}

@@ -34,7 +34,7 @@ function go(route: string, place: Feature | null) {
  */
 export function PlusMenu({ visible, onClose, onRemind }: { visible: boolean; onClose: () => void; onRemind: () => void }) {
   // Read from the saved copies whenever the sheet opens, so a circle made a minute ago is there.
-  const rows = useMemo<PlusRow[]>(() => plusActions({ photos: photosAvailable, lists: peekLists() !== null, circles: peekCircles() ?? [] }), [visible]);
+  const rows = useMemo<PlusRow[]>(() => plusActions({ photos: photosAvailable, lists: peekLists() !== null, listIds: peekLists()?.map((l) => l.id), circles: peekCircles() ?? [] }), [visible]);
   // The second step, when more than one circle fits. Its rows stay while the sheet fades out.
   const [pick, setPick] = useState<Pick | null>(null);
   const [picking, setPicking] = useState(false);

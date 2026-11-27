@@ -1,4 +1,6 @@
-import type { CheckinKind, CircleMember, CircleTask, HouseList, MoneySection, PocketAccount } from "@fakkarni/shared";
+import type { CheckinKind, CircleMember, CircleTask, HouseList, MoneySection, PocketAccount, Split } from "@fakkarni/shared";
+import { splitLeft } from "@/tasks/jobs";
+import { myOpenShare } from "@/today/needs";
 
 /** What the circle summary's tiles and "who's OK" card say. Pure (unit-tested; no react-native imports). */
 
@@ -39,6 +41,28 @@ export function bookSummary(sections: readonly Pick<MoneySection, "circle_id" | 
   const books = (sections ?? []).filter((s) => s.circle_id === circleId);
   return { books: books.length, share: books.reduce((n, s) => n + s.my_share, 0) };
 }
+
+/**
+ * What the Money tile says, the most pressing first: what the reader still has to pay of the
+ * circle's group splits, else her share of its shared books this month, else how many splits
+ * are still open, else nothing yet.
+ */
+export function moneyTile(
+  sections: readonly Pick<MoneySection, "circle_id" | "my_share">[] | null,
+  splits: readonly Pick<Split, "circle_id" | "mine" | "me" | "paid_by" | "people">[] | null,
+  circleId: string,
+): { says: "pay" | "share" | "splits" | "start"; value: number | null } {
+  const mine = (splits ?? []).filter((s) => s.circle_id === circleId);
+  const toPay = mine.reduce((n, s) => n + (myOpenShare(s) ?? 0), 0);
+  if (toPay > 0) return { says: "pay", value: toPay };
+  const books = bookSummary(sections, circleId);
+  if (books.books) return { says: "share", value: books.share };
+  const open = mine.filter((s) => splitLeft(s) > 0).length;
+  return open ? { says: "splits", value: open } : { says: "start", value: null };
+}
+
+/** The Homework tile shows in a family circle, and in any circle that holds homework. */
+export const showsHomework = (family: boolean, tasks: readonly Pick<CircleTask, "homework" | "status">[]) => family || tasks.some((t) => t.homework && t.status !== "cancelled");
 
 /** Whoever checked in last. */
 export function latestCheckin<M extends Pick<CircleMember, "last_checkin">>(members: readonly M[]): M | null {

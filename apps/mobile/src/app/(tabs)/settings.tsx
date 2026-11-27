@@ -52,7 +52,7 @@ export default function MeScreen() {
       </RowGroup>
 
       <RowGroup>
-        <NavRow icon="bulb-outline" kind="alarm" title={m.memory} onPress={() => router.push("/me/memory")} />
+        <NavRow icon="bulb-outline" kind="alarm" title={m.memory} onPress={() => router.push("/memories")} />
         <NavRow icon="shield-checkmark-outline" kind="place" title={m.privacy} onPress={() => router.push("/me/privacy")} />
       </RowGroup>
 

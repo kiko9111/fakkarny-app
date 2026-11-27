@@ -15,6 +15,13 @@ describe("the chat's +", () => {
     expect(row(rows, "split")).toMatchObject({ place: "daftar", step: { go: "/split/new" } });
   });
 
+  it("opens the only list, starts the first one, and asks which when there are several", () => {
+    const list = (listIds: string[]) => row(plusActions({ photos: false, lists: true, listIds, circles: [] }), "list")?.step;
+    expect(list([])).toEqual({ go: "/list?new=1" });
+    expect(list(["a b"])).toEqual({ go: "/list/a%20b" });
+    expect(list(["a", "b"])).toEqual({ go: "/list" });
+  });
+
   it("shows the receipt only with the photo picker and lists only once the server has them", () => {
     expect(keys(plusActions({ photos: true, lists: true, circles: [] }))).toEqual(["remind", "list", "ask", "split", "receipt"]);
     const rows = plusActions({ photos: true, lists: true, circles: [] });

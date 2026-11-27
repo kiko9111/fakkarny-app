@@ -77,7 +77,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-          <Stack.Screen name="memories" options={{ title: t.memories.title }} />
+          <Stack.Screen name="memories" options={{ title: t.lay.me.memory }} />
           <Stack.Screen name="places" options={{ title: t.places.title }} />
           <Stack.Screen
             name="paywall"

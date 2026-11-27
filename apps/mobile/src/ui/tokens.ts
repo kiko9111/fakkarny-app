@@ -51,7 +51,7 @@ export const palette = {
   warnSoft: "#FFF3D1",
   danger: "#C0362C",
   dangerSoft: "#FDE8E6",
-  whatsapp: "#1D8A4B",
+  whatsapp: "#177A41",
   scrim: "rgba(20,16,30,0.40)",
 } as const;
 

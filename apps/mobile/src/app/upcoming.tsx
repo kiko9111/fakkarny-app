@@ -5,7 +5,7 @@ import { t } from "@/i18n";
 import { groupUpcoming } from "@/lib/group";
 import { useItems } from "@/lib/useItems";
 import { PlanRow } from "@/today/PlanRow";
-import { IntroPanel, Screen, SectionHeader } from "@/ui";
+import { IntroPanel, Screen, SectionHeader, useAddSheet } from "@/ui";
 
 /**
  * Plans (FR-12 / F8): every plan, by day, for users who want to look. Requests from other people
@@ -21,12 +21,16 @@ export default function UpcomingScreen() {
   }, []);
   const { items, refresh, complete } = useItems(load);
   const groups = groupUpcoming(items, new Date());
+  // This screen sits above the tabs: go back down to the chat (a plain navigate would stack a
+  // second copy of the tabs on top), where the composer starts the reminder.
+  const remind = () => router.dismissTo({ pathname: "/", params: { compose: "remind" } });
+  const add = useAddSheet([{ key: "remind", icon: "notifications-outline", kind: "alarm", label: t.lay.today.addRemind, onPress: remind }]);
   const navigation = useNavigation();
-  useLayoutEffect(() => navigation.setOptions({ title: t.lay.common.plans }), [navigation]);
+  useLayoutEffect(() => navigation.setOptions({ title: t.lay.common.plans, ...add.header }), [navigation, add.header]);
 
   return (
     <Screen onRefresh={refresh}>
-      {read && groups.length === 0 ? <IntroPanel title={t.lay.today.noPlans} action={t.lay.today.emptyAction} onAction={() => router.navigate({ pathname: "/", params: { compose: "remind" } })} say={t.lay.today.emptySay} /> : null}
+      {read && groups.length === 0 ? <IntroPanel title={t.lay.today.noPlans} action={t.lay.today.emptyAction} onAction={remind} say={t.lay.today.emptySay} /> : null}
       {groups.map((g) => [<SectionHeader key={g.bucket} title={t.upcoming[g.bucket]} />, ...g.items.map((i) => <PlanRow key={i.id} item={i} onDone={() => void complete(i.id).catch(() => {})} />)])}
     </Screen>
   );

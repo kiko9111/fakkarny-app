@@ -3,7 +3,7 @@ import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View, type Nativ
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
-import { ChatInput, type ChatInputHandle } from "@/chat/ChatInput";
+import { AFTER_SHEET_MS, ChatInput, type ChatInputHandle } from "@/chat/ChatInput";
 import { dayLabel, opensDay } from "@/chat/days";
 import { createEntrance } from "@/chat/entrance";
 import { quickReplies } from "@/chat/plus";
@@ -111,9 +111,10 @@ export default function ChatScreen() {
     if (compose !== "remind") return;
     // The word is used up, so the next arrival with it starts again.
     router.setParams({ compose: undefined });
-    // After the tab has taken the screen, or the keyboard does not come up.
+    // After the sheet that sent her here has left and the tab has taken the screen, or the
+    // keyboard does not come up (the same wait as the chat's own "+").
     if (composeWait.current) clearTimeout(composeWait.current);
-    composeWait.current = setTimeout(() => composer.current?.startReminder(), 80);
+    composeWait.current = setTimeout(() => composer.current?.startReminder(), Math.max(AFTER_SHEET_MS, 80));
   }, [compose]);
   useEffect(() => () => void (composeWait.current && clearTimeout(composeWait.current)), []);
   // New users are asked to start the trial; lapsed subscribers see that everything is saved.

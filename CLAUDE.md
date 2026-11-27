@@ -1293,6 +1293,13 @@ Rules:
   - The browser preview does not flip paddingStart / paddingEnd in Arabic (the phone does): shared
     rows use paddingHorizontal. Its sample data (demo/server.web.ts, `SEED` restarts a saved
     preview) has something for every new screen.
+  - From the first review round: a card that comes in a list never has a filled button (tonal;
+    one filled button a screen); `Segmented` switches views, an answer to pick is chips (`Choice`,
+    me/parts.tsx); a link to one part of a screen carries it (`/money?part=people`, `/list?new=1`;
+    the screen uses the word up with `router.setParams`); from a screen above the tabs go to a tab
+    with `router.dismissTo` (a plain `navigate` stacks a second copy of the tabs); white on the
+    filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
+    splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

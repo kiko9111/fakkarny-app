@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { PICK_LIMIT, pocketRows, spendTarget } from "./layout";
+import { partFrom, PICK_LIMIT, pocketRows, spendTarget } from "./layout";
 
 const section = (id: string, circle_id: string | null = null) => ({ id, circle_id });
+
+describe("partFrom", () => {
+  it("reads the part a link asks for and nothing else", () => {
+    expect(partFrom("people")).toBe("people");
+    expect(partFrom(["split", "people"])).toBe("split");
+    expect(partFrom("spend")).toBe("spend");
+    expect(partFrom("settings")).toBeNull();
+    expect(partFrom(undefined)).toBeNull();
+  });
+});
 
 describe("spendTarget", () => {
   it("makes the first section when there is none, also before anything loaded", () => {

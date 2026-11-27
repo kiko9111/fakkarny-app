@@ -15,7 +15,7 @@ export interface ChatInputHandle {
 }
 
 // A text box will not take focus while the sheet's window is still leaving.
-const AFTER_SHEET_MS = Platform.OS === "web" ? 50 : 350;
+export const AFTER_SHEET_MS = Platform.OS === "web" ? 50 : 350;
 
 /**
  * The composer, with the "+" that starts any job on its leading side (chat/PlusMenu.tsx).

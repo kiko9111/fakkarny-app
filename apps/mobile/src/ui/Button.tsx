@@ -12,7 +12,7 @@ const look: Record<ButtonKind, { bg: string; fg: string; border?: string; presse
   outline: { bg: palette.surface, fg: palette.primaryInk, border: palette.glassEdge, pressed: palette.surfaceStrong },
   text: { bg: "transparent", fg: palette.primaryInk, pressed: palette.surfaceAlt },
   danger: { bg: "transparent", fg: palette.danger, pressed: palette.dangerSoft },
-  whatsapp: { bg: palette.whatsapp, fg: "#FFFFFF", pressed: "#16733E" },
+  whatsapp: { bg: palette.whatsapp, fg: "#FFFFFF", pressed: "#126836" },
 };
 
 /** Pill buttons: filled (glossy, lit from the top) for the one main action, glass for the rest. */
@@ -96,7 +96,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: space.sm },
   block: { alignSelf: "stretch" },
   clip: { overflow: "hidden" },
-  // The light edge across the top of a filled button, as on the glass logo.
-  gloss: { position: "absolute", top: 0, left: 0, right: 0, height: "50%", backgroundColor: "rgba(255,255,255,0.12)", borderBottomLeftRadius: 999, borderBottomRightRadius: 999 },
+  // The light edge across the top of a filled button, as on the glass logo. Faint on purpose:
+  // the white label sits on it, and the fills are chosen to keep 4.5:1 under it.
+  gloss: { position: "absolute", top: 0, left: 0, right: 0, height: "50%", backgroundColor: "rgba(255,255,255,0.04)", borderBottomLeftRadius: 999, borderBottomRightRadius: 999 },
   off: { opacity: 0.45 },
 });

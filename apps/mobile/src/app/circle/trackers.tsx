@@ -4,10 +4,11 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import type { SharedTracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t } from "@/i18n";
-import { getCircleTrackers, peekCircleTrackers } from "@/lib/api";
+import { getCircleTrackers, peekCircleTrackers, peekTrackers } from "@/lib/api";
 import { useLive } from "@/lib/live";
+import { canAdd } from "@/trackers/logic";
 import { TRACKER_ICON, trackerName, TrackerStreak } from "@/trackers/TrackerCard";
-import { Card, IconTile, IntroPanel, LoadingCards, palette, Screen, space, Text, useAddSheet } from "@/ui";
+import { Card, IconTile, IntroPanel, LoadingCards, notify, palette, Screen, space, Text, useAddSheet } from "@/ui";
 
 /** The trackers this circle's people share with it: whose, today's count, the streak. "+" starts one. */
 export default function CircleTrackersScreen() {
@@ -27,7 +28,15 @@ export default function CircleTrackersScreen() {
   }, [id]);
   useLive(load);
 
-  const add = useAddSheet([{ key: "tracker", icon: "stats-chart-outline", kind: "people", label: t.lay.circle.startTracker, onPress: () => router.push({ pathname: "/tracker/new", params: { circle: id } }) }]);
+  // The same "+" as on Trackers: at the free limit it says why and opens Zaki Pro, not a form
+  // the server would refuse.
+  const start = () => {
+    const mine = peekTrackers();
+    if (!mine || canAdd(mine.trackers.filter((x) => !x.pack).length, mine.limit)) return router.push({ pathname: "/tracker/new", params: { circle: id } });
+    notify(t.trackers.addPro, "info");
+    router.push("/paywall");
+  };
+  const add = useAddSheet([{ key: "tracker", icon: "stats-chart-outline", kind: "people", label: t.lay.circle.startTracker, onPress: start }]);
 
   return (
     <Screen>

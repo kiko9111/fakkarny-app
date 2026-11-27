@@ -115,7 +115,7 @@ describe("needsYou", () => {
   });
 
   it("lists a Daftar entry the other person wrote, from my side", () => {
-    expect(needsYou({ daftar: [entry({})] }, words)).toEqual([{ kind: "daftar", id: "d1", title: "Hany", line: "You owe EGP 200", route: "/money", action: { type: "confirm_daftar" } }]);
+    expect(needsYou({ daftar: [entry({})] }, words)).toEqual([{ kind: "daftar", id: "d1", title: "Hany", line: "You owe EGP 200", route: "/money?part=people", action: { type: "confirm_daftar" } }]);
     expect(needsYou({ daftar: [entry({ direction: "owed_to_me" })] }, words)[0]?.line).toBe("Owes you EGP 200");
     expect(needsYou({ daftar: [entry({ mine: true }), entry({ status: "confirmed" }), entry({ status: "disputed" })] }, words)).toEqual([]);
   });

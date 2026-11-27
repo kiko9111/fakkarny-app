@@ -42,6 +42,8 @@ export default function CircleHomeworkScreen() {
   const empty = review.length + days.length + done.length === 0;
   // A child hands homework in; explaining a lesson is the parent's help.
   const child = circle?.members.find((m) => m.is_me)?.family_role === "teen";
+  // An open homework card the parent set already carries "Explain the lesson": one home for it.
+  const cardsExplain = days.some((d) => d.tasks.some((task) => task.role === "assigner"));
   const reload = () => void load();
   const dayTitle = (key: string) => {
     if (key === "late") return words.late;
@@ -93,7 +95,7 @@ export default function CircleHomeworkScreen() {
             {done.map((task) => (
               <TaskCard key={task.id} task={task} onChanged={reload} />
             ))}
-            {!alone && !child ? (
+            {!alone && !child && !cardsExplain ? (
               <RowGroup>
                 <NavRow icon="color-wand-outline" title={words.explain} onPress={() => router.push("/homework/help")} />
               </RowGroup>

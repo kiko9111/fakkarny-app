@@ -79,11 +79,12 @@ describe("a circle's homework", () => {
     expect(s.days.map((d) => d.tasks[0])).toEqual([late, today, tomorrow, none]);
   });
 
-  it("shows reviewed homework for a week, and never a declined one", () => {
+  it("shows reviewed homework for a week, and a declined one first (the parent has to see it)", () => {
     const fresh = task({ homework: true, status: "done", submission: "a", review: "approved", done_at: at(-2) });
     const old = task({ homework: true, status: "done", submission: "a", review: "approved", done_at: at(-9) });
-    const s = homeworkSections([old, fresh, task({ homework: true, status: "declined" })], now);
-    expect(s.done).toEqual([fresh]);
+    const declined = task({ homework: true, status: "declined" });
+    const s = homeworkSections([old, fresh, declined], now);
+    expect(s.done).toEqual([declined, fresh]);
     expect(s.days).toEqual([]);
   });
 

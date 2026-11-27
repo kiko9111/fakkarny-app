@@ -1,6 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { checkinOrder } from "@fakkarni/shared";
-import { bookSummary, latestCheckin, listSummary, moreCheckins, pocketOwed, taskCounts, trialDaysLeft } from "./summary";
+import { bookSummary, latestCheckin, listSummary, moneyTile, moreCheckins, pocketOwed, showsHomework, taskCounts, trialDaysLeft } from "./summary";
+
+describe("the Money tile", () => {
+  const person = (share: number, paid = false) => ({ name: "x", share, paid, user_id: null }) as never;
+  const split = (circle_id: string, mine: boolean, paid = false) => ({ circle_id, mine, me: 1, paid_by: 0, people: [person(100, true), person(179, paid)] });
+  const book = (circle_id: string, my_share: number) => ({ circle_id, my_share });
+
+  it("says what she still has to pay of the circle's splits before anything else", () => {
+    expect(moneyTile([book("c1", 300)], [split("c1", false), split("c2", false)], "c1")).toEqual({ says: "pay", value: 179 });
+  });
+  it("then her share of the shared books, then the open splits, then nothing yet", () => {
+    expect(moneyTile([book("c1", 300), book("c2", 50)], [split("c1", false, true)], "c1")).toEqual({ says: "share", value: 300 });
+    expect(moneyTile([], [split("c1", true), split("c1", true, true), split("c2", true)], "c1")).toEqual({ says: "splits", value: 1 });
+    expect(moneyTile(null, null, "c1")).toEqual({ says: "start", value: null });
+  });
+});
+
+describe("the Homework tile", () => {
+  it("shows in a family circle, and wherever there is homework", () => {
+    expect(showsHomework(true, [])).toBe(true);
+    expect(showsHomework(false, [{ homework: false, status: "pending" }])).toBe(false);
+    expect(showsHomework(false, [{ homework: true, status: "accepted" }])).toBe(true);
+    expect(showsHomework(false, [{ homework: true, status: "cancelled" }])).toBe(false);
+  });
+});
 
 describe("circle summary", () => {
   it("counts open requests, the ones waiting for me, and homework apart", () => {

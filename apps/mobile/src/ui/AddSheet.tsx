@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { t } from "@/i18n";
 import { Icon, type IconName } from "./Icon";
@@ -75,6 +75,9 @@ const AFTER_CLOSE_MS = Platform.OS === "ios" ? 320 : 0;
 /** A bottom sheet of rows. Choosing one closes the sheet, then runs it. */
 export function AddSheet({ visible, onClose, title, actions }: { visible: boolean; onClose: () => void; title?: string; actions: AddAction[] }) {
   const bottom = useSafeAreaInsets().bottom;
+  // Most sheets are 2-6 rows; a long one (every circle to pick from) scrolls inside the sheet
+  // and its title stays on the screen.
+  const rowsMax = Math.round(useWindowDimensions().height * 0.6);
   const lift = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!visible) return;
@@ -98,6 +101,7 @@ export function AddSheet({ visible, onClose, title, actions }: { visible: boolea
           <Text variant="headline" style={styles.title} accessibilityRole="header">
             {plain(title ?? t.lay.common.add)}
           </Text>
+          <ScrollView style={{ maxHeight: rowsMax }} bounces={false} showsVerticalScrollIndicator={false}>
           {actions.map((a, i) => (
             <Pressable key={a.key} onPress={() => choose(a)} accessibilityRole="button" accessibilityLabel={a.hint ? `${plain(a.label)}, ${a.hint}` : plain(a.label)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
               <View style={[styles.icon, { backgroundColor: kinds[a.kind ?? "primary"].bg }]}>
@@ -115,6 +119,7 @@ export function AddSheet({ visible, onClose, title, actions }: { visible: boolea
               </View>
             </Pressable>
           ))}
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>

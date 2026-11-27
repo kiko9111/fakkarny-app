@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import { StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
@@ -41,11 +41,12 @@ import {
 
 /**
  * Every household list the user sees: their circles' and their own. A new list is made right
- * here from the header "+" (name, which shop, who with). `?circle=<id>` (from a circle's screen)
+ * here from the header "+" (name, which shop, who with): the form opens above the lists, where
+ * the "+" is, so it is never below the fold. `?circle=<id>` (from a circle's screen)
  * shows that circle's lists, and the form starts set to that circle.
  */
 export default function ListsScreen() {
-  const params = useLocalSearchParams<{ circle?: string }>();
+  const params = useLocalSearchParams<{ circle?: string; new?: string }>();
   const [lists, setLists] = useState<HouseList[]>(() => peekLists() ?? []);
   const [loaded, setLoaded] = useState(() => peekLists() !== null);
   const [circles, setCircles] = useState<Circle[]>(() => peekCircles() ?? []);
@@ -56,6 +57,12 @@ export default function ListsScreen() {
     params.circle ?? null,
   );
   const [busy, setBusy] = useState(false);
+  // "+ > A list" elsewhere arrives with ?new=1: the form is open on arrival, once.
+  useEffect(() => {
+    if (params.new !== "1") return;
+    setMaking(true);
+    router.setParams({ new: undefined });
+  }, [params.new]);
 
   const load = useCallback(async () => {
     const cached = peekLists() !== null;
@@ -124,48 +131,6 @@ export default function ListsScreen() {
           }
         />
       ) : null}
-      {shown.map((l) => (
-        <Card
-          key={l.id}
-          onPress={() =>
-            router.push({ pathname: "/list/[id]", params: { id: l.id } })
-          }
-          accessibilityLabel={l.name}
-        >
-          <View style={styles.row}>
-            <IconTile
-              name={PLACE_ICON[l.place]}
-              color={l.circle_id ? palette.family : palette.primaryInk}
-              bg={l.circle_id ? palette.familySoft : palette.primarySoft}
-            />
-            <View style={styles.flex}>
-              <Text variant="bodyStrong">{l.name}</Text>
-              <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
-                {l.circle_name ?? t.lists.private}
-                {l.open_count ? ` · ${preview(l, listComma)}` : ""}
-              </Text>
-            </View>
-            {l.open_count ? (
-              <Badge
-                label={fill(t.lists.count, { n: l.open_count })}
-                tone="primary"
-              />
-            ) : (
-              <Badge label={plain(t.lists.allDone)} tone="ok" />
-            )}
-          </View>
-          {l.trip ? (
-            <Text variant="small" color={palette.family}>
-              {l.trip.is_me
-                ? t.lists.tripMine
-                : fill(t.lists.tripOther, {
-                    name: l.trip.name ?? t.circles.noName,
-                  })}
-            </Text>
-          ) : null}
-        </Card>
-      ))}
-
       {making ? (
         <Card>
           <SectionHeader title={plain(t.lists.new)} />
@@ -175,6 +140,7 @@ export default function ListsScreen() {
             onChangeText={setName}
             placeholder={t.lists.places[place]}
             maxLength={40}
+            autoFocus
             returnKeyType="done"
           />
           <Text variant="smallStrong" color={palette.inkSoft}>
@@ -227,6 +193,47 @@ export default function ListsScreen() {
           </View>
         </Card>
       ) : null}
+      {shown.map((l) => (
+        <Card
+          key={l.id}
+          onPress={() =>
+            router.push({ pathname: "/list/[id]", params: { id: l.id } })
+          }
+          accessibilityLabel={l.name}
+        >
+          <View style={styles.row}>
+            <IconTile
+              name={PLACE_ICON[l.place]}
+              color={l.circle_id ? palette.family : palette.primaryInk}
+              bg={l.circle_id ? palette.familySoft : palette.primarySoft}
+            />
+            <View style={styles.flex}>
+              <Text variant="bodyStrong">{l.name}</Text>
+              <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
+                {l.circle_name ?? t.lists.private}
+                {l.open_count ? ` · ${preview(l, listComma)}` : ""}
+              </Text>
+            </View>
+            {l.open_count ? (
+              <Badge
+                label={fill(t.lists.count, { n: l.open_count })}
+                tone="primary"
+              />
+            ) : (
+              <Badge label={plain(t.lists.allDone)} tone="ok" />
+            )}
+          </View>
+          {l.trip ? (
+            <Text variant="small" color={palette.family}>
+              {l.trip.is_me
+                ? t.lists.tripMine
+                : fill(t.lists.tripOther, {
+                    name: l.trip.name ?? t.circles.noName,
+                  })}
+            </Text>
+          ) : null}
+        </Card>
+      ))}
     </Screen>
   );
 }

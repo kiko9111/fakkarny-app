@@ -4,7 +4,7 @@ import type { SameKeys } from "./shape";
 const ar = {
   /** /circle/tasks */
   tasksTitle: "المهام",
-  open: "شغّالة",
+  open: "مفتوحة",
   done: "خلصت",
   tasksEmpty: "اطلب حاجة من حد في الدايرة.",
   tasksAlone: "اعزم حد عشان تطلب منه.",
@@ -16,7 +16,7 @@ const ar = {
   homeworkTitle: "الواجبات",
   week: "الأسبوع ده",
   pocket: "المصروف",
-  toReview: "للمراجعة",
+  toReview: "راجعها",
   late: "متأخر",
   tomorrow: "بكرة",
   noDay: "من غير يوم",
@@ -26,7 +26,7 @@ const ar = {
   homeworkEmpty: "مفيش واجبات الأسبوع ده.",
   homeworkAlone: "اعزم ولادك هنا.",
   homeworkSay: "واجب لعمر: حساب",
-  pocketEmpty: "حط مكافأة على واجب وتظهر هنا.",
+  pocketEmpty: "حط مكافأة على واجب وهتبان هنا.",
 
   /** /circle/money */
   moneyTitle: "الفلوس",

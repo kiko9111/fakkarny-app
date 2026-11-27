@@ -1,9 +1,9 @@
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { FamilyRole, type CircleDetail } from "@fakkarni/shared";
+import { FamilyRole, type CircleDetail, type CircleMember } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
-import { CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
+import { ago, CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
 import { t } from "@/i18n";
 import { askCheckin, deleteCircle, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { useLive } from "@/lib/live";
@@ -50,6 +50,9 @@ export default function CircleInfoScreen() {
     void guessCircle(() => setFamilyRole(id, userId, role), { next, adopt: (answer) => answer }).then(setCircle, () => notify(t.circles.failed, "error"));
   };
 
+  const roleLine = (m: CircleMember) => [m.role === "owner" ? t.circles.owner : null, m.family_role ? t.family.roles[m.family_role] : null].filter(Boolean).join(" · ");
+  const memberOptions = (m: CircleMember) => confirm(fill(t.circles.removeConfirm, { name: memberName(m) }), t.circles.remove, () => void act(() => removeCircleMember(id, m.user_id), false), t.circles.cancel);
+
   if (!circle) return <CircleWaiting failed={failed} onRetry={() => void load()} />;
 
   const family = circle.kind === "family";
@@ -71,18 +74,22 @@ export default function CircleInfoScreen() {
               <Text variant="bodyStrong" numberOfLines={1}>
                 {memberName(m)}
               </Text>
-              <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
-                {[m.role === "owner" ? t.circles.owner : null, m.family_role ? t.family.roles[m.family_role] : null].filter(Boolean).join(" · ") || " "}
-              </Text>
+              {roleLine(m) ? (
+                <Text variant="small" color={palette.inkSoft} numberOfLines={2}>
+                  {roleLine(m)}
+                </Text>
+              ) : null}
+              {/* What each person last said and when: a parent sees who got home. */}
+              {m.last_checkin ? (
+                <Text variant="small" color={tint} numberOfLines={1}>
+                  {fill(t.ui.lastSeen, { what: plain(t.family.checkins[m.last_checkin.kind]), when: ago(m.last_checkin.at) })}
+                </Text>
+              ) : null}
             </View>
             {!m.is_me ? <IconButton name="hand-left-outline" label={plain(t.family.ask)} color={tint} onPress={() => void askOne(m.user_id)} /> : null}
             {owner && !m.is_me ? (
-              <IconButton
-                name="person-remove-outline"
-                label={t.circles.remove}
-                color={palette.danger}
-                onPress={() => confirm(fill(t.circles.removeConfirm, { name: memberName(m) }), t.circles.yes, () => void act(() => removeCircleMember(id, m.user_id), false), t.circles.cancel)}
-              />
+              // Removing someone is not one thumb-width from "ask to check in": it is behind this.
+              <IconButton name="ellipsis-horizontal" label={fill(t.lay.circle.memberMore, { name: memberName(m) })} onPress={() => memberOptions(m)} />
             ) : null}
           </View>
         ))}

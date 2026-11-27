@@ -1,16 +1,6 @@
-import { router, Stack } from "expo-router";
-import { t } from "@/i18n";
-import { NavRow, RowGroup, Screen } from "@/ui";
+import { Redirect } from "expo-router";
 
-/** What Zaki remembers: the door to the memories list. */
+/** What Zaki remembers is one list, at /memories: this address only leads there. */
 export default function MemoryScreen() {
-  const m = t.lay.me;
-  return (
-    <Screen>
-      <Stack.Screen options={{ title: m.memory }} />
-      <RowGroup>
-        <NavRow icon="bulb-outline" kind="alarm" title={m.memoryRow} onPress={() => router.push("/memories")} />
-      </RowGroup>
-    </Screen>
-  );
+  return <Redirect href="/memories" />;
 }
