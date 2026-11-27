@@ -21,3 +21,4 @@ export { understand, isCrisis, addDays, addMinutes, type Understood, type Unders
 export * from "./understand/clarify";
 export * from "./places";
 export * from "./forward";
+export * from "./local";

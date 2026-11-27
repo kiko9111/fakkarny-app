@@ -1,3 +1,4 @@
+import { currencyOf } from "@fakkarni/shared";
 import type { DaftarEntry as WireEntry } from "@fakkarni/shared";
 import { Prisma as PrismaNs, type DaftarEntry, type Prisma, type PrismaClient, type User } from "../generated/prisma/client";
 import { newInviteCode } from "../circles/rules";
@@ -81,7 +82,7 @@ export async function settle(prisma: PrismaClient, entryId: string, byUserId: st
  */
 export async function createEntry(
   prisma: PrismaClient,
-  creator: Pick<User, "id" | "name">,
+  creator: Pick<User, "id" | "name" | "city">,
   b: { circleId: string | null; otherName: string; otherUserId: string | null; direction: "owed_to_me" | "i_owe"; amount: number; note: string | null },
   now: Date,
 ): Promise<EntryWithPeople> {
@@ -89,7 +90,7 @@ export async function createEntry(
   for (let attempt = 0; !entry; attempt++) {
     try {
       entry = await prisma.daftarEntry.create({
-        data: { code: newInviteCode(), creatorId: creator.id, circleId: b.circleId, otherName: b.otherName, otherUserId: b.otherUserId, direction: b.direction, amount: new PrismaNs.Decimal(b.amount), note: b.note, createdAt: now },
+        data: { code: newInviteCode(), creatorId: creator.id, circleId: b.circleId, otherName: b.otherName, otherUserId: b.otherUserId, direction: b.direction, amount: new PrismaNs.Decimal(b.amount), currency: currencyOf(creator.city).code, note: b.note, createdAt: now },
         include: withPeople,
       });
     } catch (err) {

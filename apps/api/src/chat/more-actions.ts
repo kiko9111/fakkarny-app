@@ -1,4 +1,4 @@
-import { CheckinKind, isRamadanSeason, MAX_SPLIT_PEOPLE, parseInstapayLink, SplitInput, type AppAction } from "@fakkarni/shared";
+import { CheckinKind, currencyOf, isRamadanSeason, MAX_SPLIT_PEOPLE, parseInstapayLink, SplitInput, type AppAction } from "@fakkarni/shared";
 import { Prisma, type PrismaClient, type User } from "../generated/prisma/client";
 import { askCheckin, inviteToIftar, postCheckin, removeMember } from "../circles/ops";
 import { cancelEntry, createEntry, respond as respondDaftar, settle as settleDaftar, withPeople as daftarPeople, type EntryWithPeople } from "../daftar/store";
@@ -247,7 +247,7 @@ export async function runMore(ctx: Ctx, a: AppAction): Promise<One> {
       const input = SplitInput.safeParse({ title: (a.name ?? a.title ?? "").slice(0, 60), people: [{ name: me }, ...people.map((name) => ({ name }))], subtotal: a.amount, service_pct: 0, vat_pct: 0, paid_by: 0 });
       if (!input.success) return fail(LABEL.failed(lang), "/split/new");
       const data = computeSplit(input.data);
-      const row = await createSplit(ctx.prisma, ctx.user.id, data);
+      const row = await createSplit(ctx.prisma, ctx.user, data);
       await ctx.prisma.event.create({ data: { userId: ctx.user.id, name: "split_created", propsJson: { via: "chat", people: people.length + 1 } } });
       const share = Math.round(a.amount / (people.length + 1));
       return { card: card(lang, a.kind, "done", LABEL.splitMade(lang, a.amount, people.length + 1, share), `/split/${row.id}`, undefined, { kind: "split", splitId: row.id }) };
@@ -375,10 +375,10 @@ async function setTaskRemind(prisma: PrismaClient, t: TaskWithPeople, remindAt: 
   });
 }
 
-async function createSplit(prisma: PrismaClient, userId: string, data: ReturnType<typeof computeSplit>, group?: { circleId: string | null; memberIds: string[] }) {
+async function createSplit(prisma: PrismaClient, user: Pick<User, "id" | "city">, data: ReturnType<typeof computeSplit>, group?: { circleId: string | null; memberIds: string[] }) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await prisma.split.create({ data: { ...data, code: newInviteCode(), userId, ...group } });
+      return await prisma.split.create({ data: { ...data, currency: currencyOf(user.city).code, code: newInviteCode(), userId: user.id, ...group } });
     } catch (err) {
       if (attempt < 4 && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
       throw err;
@@ -511,7 +511,7 @@ export async function runMorePending(prisma: PrismaClient, user: User, c: Stored
       if (!input.success) return fail(LABEL.failed(lang));
       const group = await groupOf(prisma, user.id, input.data);
       if (!group) return fail(LABEL.notFound(lang, "circle"));
-      const row = await createSplit(prisma, user.id, computeSplit(group.input), { circleId: group.circleId, memberIds: group.memberIds });
+      const row = await createSplit(prisma, user, computeSplit(group.input), { circleId: group.circleId, memberIds: group.memberIds });
       const notices = await tellMembers(prisma, row, user, now);
       await prisma.event.create({ data: { userId: user.id, name: "split_created", propsJson: { via: "chat", people: people.length, circle: true } } });
       const share = Math.round(p.amount / people.length);
