@@ -25,7 +25,8 @@ import { localToUtc } from "../apps/api/src/lib/time";
 import { helplineFor, PERSONA_PROMPT, PERSONA_VERSION } from "../apps/api/src/persona/prompt";
 import { EvalCase, scoreCase, type CaseScore } from "./score";
 import { withPlace } from "../apps/api/src/pipeline/place";
-import { parsePlaceTrigger } from "@fakkarni/shared";
+import { parsePlaceTrigger, readForwarded } from "@fakkarni/shared";
+import { forwardNote } from "../apps/api/src/forward/read";
 import { understand, type Understood } from "../packages/shared/src/understand";
 import { CLARIFY_VERSION, clarifyMessages, cleanRewrite, pickUnderstood } from "../packages/shared/src/understand/clarify";
 import type { AppData } from "../apps/api/src/chat/actions";
@@ -66,7 +67,8 @@ function turnsOf(c: EvalCase): { role: "user" | "friend"; text: string }[] {
 
 /** Build the same context the API would, from the case (no database). */
 function contextFor(c: EvalCase): string {
-  return renderContext(contextObjectFor(c));
+  // A forwarded message gets the same note as in the pipeline (forward/read.ts).
+  return readForwarded(c.message).forwarded ? `${renderContext(contextObjectFor(c))}\n\n${forwardNote({ homework: null })}` : renderContext(contextObjectFor(c));
 }
 
 function contextObjectFor(c: EvalCase): ConversationContext {
@@ -131,7 +133,7 @@ async function main() {
   let totalCost = 0;
   const results = await mapLimit(cases, 5, async (c) => {
     const res = await model
-      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(turnsOf(c).filter((m) => m.role === "user").map((m) => m.text), c.expect.script === "english" ? "english" : "arabic"), todayLocal: c.now.slice(0, 10) })
+      .respond({ system: PERSONA_PROMPT, context: contextFor(c), history: [...c.history, { role: "user", text: c.message }], requireArabic: mustReplyInArabic(turnsOf(c).filter((m) => m.role === "user" && !readForwarded(m.text).forwarded).map((m) => m.text), c.expect.script === "english" ? "english" : "arabic"), todayLocal: c.now.slice(0, 10) })
       .catch((err: unknown) => ({ ok: false as const, reason: `error: ${(err as Error).message}`, usage: null as Usage | null }));
     if (res.usage) totalCost += costUsd(res.usage);
     if (!res.ok) {

@@ -4,7 +4,7 @@ import { router, Stack } from "expo-router";
 import { FamilyType } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { createCircle } from "@/lib/api";
-import { Button, Chip, IconTile, Note, notify, palette, Screen, space, Text, TextField } from "@/ui";
+import { Button, Chip, IconTile, notify, palette, Screen, space, Text, TextField } from "@/ui";
 
 type Idea = keyof typeof t.circles.ideas;
 const IDEAS: Idea[] = ["family", "friends", "work", "gym", "study"];
@@ -73,7 +73,6 @@ export default function NewCircleScreen() {
           ) : null}
         </>
       ) : null}
-      <Note icon="gift-outline">{t.circles.trialNote}</Note>
       <Button label={t.circles.create} size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
     </Screen>
   );

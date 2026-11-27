@@ -1,18 +1,42 @@
-import { useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, TextInput, View } from "react-native";
+import { forwardRef, type ComponentRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { ActivityIndicator, Keyboard, Platform, StyleSheet, TextInput, View } from "react-native";
 import { language, t } from "@/i18n";
 import { confirm, glass, fonts, IconButton, notify, palette, radius, shadow, space, textStart } from "@/ui";
 import { voiceAvailable } from "@/brain/native";
 import { sizeLabel } from "@/brain/catalog";
 import { startDownload } from "@/brain/downloads";
+import { PlusMenu } from "./PlusMenu";
+import { withStarter } from "./plus";
 import { micPermission, startListening, stopListening, voiceModel, voiceReady } from "@/voice/engine";
 
+export interface ChatInputHandle {
+  /** Puts the "Remind me" starter in the box (unless something is typed) and brings the keyboard. */
+  startReminder: () => void;
+}
+
+// A text box will not take focus while the sheet's window is still leaving.
+export const AFTER_SHEET_MS = Platform.OS === "web" ? 50 : 350;
+
 /**
- * The composer. Voice typing (Android builds from 2026-11-25): the mic writes what you say into the
- * box, on the phone, and you read it before sending. Audio is never saved or sent (CLAUDE.md).
+ * The composer, with the "+" that starts any job on its leading side (chat/PlusMenu.tsx).
+ * Voice typing (Android builds from 2026-11-25): the mic writes what you say into the box, on the phone, and you read it before sending. Audio is never saved or sent (CLAUDE.md).
  */
-export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
+export const ChatInput = forwardRef<ChatInputHandle, { onSend: (text: string) => void }>(function ChatInput({ onSend }, ref) {
   const [text, setText] = useState("");
+  const [plus, setPlus] = useState(false);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const wait = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => void (wait.current && clearTimeout(wait.current)), []);
+  const startReminder = useCallback(() => {
+    setText((old) => withStarter(old, t.lay.chat.remindStarter));
+    input.current?.focus();
+  }, []);
+  useImperativeHandle(ref, () => ({ startReminder }), [startReminder]);
+  const openPlus = () => {
+    // The keyboard goes first: under a sheet it would leave the list scrolled for a keyboard that is gone.
+    Keyboard.dismiss();
+    setPlus(true);
+  };
   const [voice, setVoice] = useState<"idle" | "listening" | "working">("idle");
   const showMic = voiceAvailable();
 
@@ -56,8 +80,12 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
 
   return (
     <View style={styles.bar}>
+      <View style={styles.plus}>
+        <IconButton name="add" label={t.lay.chat.plus} onPress={openPlus} color={palette.primaryInk} size={44} />
+      </View>
       <View style={styles.field}>
         <TextInput
+          ref={input}
           style={styles.input}
           value={text}
           onChangeText={setText}
@@ -93,14 +121,24 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
         ) : null}
         <IconButton name="arrow-up" label={t.chat.send} onPress={submit} disabled={!canSend} color={palette.onPrimary} bg={canSend ? palette.primary : palette.lineStrong} size={40} />
       </View>
+      <PlusMenu
+        visible={plus}
+        onClose={() => setPlus(false)}
+        onRemind={() => {
+          wait.current = setTimeout(startReminder, AFTER_SHEET_MS);
+        }}
+      />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   spinner: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  bar: { paddingHorizontal: space.md, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: "transparent" },
-  field: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, ...glass, backgroundColor: palette.surfaceStrong, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2 },
+  // The "+" leads (left in English, right in Arabic) and stays at the bottom while the box grows.
+  bar: { flexDirection: "row", alignItems: "flex-end", gap: space.xs, paddingHorizontal: space.sm, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: "transparent" },
+  // Lifted to the middle of a one-line box (the box is 40 + its padding and edge).
+  plus: { marginBottom: 5 },
+  field: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "flex-end", gap: space.sm, ...glass, backgroundColor: palette.surfaceStrong, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2 },
   // `textAlign` in the style too: the browser ignores the prop, and an empty box then starts on the wrong side in Arabic.
   input: { flex: 1, minHeight: 40, maxHeight: 140, paddingTop: 9, paddingBottom: 9, fontSize: 16, lineHeight: 22, fontFamily: fonts.body, color: palette.ink, textAlign: textStart, outlineStyle: "none" } as object,
 });

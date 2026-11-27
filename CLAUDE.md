@@ -67,7 +67,9 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:10Z (db553d7; the live check at 22:16Z passed, server in
+  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:41Z (153c511; the live check at
+  22:48Z passed): main at ab604e0 (through #77, household lists, migration household_lists).
+  Before that, 22:10Z (db553d7; the live check at 22:16Z passed, server in
   `europe-west4-drams3a`): main at 8313c9e (through #74, group bill split, migration group_splits;
   the branch's tree equals main at that commit). Earlier the same evening: 21:06Z (#69) and 20:55Z
   (#67 with #66 and #68).
@@ -397,32 +399,37 @@ Rules:
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 - Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
   parts, TextField, feedback, ThemePicker, glass). Screens use it, not src/lib/theme (kept only as
-  an alias). Look = the liquid-glass logo (owner pick): a soft colour mesh behind every screen
+  an alias). Look (revised 2026-11-27, see "Layout map"): a soft colour mesh behind every screen
   (assets/bg/mesh-*.jpg via `Backdrop`; navigators use `screenLayout={withGround}` so each screen
   carries its own mesh and mounted screens underneath never show through; headers use
-  `GlassHeader`), frosted translucent surfaces (`glass` token: white 68% + bright edge + tinted
+  `GlassHeader`), translucent white cards (`glass` token: white 86% + bright edge + soft theme-tinted
   shadow; real backdrop blur on web only), large radii, glossy pill buttons. No blur or gradient
   native module: the mesh and Zaki art are images. Themes the user picks: Sunrise (default), Mint
   or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads). Session has
   its own calm mesh. Family, friends and Session keep fixed colours in every theme. One font
-  family, IBM Plex Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use
+  family, Rubik (Arabic and Latin in the same files, owner pick 2026-11-27; src/ui/fonts.ts loads it at
+  run time from @expo-google-fonts/rubik, so it reaches builds over the air); Ionicons; no emoji on buttons/chips (`plain()`). Use
   `notify`/`confirm`/`ask` from src/ui/feedback instead of Alert. Dates use `dateLocale`.
-- Logo and icons: the liquid-glass spark smile. The app icon, Android adaptive layers, splash,
+- Logo and icons: the spark smile on a rounded tile in the theme's colours. The app icon, Android adaptive layers, splash,
   favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
-  SVG; keep them in step if the mark changes. The splash is configured through the
+  SVG (assets/logo/zaki-mark.svg, `node scripts/make-logo.mjs` in apps/mobile, needs Playwright; the
+  tile colours are THEMES at the top of the script); keep them in step if the mark changes. The splash is configured through the
   expo-splash-screen plugin in app.json.
-- Chat first (owner decision, 2026-11-22; tab bar always shown since 2026-11-23): a new user
-  sees Zaki's chat and the Me tab. The first version hid the bar and put Settings in the header:
-  the owner read the missing bar as a broken build, and `router.push` to a tab with `href: null`
-  does nothing. The bar and `Screen` pad by the bottom safe-area inset (Android is edge-to-edge;
-  3-button navigation is 48dp and covered the composer). Since 2026-11-23 (owner decision) a tab
-  never appears silently: Zaki introduces it in the chat (money talk: Daftar; family/friends
-  words: People; third active day: Today) with an Open card, written on the phone by
-  `addLocalFriendMessage` (never synced, client_id `local:intro:*`); the tab opens on the tap.
-  "Open the Daftar" opens at once; "what can you do?" gets the overview with every card
-  (src/lib/unlock.ts, pure + tested; state in prefs "unlocked" via src/lib/unlock-store.ts).
-  An accepted invite or Daftar link opens its tab directly. No saved state = a user from before
-  chat-first: everything stays open. Story: "Zaki remembers so you don't have to".
+- Five fixed tabs (owner decision, 2026-11-27; replaces chat-first tab unlocking): Today, People,
+  Zaki (centre), Daftar, Me always show, in that order, with no back-to-chat arrow (the centre
+  button and Android back go home). A place the user has not opened yet (`useUnlocked`,
+  src/lib/unlock.ts) shows Zaki's one sentence and an Open button instead of its screen (`Place`,
+  the tabs' `screenLayout` in app/(tabs)/_layout.tsx; the navigator calls `screenLayout` as a plain
+  function, so hooks must sit in a component it returns). The screen is not mounted until then.
+  Zaki still introduces a place in the chat (money talk: Daftar; family/friends words: People;
+  third active day: Today) with an Open card, written on the phone by `addLocalFriendMessage`
+  (never synced, client_id `local:intro:*`); "Open the Daftar" opens at once; "what can you do?"
+  gets the overview with every card (unlock.ts pure + tested; prefs "unlocked" via
+  unlock-store.ts). An accepted invite or Daftar link opens its place. No saved state = a user from
+  before: everything is open. The bar and `Screen` pad by the bottom safe-area inset (Android is
+  edge-to-edge). A tab with `href: null` cannot be opened by `router.push`: /upcoming (Plans) and
+  /trackers are stack screens now. The Today tab's badge is `useNeedsYouCount` (saved copies only,
+  no request). Story: "Zaki remembers so you don't have to".
 - Sign-in is required at onboarding (owner decision, 2026-11-23); only a build without sign-in
   configured shows "Start" without it.
 - Growth plan (2026-11-23, doc https://claude.ai/artifact/G2Z59tkVagTUrDvsschK1R): beachhead user
@@ -540,6 +547,21 @@ Rules:
   creator: `payerIsCreator`) shows on the page, in the member's screen and in the WhatsApp text.
   Chat: the split tool takes `circle`; that is a pending card (`split_circle`) because it reaches
   others. DELETE /me removes the user from member_ids; /me/export includes splits they are in.
+- Gam'eya book (2026-11-27, kareem's "gam3eya" ask): tables gameyas / gameya_members /
+  gameya_payments (migration gameya), shared shape and pure math in packages/shared/src/gameya.ts
+  (round r = start_month + r-1, the receiver is the member with turn r, everyone pays every round,
+  pot = amount × members, `roundAt` on the organizer's time zone). Routes apps/api/src/routes/gameya.ts,
+  writes gameya/store.ts, wording gameya/rules.ts. The organizer ticks anyone, a member their own row,
+  the public page GET /g/:code shows the turns and takes "I paid" (POST form, anyone with the link:
+  the organizer is told and can untick). Amount, start and members lock after the first payment
+  (422 "started"). Remind = chat line + push to unpaid Zaki members (once per 12 h) and a WhatsApp
+  text for the rest. Tick (gameya/notes.ts, outside the daily Zaki budget, 10:00-22:00 local): the
+  day before pay day to each unpaid Zaki member, and on pay day from 18:00 a summary to the organizer.
+  Chat by rules (gameya/match.ts, step 1a‴, strict: "جمعية" is also the co-op shop): "دفعت الجمعية"
+  records my payment, "الدور على مين" answers, "اعمل جمعية" opens the form. Phone: one home in the
+  Daftar's People part (row group), "+" sheet row, app/gameya/new.tsx and [id].tsx, Today "Needs
+  you" (pay from 3 days before, hand over the pot). In /bootstrap, /me/export; DELETE /me hands an
+  owned gam'eya to the first other Zaki member by turn. Records only.
 - Photos (owner decision, 2026-11-23, the only exception to text-only): limits in
   packages/shared/src/photos.ts. Receipts: POST /receipts/read (apps/api/src/routes/photos.ts)
   sends the photo to `readReceipt` (src/ai/model.ts, RECEIPT_SYSTEM, non-nullable schema) once,
@@ -574,7 +596,7 @@ Rules:
   - User.gender ("female"/"male", PATCH /me, onboarding in Arabic, Settings, chat setting "address")
     decides ADDRESS THE USER AS before the old memory rule; while unset the context asks Zaki to ask once.
   - Item.alarm: only when the user asks or says yes; the phone schedules it on the "alarms" channel
-    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). A full-screen alarm needs a new native build.
+    (MAX importance, bypassDnd, iOS timeSensitive; SQLite v5). Full-screen alarm: see "Full-screen alarm".
 
 - Saved copies and lenient lists (2026-11-23): server-only screens (circles list, a circle with its
   feed and trackers, Daftar, money, sections, tasks, trackers, splits) read through `cachedGet` in
@@ -704,7 +726,13 @@ Rules:
   (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all
   (what the API's pool does when that is used up: "Kept database connections").
 - OTA fixes apply without a restart: src/lib/updates.ts checks on start and on return (at most every
-  10 min), downloads in the background and reloads when the user leaves the app.
+  10 min), downloads in the background and reloads when the user leaves the app. Me > Advanced
+  (always shown since 2026-11-27) says which update is running (short id and date, or "Built-in
+  version") and has "Update now" (`updateNow`: check, fetch, reload, and the reason on the screen
+  when the phone refuses one, e.g. an update that failed to start). Added after the layout rebuild's
+  update did not show on the owner's Pixel (build 89) although branch, channel, runtime and the
+  publish were right and no start-up error was reproduced (jest-expo android render of every route;
+  never Hermes or a phone): ask for that screen's line first next time.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
   "<id>.part", each retried with growing waits; a stopped download keeps its bytes ("paused"),
   resumes by itself when the network returns or the app comes back to the front, and the button says
@@ -1214,6 +1242,22 @@ Rules:
     disclosure → permission flow before a release with it; the in-app disclosure (places.tsx) comes
     before the system question. Privacy text says what is kept (legal/content.ts).
   - Needs a new Android build (native modules). Until then the screen says "needs a newer version".
+- Full-screen alarm (2026-11-26, Android, native): modules/zaki-alarm (local Expo module, Kotlin).
+  `withNativeAlarms` (src/notifications/alarm.ts, pure + tested) sends every planned notification
+  with `alarm` to it instead of expo-notifications (and cancels an expo copy of the same identifier,
+  so a phone moving to the new build never rings twice); a plan that stops being an alarm goes back.
+  Native side: kept in SharedPreferences "zaki_alarms", AlarmManager.setAlarmClock when exact alarms
+  are allowed (SCHEDULE_EXACT_ALARM, user-granted on Android 14+), else setAndAllowWhileIdle (may be
+  late); re-armed on boot, app update and permission change (missed by < 30 min: rings at once). It
+  rings as an insistent notification on channel "zaki_alarm_ring" (alarm sound, USAGE_ALARM) with a
+  full-screen intent to AlarmActivity (over the lock screen: time, words, Stop / 10 more minutes /
+  Open Zaki), stopping by itself after 10 min. A snooze is `<id>~snooze`, never listed to JS. Words
+  come from JS at schedule time (i18n `t.alarms`). Me › Alarms shows buttons to the two system
+  settings when they are off, and "Try an alarm" (10 s). Optional module: builds before it, iPhone
+  and Expo Go keep the loud "alarms" channel. Google Play: USE_FULL_SCREEN_INTENT is only granted by
+  default to alarm/calling apps on Android 14+, so the Play listing needs the full-screen intent
+  declaration (else it silently becomes a banner; the app shows the setting button). Not yet run on
+  a real phone when written.
 
 - Shared household lists (2026-11-26, kareem: "shared household list"): tables house_lists /
   house_list_items, routes apps/api/src/routes/lists.ts, writes apps/api/src/lists/store.ts, wording
@@ -1232,6 +1276,91 @@ Rules:
   (`peekShopLists`, list `place` = place kind). Free; in /bootstrap, /me/export (list_items) and
   DELETE /me (private lists go). The phone shows list entry points only once GET /lists answered,
   so an over-the-air update before the server deploy shows nothing new.
+
+- Layout map (2026-11-27, owner-approved rebuild; kareem: "so much scrolling", "reduce texts way
+  more", "the playful first look, merged"). The one rule: a thing lives in ONE home and shows up
+  in Today when it is due.
+  - Places: Zaki (chat; the "+" beside the composer starts any job, chat/plus.ts + PlusMenu.tsx;
+    `/?compose=remind` puts "Remind me to " in the composer). Today (today/needs.ts pure: "Needs
+    you" = task requests, homework to review, Daftar entries to confirm, unpaid group-split shares;
+    then Plans, Lists with open items, Tracking, the door to A space for you; no greeting). People
+    (circles; a circle is a one-phone summary: check-in card, tiles, the newest 2 news lines).
+    Daftar (one `Segmented`: Spending / People / Splits, one "+"). Me (rows that each open one page).
+  - Routes added: /circle/feed, /circle/info, /circle/tasks, /circle/homework (This week / Pocket
+    money), /circle/money, /circle/trackers (all `?id=`), /me/zaki, look, reminders, payments,
+    memory, privacy, advanced. /list?circle= shows that circle's lists; /task/new takes
+    `homework=1`, /split/new takes `circle`. Every older route still works.
+  - Screen rules: one home, shown where due; one screen one job (more than ~4 section titles
+    becomes a summary with tiles); the first phone-height answers the place's question, no greeting
+    or explainer text; one "+" in the header's trailing corner opens a sheet, no add buttons inside
+    content (an empty state may carry one); making starts from a sheet, looking is a push; one
+    filled button per screen, and cards in a list use tonal / outline; dangerous actions last on an
+    info page, red, behind `confirm`; a switch (`Segmented`, 2-3 one-word parts) is for views and
+    chips are for answers; a button is at most three words; one name per thing (Daftar / الدفتر,
+    People / الناس, circle / دايرة, A space for you / مساحة ليك, Plans / مواعيدك, Today /
+    النهارده); an empty screen is Zaki's one sentence and one button (`IntroPanel`). Far fewer
+    words: no helper sentence under a title, row, button or field; legal and safety text stays.
+    Applied to every screen on 2026-11-27 (strings.ts lost about 230 lines). What stays, short:
+    Session's "not a doctor" line, consent ticks and helpline, "Zaki is an AI, not a person.",
+    the location disclosure on My places, the paywall's terms, "A record only" on pocket money,
+    one line where a photo goes (receipt, homework pages), and "Tap the wallet for who paid" on
+    a new split (the only hint left, because the control has no label). A new string follows the
+    same budget: a button 1-3 words, a row's value line one line, an empty state one sentence.
+  - Building blocks (src/ui): `Segmented`, `Tile` / `TileGrid`, `NavRow` / `RowGroup`,
+    `IntroPanel` (layout.tsx), `useAddSheet` / `AddSheet` / `HeaderPlus` (AddSheet.tsx, usage at
+    the top of the file; plain `Modal`). Words: src/i18n/layout/<area>.ts (common, tabs, today,
+    circle, circlejobs, daftar, chat, me), read as `t.lay.<area>.<key>`; `SameKeys` fails the build
+    on a key missing in English.
+  - Colour (replaces the liquid-glass and near-white notes): a light mesh of the theme behind every
+    screen (assets/bg/mesh-*.jpg, `node scripts/make-meshes.mjs` in apps/mobile, needs Playwright),
+    cards of 86% white with a bright edge (`glass`) and a soft theme-tinted shadow, near-black ink.
+    The bright edge does not show on white: a line inside a card is `palette.lineStrong`, a quiet
+    fill `palette.wash`. Icons identify: one Ionicon per meaning across the app (tasks
+    checkmark-circle, homework school, lists cart, money wallet, split pie-chart, receipt camera,
+    reminder notifications, alarm alarm, place location, tracker stats-chart, memory bulb, privacy
+    shield, invite heart, plan sparkles, Zaki chat bubble, "Zaki does it for you" color-wand), in
+    a soft square coloured by `kind` (tokens.ts: money yellow, people / done / trackers green,
+    place / split blue, alarm / memory violet, `neutral` for housekeeping rows, else the theme) on
+    `IconTile`, `Tile`, `NavRow` and sheet rows. `IconName` is typed, so a name Ionicons lacks
+    fails the typecheck; a new icon must not reuse another meaning's glyph.
+  - Contrast (computed 2026-11-27, all three themes): text is 4.5:1 or more on a card and on the
+    mesh under the header line. For that `primary` (the filled button under white words) is
+    deeper than the first orange (#CE491A / #12856E / #7659E6), `inkFaint` is only a shade
+    lighter than `inkSoft`, and each kind's ink is checked on its square. `primary` is a fill and
+    an icon colour, never small text: words in the theme's colour use `primaryInk`. Re-compute
+    after changing a theme colour or a mesh spot (the darkest mesh pixel below the top 11%).
+  - The browser preview does not flip paddingStart / paddingEnd in Arabic (the phone does): shared
+    rows use paddingHorizontal. Its sample data (demo/server.web.ts, `SEED` restarts a saved
+    preview) has something for every new screen.
+  - From the first review round: a card that comes in a list never has a filled button (tonal;
+    one filled button a screen); `Segmented` switches views, an answer to pick is chips (`Choice`,
+    me/parts.tsx); a link to one part of a screen carries it (`/money?part=people`, `/list?new=1`;
+    the screen uses the word up with `router.setParams`); from a screen above the tabs go to a tab
+    with `router.dismissTo` (a plain `navigate` stacks a second copy of the tabs); white on the
+    filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
+    splash are native: they change with the next Android build, the in-app Zaki art over the air.
+
+- Forward from WhatsApp (2026-11-27, kareem: "add forward to whatsapp in a smart way"). A forwarded
+  message is an ordinary chat message whose text starts with `FORWARD_MARK` ("↪ ",
+  packages/shared/src/forward.ts: `markForwarded` tidies WhatsApp copies (time stamps go, the
+  newest kept as "(sent …)", "<Media omitted>" / deleted lines go), `readForwarded`, `routeShare`).
+  So it is saved in SQLite first, goes out through the outbox, needs no column, and old builds show
+  "↪ text". Server (pipeline/conversation.ts + apps/api/src/forward/read.ts): no rule shortcut acts
+  on it (money, trackers, lists, yes/no, undo, status, alarm words are someone else's), the model
+  gets `forwardNote` (someone else's words, "(sent …)" dates, one item per thing, no memories, no
+  money logged), memories are dropped and at most 6 plans kept, what it saved gets one card
+  `forward_saved` whose Undo cancels them all (undo `items_cancel`), and a school homework list
+  (`homeworkDrafts`: 2+ lines with subjects) is offered as a pending `homework_batch` card per child
+  in her family circles (members marked "teen", else everyone without a grown-up role; never when
+  she is a teen) that sends the batch on Yes. Forwarded words never decide the reply language
+  (`userTexts` skips them). `ai_call` carries `forwarded: true`; `forward_read` counts.
+  Phone: the chat's "+" has "From WhatsApp" (app/forward.tsx, paste; every build, iPhone too); on
+  Android builds from 2026-11-27 Zaki is a share target (app.json intentFilters SEND text/plain,
+  image/*; modules/zaki-share, optional, `take()` + "onShare"; a shared .txt chat export is read
+  as words, its newest 6000 characters). Words are parked in prefs `pending_forward`
+  (forward/inbox.ts) and the chat sends them when open; a photo opens /receipt?shared=<file> and
+  is read at once (receipts stay the only photos). The bubble shows "Forwarded" and folds past 10
+  lines. Evals: evals/cases/forward.jsonl (fwd-*).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

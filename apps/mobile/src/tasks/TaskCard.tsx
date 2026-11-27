@@ -22,7 +22,8 @@ const ACTION_ICON: Partial<Record<TaskAction, "checkmark" | "close" | "notificat
  * One assigned task with the actions this person can take. `onChanged` reloads the list.
  * Yes, No, Done and Cancel show at once (the card's own guess, lib/optimistic.ts) while the
  * server confirms; a nudge, a hand-in and a review wait for the server, because they are Zaki
- * writing to someone else.
+ * writing to someone else. A card's buttons are never filled: cards come in lists, and a screen
+ * has one filled button (only the open hand-in / redo box, one at a time, has its Send filled).
  */
 export function TaskCard({ task: fromList, showCircle, onChanged }: { task: CircleTask; showCircle?: boolean; onChanged: () => void }) {
   const { shown: task, busy, waiting, run: send } = useGuess(fromList);
@@ -218,17 +219,17 @@ export function TaskCard({ task: fromList, showCircle, onChanged }: { task: Circ
       ) : null}
       {!draft && (homeworkOpen || toReview || helpParent) ? (
         <View style={styles.actions}>
-          {homeworkOpen ? <Button label={t.tasks.handIn} size="sm" icon="cloud-upload-outline" disabled={busy} onPress={() => setDraft("hand_in")} /> : null}
-          {homeworkOpen ? <Button label={plain(t.homework.checkOpen)} size="sm" kind="outline" icon="sparkles-outline" onPress={() => router.push({ pathname: "/homework/check", params: { task: task.id } })} /> : null}
-          {helpParent ? <Button label={plain(t.homework.helpOpen)} size="sm" kind="text" icon="bulb-outline" onPress={() => router.push({ pathname: "/homework/help", params: { task: task.id } })} /> : null}
-          {toReview ? <Button label={t.tasks.wellDone} size="sm" icon="star" disabled={busy} onPress={() => void work(() => reviewHomework(task.id, "approved"), t.tasks.approvedSent)} /> : null}
+          {homeworkOpen ? <Button label={t.tasks.handIn} size="sm" kind="tonal" icon="cloud-upload-outline" disabled={busy} onPress={() => setDraft("hand_in")} /> : null}
+          {homeworkOpen ? <Button label={plain(t.homework.checkOpen)} size="sm" kind="outline" icon="color-wand-outline" onPress={() => router.push({ pathname: "/homework/check", params: { task: task.id } })} /> : null}
+          {helpParent ? <Button label={plain(t.homework.helpOpen)} size="sm" kind="text" icon="color-wand-outline" onPress={() => router.push({ pathname: "/homework/help", params: { task: task.id } })} /> : null}
+          {toReview ? <Button label={t.tasks.wellDone} size="sm" kind="tonal" icon="star" disabled={busy} onPress={() => void work(() => reviewHomework(task.id, "approved"), t.tasks.approvedSent)} /> : null}
           {toReview ? <Button label={t.tasks.redo} size="sm" kind="outline" icon="refresh" disabled={busy} onPress={() => setDraft("redo")} /> : null}
         </View>
       ) : null}
       {actions.length ? (
         <View style={styles.actions}>
           {actions.map((a, n) => (
-            <Button key={a} label={t.tasks.actions[a]} size="sm" icon={ACTION_ICON[a]} kind={a === "cancel" ? "danger" : n === 0 ? "filled" : "outline"} disabled={busy} onPress={() => run(a)} />
+            <Button key={a} label={t.tasks.actions[a]} size="sm" icon={ACTION_ICON[a]} kind={a === "cancel" ? "danger" : n === 0 ? "tonal" : "outline"} disabled={busy} onPress={() => run(a)} />
           ))}
           {canRemind && !picking ? <Button label={t.tasks.changeRemind} size="sm" kind="text" icon="alarm-outline" disabled={busy} onPress={() => setPicking(true)} /> : null}
         </View>

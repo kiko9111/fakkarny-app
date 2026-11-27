@@ -52,6 +52,9 @@ const SARA = "u-sara";
 const OMAR = "u-omar";
 const MARIAM = "u-mariam";
 const YOUSSEF = "u-youssef";
+const ALI = "u-ali";
+/** Raised when the sample data changes shape: a saved preview from before starts over. */
+const SEED = 2;
 
 interface CircleRow {
   id: string;
@@ -103,6 +106,7 @@ interface State {
   pending_status?: string | null;
   status_asked?: boolean;
   language: string;
+  seed?: number;
 }
 
 const feedPost = (text: string, created_at: string, over: Partial<CirclePost> = {}): CirclePost => ({
@@ -167,13 +171,14 @@ function seed(): State {
     id: "c-family",
     kind: "family",
     name: L("بيت العيلة", "Our home"),
-    family_type: "adults_elders",
+    family_type: "mixed",
     created_at: inHours(-24 * 30),
     members: [
       member(ME, null, { role: "owner", family_role: "adult", last_checkin: { kind: "home", note: null, at: inHours(-14) } }),
       member(MAMA, L("ماما", "Mum"), { family_role: "parent", last_checkin: { kind: "medicine", note: null, at: inHours(-2) } }),
       member(BABA, L("بابا", "Dad"), { family_role: "elder", last_checkin: { kind: "ok", note: null, at: inHours(-5) } }),
       member(SARA, L("سارة", "Sara"), { family_role: "adult", last_checkin: { kind: "arrived", note: null, at: inHours(-1) } }),
+      member(ALI, L("علي", "Ali"), { family_role: "teen" }),
     ],
     invites: [],
     posts: [
@@ -183,6 +188,8 @@ function seed(): State {
         comment_count: 1,
       }),
       feedPost(L("بابا: أنا تمام 💛", "Dad: I'm okay 💛"), inHours(-5), { reactions: [{ key: "pray", count: 3 }] }),
+      feedPost(L("علي سلّم واجب الحساب صفحة 14 📚", "Ali handed in Math homework page 14 📚"), inHours(-6)),
+      feedPost(L("سارة ضافت «لبن» لقايمة البقالة", "Sara added “milk” to the groceries list"), inHours(-9)),
     ],
   };
   const friends: CircleRow = {
@@ -248,6 +255,8 @@ function seed(): State {
     items: [
       item({ title: L("كلّم تيتة", "Call grandma"), due_at: atLocal(0, 20), remind_at: atLocal(0, 19, 45), important: true }),
       item({ title: L("ميعاد الدكتور", "Doctor's appointment"), due_at: atLocal(1, 18), remind_at: atLocal(1, 17) }),
+      item({ title: L("اصحى للشغل", "Wake up for work"), due_at: atLocal(1, 6, 30), remind_at: atLocal(1, 6, 30), alarm: true }),
+      item({ title: L("هات عيش", "Buy bread"), type: "task", place: L("السوبر ماركت", "the supermarket"), place_on: "arrive" }),
       item({ title: L("ادفع فاتورة النت", "Pay the internet bill"), type: "task", due_at: atLocal(3, 12) }),
       item({ title: L("هدية عيد ميلاد مريم", "Mariam's birthday present"), type: "task" }),
       item({ title: L("يوسف · 200", "Youssef · 200"), type: "debt", debt_person: L("يوسف", "Youssef"), debt_amount: 200, debt_direction: "owed_to_me" }),
@@ -271,10 +280,17 @@ function seed(): State {
         id: id(), other_name: L("خالد", "Khaled"), direction: "owed_to_me", amount: 500, currency: "EGP", note: null, status: "pending", mine: true,
         url: "https://zaki.app/d/DEMO2", pay_link: null, circle_id: null, created_at: inHours(-4), responded_at: null, settled_at: null,
       },
+      // Sara wrote this one: it waits for "right / not right" (Today's Needs you).
+      {
+        id: id(), other_name: L("سارة", "Sara"), direction: "i_owe", amount: 150, currency: "EGP", note: L("هدية ماما", "Mum's present"), status: "pending", mine: false,
+        url: null, pay_link: null, circle_id: family.id, created_at: inHours(-7), responded_at: null, settled_at: null,
+      },
     ],
     tasks: [
       task({ title: L("هات عيش وانت راجع", "Grab bread on your way home"), role: "assignee", assigner_name: L("ماما", "Mum"), assignee_name: null, due_at: atLocal(0, 21) }),
-      task({ title: L("واجب العربي: تعبير عن الشتا", "Arabic homework: a short essay on winter"), role: "assigner", assigner_name: null, assignee_name: L("عمر", "Omar"), status: "accepted", responded_at: inHours(-1), homework: true, subject: L("عربي", "Arabic"), reward: 10, assignee_id: OMAR, note: L("صفحة 40 في الكتاب https://example.com/hw", "Page 40 in the book https://example.com/hw"), remind_at: atLocal(0, 18), due_at: atLocal(0, 21) }),
+      task({ title: L("واجب العربي: تعبير عن الشتا", "Arabic homework: a short essay on winter"), role: "assigner", assigner_name: null, assignee_name: L("علي", "Ali"), status: "accepted", responded_at: inHours(-1), homework: true, subject: L("عربي", "Arabic"), reward: 10, assignee_id: ALI, note: L("صفحة 40 في الكتاب https://example.com/hw", "Page 40 in the book https://example.com/hw"), remind_at: atLocal(0, 18), due_at: atLocal(0, 21) }),
+      // Handed in, waiting for the parent's "Well done" or "Redo" (Today's Needs you, Homework's To review).
+      task({ title: L("واجب الحساب صفحة 14", "Math homework page 14"), role: "assigner", assignee_name: L("علي", "Ali"), assignee_id: ALI, status: "done", responded_at: inHours(-20), done_at: inHours(-6), submitted_at: inHours(-6), submission: L("خلصت المسائل كلها، والسؤال 4 مش متأكد منه.", "I did all the sums; not sure about question 4."), homework: true, subject: L("حساب", "Math"), reward: 10, created_at: inHours(-26), due_at: atLocal(0, 8) }),
       task({ title: L("تحجز ميعاد الدكتور لبابا", "Book Dad's doctor appointment"), role: "assigner", assigner_name: null, assignee_name: L("سارة", "Sara"), status: "accepted", responded_at: inHours(-3), can_nudge: true }),
       task({
         title: L("يحجز الملعب يوم الجمعة", "Book the pitch for Friday"), role: "watcher", circle_id: friends.id, circle_name: friends.name,
@@ -288,6 +304,7 @@ function seed(): State {
     messages: [],
     served_morning: false,
     language,
+    seed: SEED,
   };
 }
 
@@ -297,7 +314,7 @@ function load(): State {
     const raw = localStorage.getItem(KEY);
     const saved = raw ? (JSON.parse(raw) as State) : null;
     // Sample data is written in one language: start over when the user switches.
-    if (saved && saved.language === language) return saved;
+    if (saved && saved.language === language && saved.seed === SEED) return saved;
     // The phone's copy holds the old language's sample items too.
     if (saved) clearWebDb();
   } catch {
@@ -872,9 +889,9 @@ const pocket = () => {
     accounts: [
       {
         circle_id: "c-family",
-        circle_name: L("البيت", "Home"),
-        child_id: OMAR,
-        child_name: L("عمر", "Omar"),
+        circle_name: L("بيت العيلة", "Our home"),
+        child_id: ALI,
+        child_name: L("علي", "Ali"),
         parent_id: ME,
         parent_name: L("كريم", "Kareem"),
         role: "parent",
@@ -903,7 +920,7 @@ const demoLists: DemoList[] = [
     name: L("البقالة", "Groceries"),
     place: "grocery",
     circle_id: "c-family",
-    circle_name: L("البيت", "Home"),
+    circle_name: L("بيت العيلة", "Our home"),
     is_owner: true,
     trip: null,
     items: [demoItem(L("بيض", "Eggs"), L("منى", "Mona"), false, 5), demoItem(L("لبن", "Milk"), null, true, 4), demoItem(L("عيش", "Bread"), L("يوسف", "Youssef"), false, 3), demoItem(L("رز", "Rice"), L("منى", "Mona"), false, 6, true)],
@@ -949,6 +966,48 @@ on("DELETE", "/lists/([^/]+)", (m) => {
   if (i >= 0) demoLists.splice(i, 1);
   return null;
 });
+// A gam'eya that started last month: my turn is next month, two of five paid this month.
+const gMonth = (n: number) => {
+  const d = new Date(now());
+  d.setDate(15);
+  d.setMonth(d.getMonth() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const demoGameya = {
+  id: "g-demo",
+  name: L("جمعية الشغل", "Work gam'eya"),
+  amount: 1000,
+  currency: "EGP",
+  pay_day: 5,
+  start_month: gMonth(-1),
+  months: 5,
+  pot: 5000,
+  circle_id: null,
+  circle_name: null,
+  code: "demo",
+  url: "https://zaki.preview/g/demo",
+  mine: true,
+  owner_name: null,
+  instapay: null,
+  members: [L("سارة", "Sara"), L("أنا", "Me"), L("منى", "Mona"), L("يوسف", "Youssef"), L("هبة", "Heba")].map((name, i) => ({ id: `gm${i + 1}`, name, user_id: null, turn: i + 1, month: gMonth(i - 1), received: i === 0, is_me: i === 1 })),
+  payments: [1, 2, 3, 4, 5].map((n) => ({ member_id: `gm${n}`, round: 1 })).concat([{ member_id: "gm1", round: 2 }, { member_id: "gm3", round: 2 }]),
+  round: 2,
+  created_at: iso(now()),
+};
+const gameyaAnswer = () => ({ gameya: demoGameya, share_text: demoGameya.name });
+on("GET", "/gameyas", () => ({ gameyas: [demoGameya] }));
+on("GET", "/gameyas/([^/]+)", () => gameyaAnswer());
+on("POST", "/gameyas", (_m, b) => ({ gameya: { ...demoGameya, name: String(b.name ?? demoGameya.name) }, share_text: String(b.name ?? "") }));
+on("POST", "/gameyas/([^/]+)/paid", (_m, b) => {
+  demoGameya.payments = demoGameya.payments.filter((p) => !(p.member_id === b.member_id && p.round === b.round));
+  if (b.paid) demoGameya.payments.push({ member_id: String(b.member_id), round: Number(b.round) });
+  return gameyaAnswer();
+});
+on("POST", "/gameyas/([^/]+)/received", (_m, b) => {
+  demoGameya.members = demoGameya.members.map((m) => (m.turn === b.round ? { ...m, received: Boolean(b.received) } : m));
+  return gameyaAnswer();
+});
+on("POST", "/gameyas/([^/]+)/remind", () => ({ reminded: 0, share_text: demoGameya.name }));
 on("GET", "/pocket-money", () => pocket());
 on("POST", "/pocket-money/paid", (_m, b) => {
   pocketPaid = Math.min(30, pocketPaid + Number(b.amount ?? 0));
@@ -1022,6 +1081,14 @@ on("POST", "/tasks/([^/]+)/done", (m) => {
 on("POST", "/tasks/([^/]+)/cancel", (m) => {
   const t = findTask(m[1]!);
   t.status = "cancelled";
+  return { task: t };
+});
+on("POST", "/tasks/([^/]+)/review", (m, b) => {
+  const t = findTask(m[1]!);
+  const redo = b.verdict === "redo";
+  t.review = redo ? "redo" : "approved";
+  t.review_note = (b.note as string) ?? null;
+  if (redo) Object.assign(t, { status: "accepted", done_at: null, submission: null, submitted_at: null });
   return { task: t };
 });
 on("POST", "/tasks/([^/]+)/nudge", (m) => {
@@ -1221,7 +1288,16 @@ const splits = (): Split[] => {
     dinner.created_at = inHours(-26);
     dinner.people[1]!.paid = true;
     dinner.web_adds = 1;
-    state.splits = [dinner];
+    // A group split Omar made in the friends circle: my share is still open (Today's Needs you).
+    const lunch = toSplit({
+      title: L("غدا الجمعة", "Friday lunch"),
+      people: [{ name: L("عمر", "Omar") }, { name: L("أنا", "Me") }, { name: L("مريم", "Mariam") }],
+      subtotal: 420,
+      paid_by: 0,
+    });
+    lunch.created_at = inHours(-8);
+    Object.assign(lunch, { circle_id: "c-friends", mine: false, me: 1, owner_name: L("عمر", "Omar"), instapay: null });
+    state.splits = [lunch, dinner];
   }
   return state.splits;
 };

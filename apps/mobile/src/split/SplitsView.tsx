@@ -6,10 +6,9 @@ import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t, dateLocale } from "@/i18n";
 import { listSplits, peekSplits } from "@/lib/api";
-import { photosAvailable } from "@/lib/photos";
-import { Button, Card, EmptyState, ListRow, LoadingCards, Note, palette, space, Text } from "@/ui";
+import { IntroPanel, ListRow, LoadingCards, Note, space } from "@/ui";
 
-/** The Daftar's "Split the check" view: start a split, and the recent ones. */
+/** The Daftar's Splits part: the recent splits. A new one starts from the tab's "+" (money.tsx). */
 export function SplitsView({ reloadKey }: { reloadKey: number }) {
   const [splits, setSplits] = useState<Split[] | null>(() => peekSplits());
   const [offline, setOffline] = useState(false);
@@ -25,18 +24,9 @@ export function SplitsView({ reloadKey }: { reloadKey: number }) {
 
   return (
     <View style={styles.list}>
-      <Text variant="small" color={palette.inkSoft}>
-        {t.split.intro}
-      </Text>
-      <Button label={t.split.start} icon="receipt-outline" block onPress={() => router.push("/split/new")} />
-      {photosAvailable ? <Button label={t.receipt.split} icon="camera-outline" kind="tonal" block onPress={() => router.push({ pathname: "/receipt", params: { for: "split" } })} /> : null}
       {offline && splits === null ? <Note icon="cloud-offline-outline">{t.split.offline}</Note> : null}
       {!offline && splits === null ? <LoadingCards count={2} tile={false} /> : null}
-      {splits !== null && splits.length === 0 ? (
-        <Card>
-          <EmptyState title={t.split.empty} body={t.split.emptyBody} />
-        </Card>
-      ) : null}
+      {splits !== null && splits.length === 0 ? <IntroPanel title={t.lay.daftar.splitsEmpty} action={t.lay.daftar.addSplit} onAction={() => router.push("/split/new")} /> : null}
       {splits?.map((s) => {
         const left = s.paid_by === null ? 0 : s.people.filter((p, i) => i !== s.paid_by && !p.paid).length;
         return (

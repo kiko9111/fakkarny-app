@@ -78,17 +78,12 @@ export default function NewTrackerScreen() {
   };
 
   const next = () => (last ? void submit() : setStep(steps[at + 1]!));
-  const heading = (title: string, hint?: string) => (
+  const heading = (title: string) => (
     <View style={styles.hero}>
       <ZakiAvatar size={56} glow />
       <Text variant="title" align="center">
         {plain(title)}
       </Text>
-      {hint ? (
-        <Text variant="body" color={palette.inkSoft} align="center">
-          {plain(hint)}
-        </Text>
-      ) : null}
     </View>
   );
 
@@ -103,7 +98,7 @@ export default function NewTrackerScreen() {
 
       {step === "what" ? (
         <>
-          {heading(params.first ? t.trackers.firstTitle : t.trackers.pick, params.first ? t.trackers.firstHint : undefined)}
+          {heading(params.first ? t.trackers.firstTitle : t.trackers.pick)}
           <View style={styles.row}>
             {TrackerKind.options.map((k) => (
               <Chip key={k} icon={TRACKER_ICON[k]} label={plain(t.trackers.kinds[k])} selected={kind === k} onPress={() => pick(k)} />
@@ -123,7 +118,7 @@ export default function NewTrackerScreen() {
 
       {step === "goal" ? (
         <>
-          {heading(kind === "savings" ? t.trackers.savingsGoal : t.trackers.goalTitle, kind === "savings" ? undefined : t.trackers.goalHint)}
+          {heading(kind === "savings" ? t.trackers.savingsGoal : t.trackers.goalTitle)}
           {kind !== "savings" ? (
             <View style={styles.row}>
               <Chip label={t.trackers.noGoal} selected={goal === null && !goalText} onPress={() => (setGoal(null), setGoalText(""))} />
@@ -139,7 +134,7 @@ export default function NewTrackerScreen() {
 
       {step === "ask" ? (
         <>
-          {heading(t.trackers.askTitle, t.trackers.askHint)}
+          {heading(t.trackers.askTitle)}
           <View style={styles.row}>
             <Chip label={t.trackers.askNone} selected={times.length === 0} onPress={() => setTimes([])} />
             {ASK_TIME_CHOICES.map((time) => (
@@ -152,13 +147,12 @@ export default function NewTrackerScreen() {
               />
             ))}
           </View>
-          {money ? <Text variant="small" color={palette.inkSoft} align="center">{plain(t.trackers.moneyPrivate)}</Text> : null}
         </>
       ) : null}
 
       {step === "share" ? (
         <>
-          {heading(t.trackers.shareTitle, t.trackers.shareHint)}
+          {heading(t.trackers.shareTitle)}
           <View style={styles.row}>
             <Chip icon="lock-closed-outline" label={t.trackers.justMe} selected={circleId === null} onPress={() => setCircleId(null)} />
             {circles.map((c) => (

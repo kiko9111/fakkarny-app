@@ -1,13 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import { useLive } from "@/lib/live";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import type { ListTrackersResponse, Tracker } from "@fakkarni/shared";
 import { t } from "@/i18n";
 import { failText } from "@/lib/errors";
 import { addRamadanPack, listTrackers, peekTrackers } from "@/lib/api";
 import { canAdd } from "@/trackers/logic";
 import { TrackerCard } from "@/trackers/TrackerCard";
-import { Button, Card, EmptyState, Note, notify, palette, Screen, Text } from "@/ui";
+import { Card, IntroPanel, Note, notify, palette, Screen, Text, useAddSheet } from "@/ui";
 
 /** Everything the user follows (Today shows the same cards; this page also holds the Ramadan pack). */
 export default function TrackersScreen() {
@@ -39,7 +39,23 @@ export default function TrackersScreen() {
 
   const replace = (next: Tracker) => setTrackers((all) => all.map((x) => (x.id === next.id ? next : x)));
   const own = trackers.filter((x) => !x.pack).length;
-  const add = () => (canAdd(own, limit) ? router.push("/tracker/new") : router.push("/paywall"));
+  // The one "+", in the header. At the free limit it says why before Zaki Pro opens.
+  const more = canAdd(own, limit);
+  const add = useAddSheet([
+    {
+      key: "tracker",
+      icon: "stats-chart-outline",
+      kind: "people",
+      label: more ? t.trackers.add : t.trackers.addPro,
+      onPress: () => {
+        if (more) return router.push("/tracker/new");
+        notify(t.trackers.addPro, "info");
+        router.push("/paywall");
+      },
+    },
+  ]);
+  const navigation = useNavigation();
+  useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
 
   return (
     <Screen
@@ -51,22 +67,14 @@ export default function TrackersScreen() {
           <Text variant="headline" color={palette.friends}>
             {t.ramadan.addPack}
           </Text>
-          <Text variant="small" color={palette.inkSoft}>
-            {t.ramadan.packHint}
-          </Text>
         </Card>
       ) : null}
       {state === "offline" ? <Note icon="cloud-offline-outline">{why}</Note> : null}
-      {state === "ready" && trackers.length === 0 ? <EmptyState title={t.trackers.empty} /> : null}
+      {state === "ready" && trackers.length === 0 ? <IntroPanel title={t.trackers.empty} action={t.trackers.add} onAction={add.open} /> : null}
       {trackers.map((tr) => (
         <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={() => void load()} />
       ))}
-      {state === "ready" ? <Button label={canAdd(own, limit) ? t.trackers.add : t.trackers.addPro} kind={canAdd(own, limit) ? "tonal" : "outline"} icon={canAdd(own, limit) ? "add" : "sparkles"} block onPress={add} /> : null}
-      {state === "ready" && trackers.length > 0 ? (
-        <Text variant="caption" color={palette.inkSoft} align="center">
-          {t.trackers.chatHint}
-        </Text>
-      ) : null}
+      {add.sheet}
     </Screen>
   );
 }

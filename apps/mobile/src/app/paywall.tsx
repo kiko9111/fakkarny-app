@@ -66,11 +66,8 @@ export default function PaywallScreen() {
         <Text variant="display" align="center">
           {plain(t.paywall.title)}
         </Text>
-        <Text variant="body" color={palette.inkSoft} align="center">
-          {t.paywall.subtitle}
-        </Text>
       </View>
-      <View style={styles.points}>{[t.ui.proPoint1, t.ui.proPoint2, t.ui.proPoint3, t.ui.proPoint4].map(point)}</View>
+      <View style={styles.points}>{[t.ui.proPoint1, t.ui.proPoint2, t.ui.proPoint3].map(point)}</View>
 
       {options === null ? <ActivityIndicator color={palette.primary} /> : null}
       {options !== null && options.length === 0 ? (
@@ -116,10 +113,6 @@ export default function PaywallScreen() {
       })}
 
       {options && options.length > 0 ? <Button label={selected?.hasTrial ? t.paywall.ctaTrial : t.paywall.cta} size="lg" block busy={busy} icon="sparkles" onPress={() => void buy()} /> : null}
-      <Text variant="caption" color={palette.inkSoft} align="center">
-        {t.ui.planNote}
-      </Text>
-
       {billingAvailable ? <Button label={t.paywall.restore} kind="text" size="sm" disabled={busy} onPress={() => void doRestore()} style={styles.center} /> : null}
       <Text variant="caption" color={palette.inkFaint} align="center">
         {t.paywall.terms}

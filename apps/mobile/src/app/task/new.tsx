@@ -7,14 +7,15 @@ import { parseReward } from "@/homework/logic";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
 import { dueAt, dueChoices, remindAt, remindChoices, type DueChoice, type RemindChoice } from "@/tasks/logic";
-import { Button, Chip, DateTimePicker, EmptyState, formatPick, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
+import { Button, Chip, DateTimePicker, EmptyState, formatPick, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * Ask someone in the circle to do something. They get the request from Zaki and decide;
  * nothing is added to their list, and the circle sees nothing, until they say yes.
  */
 export default function NewTaskScreen() {
-  const { circle } = useLocalSearchParams<{ circle: string }>();
+  // `homework=1`: opened from a circle's Homework screen, so the form starts as homework.
+  const { circle, homework: asHomework } = useLocalSearchParams<{ circle: string; homework?: string }>();
   const [members, setMembers] = useState<CircleMember[] | null>(null);
   const [who, setWho] = useState<string | null>(null);
   const [familyType, setFamilyType] = useState<FamilyType | null>(null);
@@ -25,7 +26,7 @@ export default function NewTaskScreen() {
   const [customDue, setCustomDue] = useState<Date | null>(null);
   const [customRemind, setCustomRemind] = useState<Date | null>(null);
   const [picking, setPicking] = useState<"due" | "remind" | null>(null);
-  const [homework, setHomework] = useState(false);
+  const [homework, setHomework] = useState(asHomework === "1");
   const [note, setNote] = useState("");
   // Homework extras (2026-11-26): the subject, and pocket money earned on Well done.
   const [subject, setSubject] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export default function NewTaskScreen() {
               <Chip key={m.user_id} icon="person-outline" label={m.name ?? t.circles.noName} selected={who === m.user_id} onPress={() => setWho(m.user_id)} />
             ))}
           </View>
-          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={homework ? t.tasks.homeworkIdea : t.tasks.what} maxLength={120} />
+          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={homework ? t.tasks.homeworkIdea : t.tasks.whatIdea} maxLength={120} />
           <View style={styles.row}>
             <Chip icon="school-outline" label={t.tasks.homeworkToggle} selected={homework} onPress={() => setHomework((h) => !h)} />
           </View>
@@ -115,11 +116,6 @@ export default function NewTaskScreen() {
                 <Chip label={t.homework.rewardCustom} selected={reward === "custom"} onPress={() => setReward("custom")} />
               </View>
               {reward === "custom" ? <TextField value={customReward} onChangeText={setCustomReward} keyboardType="number-pad" placeholder="25" maxLength={4} /> : null}
-              {reward !== null ? (
-                <Text variant="caption" color={palette.inkSoft}>
-                  {t.homework.rewardHint}
-                </Text>
-              ) : null}
             </>
           ) : null}
           {familyType && !title.trim() ? (
@@ -169,7 +165,6 @@ export default function NewTaskScreen() {
             />
           ) : null}
           <Button label={t.tasks.send} icon="send" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
-          <Note icon="hand-left-outline">{plain(t.tasks.intro)}</Note>
         </>
       ) : null}
     </Screen>

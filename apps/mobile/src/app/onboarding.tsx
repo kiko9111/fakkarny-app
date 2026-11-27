@@ -9,7 +9,7 @@ import { patchMe } from "@/lib/api";
 import { track } from "@/lib/analytics";
 import { unlock } from "@/lib/unlock-store";
 import { reloadApp } from "@/lib/reload";
-import { glass, Button, fonts, Icon, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker, type IconName } from "@/ui";
+import { Button, fonts, notify, palette, radius, space, Text, ZakiAvatar, ThemePicker } from "@/ui";
 
 /**
  * F1 (under 2 minutes): meet Zaki and pick a language, then sign in with a code sent by email
@@ -62,16 +62,6 @@ export default function OnboardingScreen() {
   };
 
   if (step === "language") {
-    const point = (icon: IconName, text: string) => (
-      <View style={styles.point}>
-        <View style={styles.pointIcon}>
-          <Icon name={icon} size={20} color={palette.primaryInk} />
-        </View>
-        <Text variant="body" style={styles.flex}>
-          {text}
-        </Text>
-      </View>
-    );
     return (
       <ScrollView style={styles.page} contentContainerStyle={styles.content}>
         <View style={styles.hero}>
@@ -82,11 +72,6 @@ export default function OnboardingScreen() {
           <Text variant="body" color={palette.inkSoft} align="center" style={styles.lead}>
             {t.ui.welcomeBody}
           </Text>
-        </View>
-        <View style={styles.points}>
-          {point("chatbubble-ellipses-outline", t.ui.welcomePoint1)}
-          {point("alarm-outline", t.ui.welcomePoint2)}
-          {point("sparkles-outline", t.ui.welcomePoint3)}
         </View>
         <Text variant="smallStrong" color={palette.inkSoft} align="center">
           {t.ui.themeTitle}
@@ -113,9 +98,11 @@ export default function OnboardingScreen() {
         <Text variant="title" align="center">
           {t.onboarding.signInTitle}
         </Text>
-        <Text variant="small" color={palette.inkSoft} align="center">
-          {authAvailable ? t.ui.signInLine : t.onboarding.notConfigured}
-        </Text>
+        {authAvailable ? null : (
+          <Text variant="small" color={palette.inkSoft} align="center">
+            {t.onboarding.notConfigured}
+          </Text>
+        )}
       </View>
       {language === "ar-EG" ? (
         <View style={styles.form}>
@@ -179,9 +166,6 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, justifyContent: "center", padding: space.xl, gap: space.xl, maxWidth: 520, width: "100%", alignSelf: "center" },
   hero: { alignItems: "center", gap: space.md },
   lead: { maxWidth: 360 },
-  points: { ...glass, gap: space.md, borderRadius: radius.lg, padding: space.lg },
-  point: { flexDirection: "row", alignItems: "center", gap: space.md },
-  pointIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" },
   langs: { gap: space.sm },
   genders: { flexDirection: "row", gap: space.sm },
   form: { gap: space.md },

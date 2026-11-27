@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { requireOptionalNativeModule } from "expo";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
@@ -13,6 +14,7 @@ import { upsertItem } from "@/db/messages";
 import { t, dateLocale } from "@/i18n";
 import { patchItem, registerDevice } from "@/lib/api";
 import { awakeAtMinutes } from "@fakkarni/shared";
+import { withNativeAlarms, type AlarmStatus, type NativeAlarms } from "./alarm";
 import { fill, legacyIds, planReminderNotifications, snoozeId, type PlannedNotification } from "./plan";
 import { signature } from "./reconcile";
 import { createScheduler, listedAt, type NotificationHost } from "./scheduler";
@@ -28,8 +30,13 @@ const CHANNEL = "reminders";
 const MESSAGES_CHANNEL = "messages";
 /** Re-send the token now and then, so the server has it even if its copy was lost. */
 const REREGISTER_MS = 7 * 86400_000;
-/** Alarm-style reminders the user asked for. A full-screen alarm needs a new native build; this is the loudest a notification can be. */
+/**
+ * Alarm-style reminders the user asked for. Builds with modules/zaki-alarm ring them full screen over
+ * the lock screen (native AlarmManager); older builds and iPhone use this loud notification channel.
+ */
 const ALARM_CHANNEL = "alarms";
+const nativeAlarms: NativeAlarms | null = Platform.OS === "android" ? requireOptionalNativeModule<NativeAlarms>("ZakiAlarm") : null;
+const alarmWords = () => ({ stop: t.alarms.stop, snooze: t.alarms.snooze, open: t.alarms.open, channel: t.notifications.alarmChannel });
 
 /** Call once at startup: how notifications show, the Android channel, and reminder quick replies. */
 export async function setupNotifications() {
@@ -138,7 +145,7 @@ function firstAnswer(res: Notifications.NotificationResponse): boolean {
   return true;
 }
 
-const host: NotificationHost = {
+const plainHost: NotificationHost = {
   list: async () => (await Notifications.getAllScheduledNotificationsAsync()).map((r) => ({ identifier: r.identifier, at: listedAt(r.trigger) })),
   schedule: async (n, item) => {
     await Notifications.scheduleNotificationAsync({
@@ -164,7 +171,39 @@ const host: NotificationHost = {
   legacy: legacyIds,
 };
 
+const host = withNativeAlarms(plainHost, nativeAlarms, alarmWords);
 const scheduler = createScheduler({ host, plan: planFor });
+
+/** Whether this build rings alarms full screen (Android builds from 2026-11-26 on). */
+export const fullScreenAlarms = nativeAlarms != null;
+
+/** What Android lets the full-screen alarm do; null without it. */
+export function alarmStatus(): AlarmStatus | null {
+  try {
+    return nativeAlarms?.status() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Opens the system setting that lets alarms ring on time ("exact") or fill the screen. */
+export function openAlarmSetting(which: "exact" | "fullScreen"): boolean {
+  try {
+    return (which === "exact" ? nativeAlarms?.openExactSettings() : nativeAlarms?.openFullScreenSettings()) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Rings a sample alarm in `seconds`, so the user can lock the phone and see it. */
+export function testAlarm(seconds = 10): boolean {
+  if (!nativeAlarms) return false;
+  try {
+    return nativeAlarms.schedule({ id: "test_alarm", at: Date.now() + seconds * 1000, title: "Zaki", body: t.alarms.testBody, snoozeMinutes: 10, ...alarmWords() });
+  } catch {
+    return false;
+  }
+}
 
 /**
  * (Re)plan an item's local notifications in the background (none when it is done or cancelled).
@@ -226,6 +265,11 @@ export async function clearScheduled(): Promise<void> {
   try {
     await scheduler.idle();
     await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    try {
+      nativeAlarms?.cancelAll();
+    } catch {
+      // nothing more to do
+    }
     await Notifications.dismissAllNotificationsAsync().catch(() => {});
   } finally {
     scheduler.reopen();
