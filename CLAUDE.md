@@ -309,7 +309,7 @@ Rules:
   sync then jams for good. `toWireMessage` sends "upsell" and "update" as "chat" unless
   the request carries `x-message-kinds: 2` (sent by the app since Zaki M9). When adding a
   message kind or any enum value the phone parses, gate it the same way.
-- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`).
+- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`); a new one follows "No-app links".
 - Family plan sharing: a member with an active plan of tier "family" covers 6 people in
   all: the payer plus the first 5 others by join time across all of the payer's family
   circles, never 6 per circle (apps/api/src/billing/family.ts); used for the AI allowance
@@ -1340,6 +1340,32 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+- No-app links (2026-11-27, kareem: "no app web pages"): someone not on Zaki opens a WhatsApp link in
+  any browser and answers there. Debts (/d/), splits (/s/) and invites (/i/) came first; now tasks
+  (/t/) and household lists (/l/), both in apps/api/src/routes/link-pages.ts, shapes and pure rules
+  in packages/shared/src/links.ts, words in apps/api/src/links/rules.ts (gender-neutral Arabic).
+  - The recipe for any new one (gam'eya turns, medicine doses) is at the top of
+    apps/api/src/web/link-page.ts: a unique `code` (`withFreshCode`), a GET page through
+    `renderShell` + `sendPage`, answers only as POST forms (`acceptForms`, `postButton`; a link
+    preview never answers) then a 303 back (`backTo`), the app user told by `postUpdate` + push,
+    `PAGE_LIMIT` / `ANSWER_LIMIT`, `getAppBlock` at the end.
+  - The shell (web/shell.ts) has the app's look since this change: Sunrise colours, a soft mesh,
+    86% white card, pill buttons, the spark-smile tile; no emoji on buttons; a page adds its own
+    CSS through `meta.css` with the shell's variables (--primary, --soft, --wash, --line…).
+  - Tasks by link: table link_tasks (creator, other_name, title, note, due_at, status pending |
+    accepted | declined | done | cancelled, web_views). POST /link-tasks (phone-made id), GET
+    /link-tasks, POST /link-tasks/:id/share (the ask while pending, a nudge once accepted),
+    /cancel. The page: accept / already done / not this time, then Done; a decline can still be
+    taken on (`linkTaskNext`). Each answer: a chat line to the creator (client_id
+    `linktask:<id>:<status>`) + push. Only the creator sees them: on the circle's feed as
+    `link_tasks` (old servers: none) and on its Tasks screen ("+" › Send a link, /task/link).
+    In /me/export; removed with the account (FK).
+  - Lists by link: house_lists.share_code (POST /lists/:id/link gives the same link until DELETE
+    stops it; wire `has_link`). The page lists open and recently got things, ticks and unticks,
+    and adds (splitThings); a typed name is kept on the item (added_by_name / done_by_name) and in
+    a `zaki_name` cookie on /l. Adds: a chat line to every person of the list, a push only to the
+    one out shopping; the last open thing ticked: chat + push to all. List screen: "Send a link",
+    "Stop the link".
 - Forward from WhatsApp (2026-11-27, kareem: "add forward to whatsapp in a smart way"). A forwarded
   message is an ordinary chat message whose text starts with `FORWARD_MARK` ("↪ ",
   packages/shared/src/forward.ts: `markForwarded` tidies WhatsApp copies (time stamps go, the

@@ -9,6 +9,8 @@ export const APP_EVENTS = [
   "screen", // props.route: the route pattern, ids replaced ("/circle/[id]")
   "place_introduced", // Zaki introduced a place (props.place)
   "place_opened", // props.place, props.via: "tap" | "ask"
+  "link_task_sent", // a task sent by link to someone not on Zaki
+  "list_link_sent", // a household list's no-app link sent
   "city_asked", // Zaki asked for the user's city in the chat (once)
   "city_picked", // props.changed: a city was already set
   "place_overview", // "what can you do?"
