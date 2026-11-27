@@ -178,6 +178,8 @@ model User {
   listTrips       HouseList[]        @relation("ListTrip")
   listItemsAdded  HouseListItem[]    @relation("ListItemAdder")
   listItemsDone   HouseListItem[]    @relation("ListItemDoer")
+  gameyasOwned    Gameya[]           @relation("GameyaOwner")
+  gameyaSeats     GameyaMember[]     @relation("GameyaSeat")
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
@@ -337,6 +339,7 @@ model Circle {
   tasks         CircleTask[]
   pocketMoney   PocketMoneyEntry[]
   lists         HouseList[]
+  gameyas       Gameya[]
   posts         CirclePost[]
   trackers      Tracker[]
   moneySections MoneySection[]
@@ -761,4 +764,71 @@ model HouseListItem {
 
   @@index([listId, doneAt])
   @@map("house_list_items")
+}
+
+// The gam'eya book (2026-11-27): a rotating savings circle. Records only, no money held.
+model Gameya {
+  id         String   @id @default(uuid()) @db.Uuid
+  // The organizer: keeps the book, ticks anyone's payment, hands over the pot.
+  ownerId    String   @map("owner_id") @db.Uuid
+  circleId   String?  @map("circle_id") @db.Uuid
+  name       String
+  // Whole pounds each member pays each month.
+  amount     Int
+  currency   String   @default("EGP")
+  payDay     Int      @map("pay_day")
+  // "YYYY-MM" of round 1.
+  startMonth String   @map("start_month")
+  // Public page /g/:code.
+  code       String   @unique
+  webViews   Int      @default(0) @map("web_views")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  owner    User            @relation("GameyaOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  circle   Circle?         @relation(fields: [circleId], references: [id], onDelete: SetNull)
+  members  GameyaMember[]
+  payments GameyaPayment[]
+
+  @@index([ownerId])
+  @@index([circleId])
+  @@map("gameyas")
+}
+
+model GameyaMember {
+  id         String    @id @default(uuid()) @db.Uuid
+  gameyaId   String    @map("gameya_id") @db.Uuid
+  name       String
+  // A Zaki user (a member of the circle, or the organizer); others are names only.
+  userId     String?   @map("user_id") @db.Uuid
+  // 1..members: the round whose pot this member takes.
+  turn       Int
+  // The pot of this member's round was handed over.
+  receivedAt DateTime? @map("received_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  gameya   Gameya          @relation(fields: [gameyaId], references: [id], onDelete: Cascade)
+  user     User?           @relation("GameyaSeat", fields: [userId], references: [id], onDelete: SetNull)
+  payments GameyaPayment[]
+
+  @@unique([gameyaId, turn])
+  @@index([userId])
+  @@map("gameya_members")
+}
+
+model GameyaPayment {
+  id        String   @id @default(uuid()) @db.Uuid
+  gameyaId  String   @map("gameya_id") @db.Uuid
+  memberId  String   @map("member_id") @db.Uuid
+  round     Int
+  // owner | member | web
+  markedBy  String   @default("owner") @map("marked_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gameya Gameya       @relation(fields: [gameyaId], references: [id], onDelete: Cascade)
+  member GameyaMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, round])
+  @@index([gameyaId])
+  @@map("gameya_payments")
 }

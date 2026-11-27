@@ -967,6 +967,48 @@ on("DELETE", "/lists/([^/]+)", (m) => {
   if (i >= 0) demoLists.splice(i, 1);
   return null;
 });
+// A gam'eya that started last month: my turn is next month, two of five paid this month.
+const gMonth = (n: number) => {
+  const d = new Date(now());
+  d.setDate(15);
+  d.setMonth(d.getMonth() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const demoGameya = {
+  id: "g-demo",
+  name: L("جمعية الشغل", "Work gam'eya"),
+  amount: 1000,
+  currency: "EGP",
+  pay_day: 5,
+  start_month: gMonth(-1),
+  months: 5,
+  pot: 5000,
+  circle_id: null,
+  circle_name: null,
+  code: "demo",
+  url: "https://zaki.preview/g/demo",
+  mine: true,
+  owner_name: null,
+  instapay: null,
+  members: [L("سارة", "Sara"), L("أنا", "Me"), L("منى", "Mona"), L("يوسف", "Youssef"), L("هبة", "Heba")].map((name, i) => ({ id: `gm${i + 1}`, name, user_id: null, turn: i + 1, month: gMonth(i - 1), received: i === 0, is_me: i === 1 })),
+  payments: [1, 2, 3, 4, 5].map((n) => ({ member_id: `gm${n}`, round: 1 })).concat([{ member_id: "gm1", round: 2 }, { member_id: "gm3", round: 2 }]),
+  round: 2,
+  created_at: iso(now()),
+};
+const gameyaAnswer = () => ({ gameya: demoGameya, share_text: demoGameya.name });
+on("GET", "/gameyas", () => ({ gameyas: [demoGameya] }));
+on("GET", "/gameyas/([^/]+)", () => gameyaAnswer());
+on("POST", "/gameyas", (_m, b) => ({ gameya: { ...demoGameya, name: String(b.name ?? demoGameya.name) }, share_text: String(b.name ?? "") }));
+on("POST", "/gameyas/([^/]+)/paid", (_m, b) => {
+  demoGameya.payments = demoGameya.payments.filter((p) => !(p.member_id === b.member_id && p.round === b.round));
+  if (b.paid) demoGameya.payments.push({ member_id: String(b.member_id), round: Number(b.round) });
+  return gameyaAnswer();
+});
+on("POST", "/gameyas/([^/]+)/received", (_m, b) => {
+  demoGameya.members = demoGameya.members.map((m) => (m.turn === b.round ? { ...m, received: Boolean(b.received) } : m));
+  return gameyaAnswer();
+});
+on("POST", "/gameyas/([^/]+)/remind", () => ({ reminded: 0, share_text: demoGameya.name }));
 on("GET", "/pocket-money", () => pocket());
 on("POST", "/pocket-money/paid", (_m, b) => {
   pocketPaid = Math.min(30, pocketPaid + Number(b.amount ?? 0));

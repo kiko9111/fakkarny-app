@@ -2,6 +2,11 @@ import Constants from "expo-constants";
 import {
   HouseList,
   HouseListResponse,
+  Gameya,
+  GameyaResponse,
+  GameyaRemindResponse,
+  type CreateGameyaRequest,
+  type UpdateGameyaRequest,
   type CreateListRequest,
   type AddListItemsRequest,
   type UpdateListRequest,
@@ -949,6 +954,43 @@ export async function setListTrip(id: string, going: boolean): Promise<HouseList
   return listAnswer(await request(`/lists/${id}/trip`, { method: "POST", body: JSON.stringify({ going }) }));
 }
 
+// The gam'eya book (2026-11-27). Needs a connection for writes (others see them at once), except
+// that every answer goes into the saved copies so the list and the screen agree.
+const parseGameyas = (raw: unknown): Gameya[] => eachValid(Gameya.safeParse, (raw as { gameyas?: unknown } | null)?.gameyas);
+export async function listGameyas(): Promise<Gameya[]> {
+  return cachedGet("/gameyas", parseGameyas);
+}
+export const peekGameyas = (): Gameya[] | null => peek("/gameyas", parseGameyas);
+/** One gam'eya from the saved list (no request of its own: GET /gameyas carries everything). */
+export const peekGameya = (id: string): Gameya | null => peekGameyas()?.find((g) => g.id === id) ?? null;
+export async function getGameya(id: string): Promise<GameyaResponse> {
+  return gameyaAnswer(await cachedGet(`/gameyas/${id}`, GameyaResponse.parse));
+}
+export function savedGameya(g: Gameya): Gameya {
+  saved("/gameyas", parseGameyas, (old) => ({ gameyas: old.some((x) => x.id === g.id) ? old.map((x) => (x.id === g.id ? g : x)) : [g, ...old] }));
+  return g;
+}
+const gameyaAnswer = (res: GameyaResponse): GameyaResponse => {
+  savedGameya(res.gameya);
+  return res;
+};
+const gameyaWrite = async (path: string, method: string, body?: unknown): Promise<GameyaResponse> => {
+  const res = gameyaAnswer(GameyaResponse.parse(await request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })));
+  reads.set(`/gameyas/${res.gameya.id}`, res);
+  return res;
+};
+export const createGameya = (body: CreateGameyaRequest) => gameyaWrite("/gameyas", "POST", body);
+export const updateGameya = (id: string, body: UpdateGameyaRequest) => gameyaWrite(`/gameyas/${id}`, "PATCH", body);
+export const markGameyaPaid = (id: string, member_id: string, round: number, paid: boolean) => gameyaWrite(`/gameyas/${id}/paid`, "POST", { member_id, round, paid });
+export const markGameyaReceived = (id: string, round: number, received: boolean) => gameyaWrite(`/gameyas/${id}/received`, "POST", { round, received });
+export async function remindGameya(id: string): Promise<GameyaRemindResponse> {
+  return GameyaRemindResponse.parse(await request(`/gameyas/${id}/remind`, { method: "POST" }));
+}
+export async function deleteGameya(id: string): Promise<void> {
+  await request(`/gameyas/${id}`, { method: "DELETE" });
+  saved("/gameyas", parseGameyas, (old) => ({ gameyas: old.filter((g) => g.id !== id) }));
+}
+
 // Every tab in one answer (GET /bootstrap, servers from 2026-11-26). The server runs each screen's
 // own GET as this caller and returns their texts together; each is checked with its screen's
 // parser here, exactly like a single answer, before it replaces a saved copy.
@@ -963,6 +1005,7 @@ const PARSERS: [RegExp, (raw: unknown) => unknown][] = [
   [/^\/memories$/, parseMemories],
   [/^\/pocket-money$/, parsePocket],
   [/^\/lists$/, parseLists],
+  [/^\/gameyas$/, parseGameyas],
   [/^\/circles\/[^/]+$/, parseCircle],
   [/^\/circles\/[^/]+\/feed$/, parseFeed],
   [/^\/circles\/[^/]+\/trackers$/, parseShared],

@@ -17,6 +17,7 @@ import { newInviteCode } from "../circles/rules";
 import { card, findTracker, kindOf, pickCircle, type Ctx, type One } from "./actions";
 import { foldName, LABEL, matchByName, type PendingPayload, type StoredCard } from "./cards";
 import { confirmTrip, runListAction } from "../lists/chat";
+import { assignHomeworkBatch } from "../homework/store";
 
 /**
  * The app actions added on 2026-11-23 ("Zaki can do everything in the app from the chat"):
@@ -515,6 +516,14 @@ export async function runMorePending(prisma: PrismaClient, user: User, c: Stored
       await prisma.event.create({ data: { userId: user.id, name: "split_created", propsJson: { via: "chat", people: people.length, circle: true } } });
       const share = Math.round(p.amount / people.length);
       return withNotices(done(LABEL.splitMade(lang, p.amount, people.length, share), `/split/${row.id}`), notices);
+    }
+    case "homework_batch": {
+      const items = p.items.map((i) => ({ title: i.title, subject: i.subject, dueAt: i.dueAt ? new Date(i.dueAt) : null, note: null, reward: null }));
+      const made = await assignHomeworkBatch(prisma, { circleId: p.circleId, assignerId: user.id, assigneeId: p.assigneeId, items }, now);
+      if (made === "not_members") return fail(LABEL.notFound(lang, "person"));
+      if (made === "too_many") return fail(LABEL.tooMany(lang));
+      await prisma.event.create({ data: { userId: user.id, name: "forward_homework_sent", propsJson: { count: items.length } } });
+      return withNotices(done(LABEL.homeworkBatchSent(lang, made.tasks[0]?.assignee.name ?? "?", made.tasks.length)), made.notices);
     }
     case "split_i_paid": {
       const row = await prisma.split.findFirst({ where: { id: p.splitId, memberIds: { has: user.id } } });

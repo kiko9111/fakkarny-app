@@ -9,7 +9,8 @@ import { track } from "@/lib/analytics";
 import { getMoney, peekMoney, readReceipt } from "@/lib/api";
 import { logAmount, makeSection } from "@/money/actions";
 import { sameSection } from "@/money/logic";
-import { pickPhotos } from "@/lib/photos";
+import { photoFromFile, pickPhotos } from "@/lib/photos";
+import type { PhotoUpload } from "@fakkarni/shared";
 import { handOffDraft } from "@/split/handoff";
 import { draftFromReceipt, startPeople } from "@/split/logic";
 import { Button, Card, Chip, Note, notify, palette, Screen, space, Text } from "@/ui";
@@ -20,10 +21,11 @@ type State = { step: "pick" } | { step: "reading" } | { step: "read"; receipt: R
  * A receipt photo (owner decision, 2026-11-23: receipts and homework are the only photos). The
  * photo goes to the server once to be read and is never kept. The result fills a Daftar entry
  * (section picked here, confirmed with a tap) or the bill split. `?for=split` comes from the split
- * form: the reading goes straight back to it.
+ * form: the reading goes straight back to it. `?shared=<file uri>`: a photo shared to Zaki from
+ * another app (forward/intake.ts), read at once because sharing it to Zaki was the tap.
  */
 export default function ReceiptScreen() {
-  const params = useLocalSearchParams<{ for?: string }>();
+  const params = useLocalSearchParams<{ for?: string; shared?: string }>();
   const forSplit = params.for === "split";
   const [state, setState] = useState<State>({ step: "pick" });
   const expenses = (list: MoneySection[]) => list.filter((s) => s.kind === "expense");
@@ -51,9 +53,31 @@ export default function ReceiptScreen() {
     if (!picked) return;
     if ("denied" in picked) return notify(t.receipt.denied);
     if ("tooBig" in picked) return notify(t.receipt.tooBig);
+    await read(picked.photos[0]!);
+  };
+
+  // A photo shared to Zaki: read once when the screen opens.
+  useEffect(() => {
+    const uri = params.shared;
+    if (!uri) return;
+    let gone = false;
+    void (async () => {
+      setState({ step: "reading" });
+      const got = await photoFromFile(uri).catch(() => null);
+      if (gone) return;
+      if (!got) return setState({ step: "error", message: t.receipt.failed });
+      if ("tooBig" in got) return setState({ step: "error", message: t.receipt.tooBig });
+      await read(got.photo);
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [params.shared]);
+
+  const read = async (photo: PhotoUpload) => {
     setState({ step: "reading" });
     try {
-      const res = await readReceipt(picked.photos[0]!);
+      const res = await readReceipt(photo);
       track("receipt_read", { ok: !!res.receipt, items: res.receipt?.items.length ?? 0, for: forSplit ? "split" : "daftar" });
       if (res.error === "limit") return setState({ step: "error", message: t.receipt.limit, limit: true });
       if (!res.receipt) return setState({ step: "error", message: t.receipt.unreadable });

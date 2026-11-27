@@ -16,6 +16,7 @@ import { inBackground } from "../lib/background";
 import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
 import { addToList, listFastPath } from "../lists/chat";
+import { gameyaFastPath } from "../gameya/chat";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
@@ -23,7 +24,8 @@ import { settleCards } from "../chat/more-actions";
 import { CANCELLED_REPLY, CONFIRMED_REPLY, HOME_REPLY, homeCheckin, isCancel, isConfirm, isUndo, LABEL, storedCards, type StoredCard } from "../chat/cards";
 import { UNDO_WINDOW_MS, undoCard } from "../chat/undo";
 import type { Message } from "../generated/prisma/client";
-import { currencyOf, parsePlaceTrigger, swapCurrencyWords } from "@fakkarni/shared";
+import { currencyOf, parsePlaceTrigger, readForwarded, swapCurrencyWords } from "@fakkarni/shared";
+import { forwardNote, homeworkCards, homeworkOffer, savedCard } from "../forward/read";
 import { withPlace } from "./place";
 
 const EMPTY_ACTIONS: Pick<FriendResponse, "create_items" | "update_items" | "save_memories"> & { app_actions?: FriendResponse["app_actions"] } = {
@@ -69,7 +71,12 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const mark = (k: string) => {
       if (timing) timing[k] = Date.now() - t0;
     };
-    const script = replyLang(detectScript(message.text));
+    // Forwarded from WhatsApp (forward/read.ts): someone else's words. No rule shortcut acts on
+    // them ("دفعت 300" in a forwarded message is not the user's spending); the model reads them,
+    // told so, and Zaki answers in the user's own language.
+    const fwd = readForwarded(message.text);
+    const forwarded = fwd.forwarded;
+    const script: ReplyLang = forwarded ? (user.language === "en" ? "english" : "arabic") : replyLang(detectScript(message.text));
     const crisisKeyword = looksLikeCrisis(message.text);
     const dayStart = localToUtc(`${toLocalIso(now, user.timezone).slice(0, 10)}T00:00`, user.timezone);
 
@@ -78,9 +85,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     // checks below run (most messages reach the model). A message the rules answer on their
     // own words ("thanks", an emoji) never reaches the model: its context is not loaded at all
     // (it was ~25 lookups that held the rule checks' own lookups back in the queue).
-    const canned = crisisKeyword ? null : fastReply(message.text, script);
+    const canned = crisisKeyword || forwarded ? null : fastReply(message.text, script);
     let ctxEarly: ReturnType<typeof loadContext> | null = canned ? null : loadContext(prisma, user, now);
     ctxEarly?.catch(() => {});
+    // A school's homework list in a forwarded message: offered to the children in her family circles.
+    const homeworkEarly = forwarded && !crisisKeyword ? homeworkOffer(prisma, user, fwd.body, now).catch(() => null) : Promise.resolve(null);
     const [today, lastFriend] = await Promise.all([
       crisisKeyword ? Promise.resolve(0) : prisma.message.count({ where: { userId: user.id, role: "user", createdAt: { gte: dayStart } } }),
       prisma.message.findFirst({ where: { userId: user.id, role: "friend", createdAt: { lte: message.createdAt } }, orderBy: { createdAt: "desc" } }),
@@ -97,21 +106,21 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 0a. "Yes" / "no" to a card Zaki is waiting on ("Ask Mona to buy bread?"): done by rules.
-    const answered = crisisKeyword ? null : await answerPendingCards(prisma, user, message, lastFriend, script, now, requireSubscription ?? false);
+    const answered = crisisKeyword || forwarded ? null : await answerPendingCards(prisma, user, message, lastFriend, script, now, requireSubscription ?? false);
     if (answered) {
       counted(prisma, user.id, "reply_fast_path", { card: true });
       return answered;
     }
 
     // 0b. "Undo" / "تراجع": takes back Zaki's latest change of the user's own, by rules.
-    const undone = crisisKeyword || !isUndo(message.text) ? null : await undoLatest(prisma, user, message, script, now);
+    const undone = crisisKeyword || forwarded || !isUndo(message.text) ? null : await undoLatest(prisma, user, message, script, now);
     if (undone) {
       counted(prisma, user.id, "reply_fast_path", { undo: true });
       return undone;
     }
 
     // 0c. "وصلت البيت" / "I'm home": offer to tell the family (a card; nothing goes out without a yes).
-    const home = crisisKeyword ? null : homeCheckin(message.text);
+    const home = crisisKeyword || forwarded ? null : homeCheckin(message.text);
     if (home) {
       const ran = await runAppActions(prisma, user, [{ kind: "checkin", checkin_kind: home }], script, now, { requireSubscription: requireSubscription ?? false });
       if (ran.cards.some((c) => c.status === "pending")) {
@@ -121,7 +130,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 0a'. A plain "yes" to Zaki's status check ("did you get to …?") closes it by rules.
-    const status = crisisKeyword ? null : await answerStatusCheck(prisma, user, message, lastFriend, script, now);
+    const status = crisisKeyword || forwarded ? null : await answerStatusCheck(prisma, user, message, lastFriend, script, now);
     if (status?.result) return status.result;
     // Any other answer to a status check ("not yet, tomorrow") is reminder work: free past the allowance.
     const answersStatus = status?.pending === true;
@@ -133,7 +142,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 1a. Trackers by rules: "شربت مية" logs, "تابع معايا المية" starts one. No AI, no allowance used.
-    const tracked = crisisKeyword ? null : await trackerFastPath(prisma, user, message.text, script, now);
+    const tracked = crisisKeyword || forwarded ? null : await trackerFastPath(prisma, user, message.text, script, now);
     const closesReminder = tracked?.closesReminder === true;
     if (tracked && !closesReminder) {
       counted(prisma, user.id, "reply_fast_path", { tracker: true });
@@ -141,7 +150,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 1a'. Expenses and income by rules: "دفعت 300 بنزين" goes to a Daftar section. No AI call.
-    const money = crisisKeyword || tracked ? null : await moneyFastPath(prisma, user, message.text, script, now);
+    const money = crisisKeyword || forwarded || tracked ? null : await moneyFastPath(prisma, user, message.text, script, now);
     if (money) {
       counted(prisma, user.id, "reply_fast_path", { money: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [money.text], response: EMPTY_ACTIONS, now }), money.cards ?? []);
@@ -149,11 +158,19 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     }
 
     // 1a''. Household lists by rules: "ضيف بيض للقايمة", "القايمة فيها ايه", "نازل السوبر ماركت". No AI call.
-    const listed = crisisKeyword ? null : await listFastPath(prisma, user, message.text, script, now).catch(() => null);
+    const listed = crisisKeyword || forwarded ? null : await listFastPath(prisma, user, message.text, script, now).catch(() => null);
     if (listed) {
       counted(prisma, user.id, "reply_fast_path", { list: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [listed.text], response: EMPTY_ACTIONS, now }), listed.cards);
       return { ...result, notices: [...(result.notices ?? []), ...listed.notices.filter((n) => n.userId !== user.id)] };
+    }
+
+    // 1a‴. The gam'eya by rules: "دفعت الجمعية", "الدور على مين", "اعمل جمعية". No AI call.
+    const gameya = crisisKeyword ? null : await gameyaFastPath(prisma, user, message.text, script, now).catch(() => null);
+    if (gameya) {
+      counted(prisma, user.id, "reply_fast_path", { gameya: true });
+      const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [gameya.text], response: EMPTY_ACTIONS, now }), gameya.cards);
+      return { ...result, notices: [...(result.notices ?? []), ...gameya.notices.filter((n) => n.userId !== user.id)] };
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never
@@ -169,7 +186,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       });
       if (used >= limit) {
         if (crisisKeyword || looksDistressed(message.text)) freeCall = "distress";
-        else if (closesReminder || answersStatus || looksLikeReminderWork(message.text)) {
+        else if (!forwarded && (closesReminder || answersStatus || looksLikeReminderWork(message.text))) {
           const freeToday = await prisma.event.count({
             where: { userId: user.id, name: "ai_call", createdAt: { gte: dayStart }, propsJson: { path: ["free"], equals: "reminder" } },
           });
@@ -192,6 +209,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
     const ctx = closesReminder ? await loadContext(prisma, user, now) : await ctxEarly;
     mark("context");
     const history = historyUpTo(ctx.recent, message);
+    const homework = await homeworkEarly;
     let replies: string[];
     let actions = EMPTY_ACTIONS;
     let crisis = crisisKeyword;
@@ -210,11 +228,11 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       // Phone brain (owner decision, 2026-11-25: "the AI is for chatting only, the tasks are math"):
       // the rule engine decides every action here, on the server, the same way on both passes.
       // The phone's model only writes the reply, told what was done or what to ask.
-      const understood = understand(understandInput(ctx, message.text));
+      const understood = understand(understandInput(ctx, forwarded ? fwd.body : message.text));
       const titles = Object.fromEntries(ctx.openItems.map((i) => [i.id, i.title]));
       // Questions about the user's own data ("what do I have this week?", "sagelt kam?") are
       // answered by code with the real numbers: the small model can't read them reliably.
-      const question = !crisisKeyword && understood.chat && !understood.ask ? readQuestion(message.text) : null;
+      const question = !crisisKeyword && !forwarded && understood.chat && !understood.ask ? readQuestion(message.text) : null;
       // When the code decided everything (something to save, change or ask), its own words are
       // the reply at once: no second round trip and no on-phone model run (that took 20-40 s
       // on kareem's Pixel 8 and left messages on "Sending…"). The model only writes small talk.
@@ -271,7 +289,8 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
         replies = modelOk && !skippedAsk && !(promisesReminder(wrote) && !setsReminder(actions)) ? wrote : templateReply(understood, nowLocal, script, titles);
       }
     } else {
-      const modelInput = { system: PERSONA_PROMPT, context: renderContext(ctx), history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
+      const context = forwarded ? `${renderContext(ctx)}\n\n${forwardNote({ homework })}` : renderContext(ctx);
+      const modelInput = { system: PERSONA_PROMPT, context, history, requireArabic: mustReplyInArabic(userTexts(ctx.recent), user.language === "en" ? "english" : "arabic"), todayLocal: nowLocal.slice(0, 10), nowLocal };
       // A failure that may come from the stored chat itself (a request the API refuses, or output that
       // doesn't validate) gets one more try with only the message being answered, so one bad line in
       // the recent chat can't turn every reply into "my brain froze". Timeouts and outages don't.
@@ -321,9 +340,13 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       await event(prisma, user.id, "crisis_flag", { keyword: crisisKeyword });
     }
 
+    // 3a. A forwarded message: nothing about the user is learnt from someone else's words, and a
+    // long message can't fill the plans with a dozen rows.
+    if (forwarded && !crisis) actions = { ...actions, save_memories: [], create_items: actions.create_items.slice(0, MAX_FORWARD_ITEMS) };
+
     // 3b. Asked for an alarm: what Zaki creates or changes this turn rings as one (the model
     // sometimes answered "set" with alarm false). Off words turn it off.
-    const alarm = crisis ? null : wantsAlarm(message.text);
+    const alarm = crisis || forwarded ? null : wantsAlarm(message.text);
     if (alarm !== null) {
       const timed = (i: { type: string }) => i.type === "reminder" || i.type === "task";
       if (actions.create_items.some(timed)) actions = { ...actions, create_items: actions.create_items.map((i) => (timed(i) ? { ...i, alarm } : i)) };
@@ -380,6 +403,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       ? event(prisma, user.id, "ai_call", {
           // Calls let through past the allowance don't count against it.
           purpose: freeCall ? "chat_free" : "chat",
+          ...(forwarded ? { forwarded: true } : {}),
           ...(freeCall ? { free: freeCall } : {}),
           model: FRIEND_MODEL,
           persona: PERSONA_VERSION,
@@ -412,6 +436,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       const out = await addToList(prisma, user, script, listThings.map((title) => ({ title, qty: null })), null, now).catch(() => null);
       if (out) applied = { ...(await withCards(prisma, applied, [out.card])), notices: [...(applied.notices ?? []), ...out.notices.filter((n) => n.userId !== user.id)] };
     }
+    // A forwarded message: what it saved gets one Undo, and a homework list a card per child.
+    if (forwarded && !crisis) {
+      const made = applied.items.filter((i) => i.sourceMessageId === message.id && i.status === "open");
+      const saved = savedCard(script, made);
+      const offered = homework ? homeworkCards(script, homework, user.timezone) : [];
+      applied = await withCards(prisma, applied, [...(saved ? [saved] : []), ...offered]);
+      counted(prisma, user.id, "forward_read", { items: made.length, homework: homework?.drafts.length ?? 0, children: offered.length, list: listThings.length, actions: appActions.length });
+    }
     // A debt with someone in their circles: offer the shared Daftar too (unless the model already did).
     const debts = crisis ? [] : actions.create_items.flatMap((i) => (i.type === "debt" && i.debt && !appActions.some((a) => a.kind === "daftar_add") ? [i.debt] : []));
     if (debts.length) applied = await withCards(prisma, applied, await debtCards(prisma, user, debts, script).catch(() => []));
@@ -432,6 +464,9 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 }
 
 const ARABIC_LETTER = /[\u0600-\u06FF]/;
+
+/** Most plans one forwarded message makes. */
+const MAX_FORWARD_ITEMS = 6;
 
 const UNSET_CHECK =
   "CHECK: your reply says a reminder or alarm is set, but this turn creates or changes no reminder. If the user gave or confirmed a time for something, return it now: update_items with the id from OPEN ITEMS and its time (or create_items if it is not there). If it is already set exactly as they want in OPEN ITEMS, keep your reply and change nothing. If you can't set it, reply without saying it is set.";
