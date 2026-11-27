@@ -28,7 +28,7 @@ const internalToken = randomBytes(18).toString("hex");
 export const isInternal = (req: FastifyRequest): boolean => req.headers[INTERNAL_HEADER] === internalToken;
 
 /** The same screens the phone preloads, in the same order. */
-export const BOOTSTRAP_BASE = ["/circles", "/me", "/tasks", "/trackers", "/daftar", "/money", "/splits", "/memories", "/pocket-money", "/lists"] as const;
+export const BOOTSTRAP_BASE = ["/circles", "/me", "/tasks", "/trackers", "/daftar", "/money", "/splits", "/memories", "/pocket-money", "/lists", "/gameyas"] as const;
 export const BOOTSTRAP_CIRCLE = ["", "/feed", "/trackers"] as const;
 /** Circles covered (the phone preloads the first 8 of its list). */
 export const BOOTSTRAP_MAX_CIRCLES = 8;

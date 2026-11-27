@@ -547,6 +547,21 @@ Rules:
   creator: `payerIsCreator`) shows on the page, in the member's screen and in the WhatsApp text.
   Chat: the split tool takes `circle`; that is a pending card (`split_circle`) because it reaches
   others. DELETE /me removes the user from member_ids; /me/export includes splits they are in.
+- Gam'eya book (2026-11-27, kareem's "gam3eya" ask): tables gameyas / gameya_members /
+  gameya_payments (migration gameya), shared shape and pure math in packages/shared/src/gameya.ts
+  (round r = start_month + r-1, the receiver is the member with turn r, everyone pays every round,
+  pot = amount × members, `roundAt` on the organizer's time zone). Routes apps/api/src/routes/gameya.ts,
+  writes gameya/store.ts, wording gameya/rules.ts. The organizer ticks anyone, a member their own row,
+  the public page GET /g/:code shows the turns and takes "I paid" (POST form, anyone with the link:
+  the organizer is told and can untick). Amount, start and members lock after the first payment
+  (422 "started"). Remind = chat line + push to unpaid Zaki members (once per 12 h) and a WhatsApp
+  text for the rest. Tick (gameya/notes.ts, outside the daily Zaki budget, 10:00-22:00 local): the
+  day before pay day to each unpaid Zaki member, and on pay day from 18:00 a summary to the organizer.
+  Chat by rules (gameya/match.ts, step 1a‴, strict: "جمعية" is also the co-op shop): "دفعت الجمعية"
+  records my payment, "الدور على مين" answers, "اعمل جمعية" opens the form. Phone: one home in the
+  Daftar's People part (row group), "+" sheet row, app/gameya/new.tsx and [id].tsx, Today "Needs
+  you" (pay from 3 days before, hand over the pot). In /bootstrap, /me/export; DELETE /me hands an
+  owned gam'eya to the first other Zaki member by turn. Records only.
 - Photos (owner decision, 2026-11-23, the only exception to text-only): limits in
   packages/shared/src/photos.ts. Receipts: POST /receipts/read (apps/api/src/routes/photos.ts)
   sends the photo to `readReceipt` (src/ai/model.ts, RECEIPT_SYSTEM, non-nullable schema) once,
@@ -1343,7 +1358,7 @@ Rules:
   for the brief time while asleep or with the budget spent. Bullets are allowed here because the
   user asked for the brief. The brief never offers "ask me for more": Zaki knows only those lines.
   NEWS_BRIEF=0 stops it. Layout: its one home is Me > Daily news; from the chat by rules (no AI,
-  apps/api/src/brief/chat.ts, conversation step 1a‴): "ابعتلي أخبار الكورة كل يوم الساعة 8" adds
+  apps/api/src/brief/chat.ts, conversation step 1a⁗): "ابعتلي أخبار الكورة كل يوم الساعة 8" adds
   topics and sets the time, "وقف أخبار الكورة" / "stop the news" removes, each answer with an Open
   card to /me/news; it needs a news word AND an every-day or stop word, so one-off news talk still
   goes to the model. Not on Today: the brief is a message, never something due.

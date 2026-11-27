@@ -16,6 +16,7 @@ import { inBackground } from "../lib/background";
 import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
 import { addToList, listFastPath } from "../lists/chat";
+import { gameyaFastPath } from "../gameya/chat";
 import { briefFastPath } from "../brief/chat";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
@@ -165,7 +166,15 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       return { ...result, notices: [...(result.notices ?? []), ...listed.notices.filter((n) => n.userId !== user.id)] };
     }
 
-    // 1a‴. The daily news brief by rules: "ابعتلي أخبار الكورة كل يوم الساعة 8", "وقف الأخبار". No AI call.
+    // 1a‴. The gam'eya by rules: "دفعت الجمعية", "الدور على مين", "اعمل جمعية". No AI call.
+    const gameya = crisisKeyword ? null : await gameyaFastPath(prisma, user, message.text, script, now).catch(() => null);
+    if (gameya) {
+      counted(prisma, user.id, "reply_fast_path", { gameya: true });
+      const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [gameya.text], response: EMPTY_ACTIONS, now }), gameya.cards);
+      return { ...result, notices: [...(result.notices ?? []), ...gameya.notices.filter((n) => n.userId !== user.id)] };
+    }
+
+    // 1a⁗. The daily news brief by rules: "ابعتلي أخبار الكورة كل يوم الساعة 8", "وقف الأخبار". No AI call.
     const briefed = crisisKeyword ? null : await briefFastPath(prisma, user, message.text, script, aiAllowance != null).catch(() => null);
     if (briefed) {
       counted(prisma, user.id, "reply_fast_path", { brief: true });

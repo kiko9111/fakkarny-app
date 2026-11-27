@@ -14,6 +14,7 @@ import type { PushSender } from "./push";
 import { writeProactive } from "./write";
 import { nextTickAt } from "./schedule";
 import { checkupClientId, checkupLines, hasSomething, isCheckupTime } from "./checkup";
+import { sendGameyaNotes } from "../gameya/notes";
 import { sendDailyBrief } from "../brief/send";
 import type { NewsDeps } from "../brief/news";
 import { isMomentTime, momentClientId, momentLines, momentPrompt, MOMENT_EVERY_DAYS, MOMENT_SYSTEM, pickMemory, QUIET_AFTER_USER_MIN } from "./memory-moment";
@@ -400,6 +401,13 @@ async function pushToUser(deps: TickDeps, user: User, body: string, kind: Messag
  */
 export async function tickUser(deps: TickDeps, user: User, now: Date): Promise<{ sent: boolean; budgetSpent: boolean }> {
   await postDueReminders(deps.prisma, user, now);
+  // Gam'eya pay-day lines: part of a book the user is in, so outside the daily budget.
+  try {
+    const lines = await sendGameyaNotes(deps.prisma, user, now);
+    if (lines.length) await pushToUser(deps, user, lines.join("\n"), "update");
+  } catch (err) {
+    deps.log?.warn({ err: (err as Error).name }, "gameya notes failed");
+  }
   // The news brief the user asked for: at their time, and not counted in Zaki's daily budget.
   if (deps.news) {
     const brief = await sendDailyBrief({ prisma: deps.prisma, model: deps.model, news: deps.news }, user, () => scriptFor(deps.prisma, user), now);
