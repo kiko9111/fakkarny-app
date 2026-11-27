@@ -45,7 +45,8 @@ export type PendingPayload =
   | { kind: "split_i_paid"; splitId: string }
   | { kind: "list_trip"; listId: string }
   /** A forwarded homework list for one child (forward/read.ts): sent as one batch on Yes. */
-  | { kind: "homework_batch"; circleId: string; assigneeId: string; items: { title: string; subject: string | null; dueAt: string | null }[] };
+  | { kind: "homework_batch"; circleId: string; assigneeId: string; items: { title: string; subject: string | null; dueAt: string | null }[] }
+  | { kind: "care_dose"; medId: string; dueAt: string; status: "taken" };
 
 /** How to take back a done card. Only the user's own things; nothing that reached other people. */
 export type UndoPayload =

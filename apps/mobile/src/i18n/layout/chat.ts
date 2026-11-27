@@ -8,6 +8,7 @@ const ar = {
   list: "ضيف للقايمة",
   ask: "اطلب من حد",
   homework: "واجب من المدرسة",
+  medicine: "مواعيد دوا",
   split: "قسّم حساب",
   receipt: "صوّر فاتورة",
   /** A message from WhatsApp: the "+" row, the paste screen, and the label on a forwarded bubble. */
@@ -32,6 +33,7 @@ const en: SameKeys<typeof ar> = {
   list: "Add to a list",
   ask: "Ask someone",
   homework: "Homework from school",
+  medicine: "Medicine times",
   split: "Split a bill",
   receipt: "Scan a receipt",
   forward: "From WhatsApp",

@@ -69,7 +69,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, linkTasks, gameyas] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, linkTasks, gameyas, careMeds, careMarks] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -92,6 +92,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.houseListItem.findMany({ where: { OR: [{ addedById: id }, { doneById: id }] }, include: { list: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.linkTask.findMany({ where: { creatorId: id }, orderBy: { createdAt: "asc" } }),
       prisma.gameya.findMany({ where: { OR: [{ ownerId: id }, { members: { some: { userId: id } } }] }, include: { members: { orderBy: { turn: "asc" } }, payments: true }, orderBy: { createdAt: "asc" } }),
+      prisma.careMed.findMany({ where: { OR: [{ createdById: id }, { personUserId: id }] }, orderBy: { createdAt: "asc" } }),
+      prisma.careDose.findMany({ where: { byUserId: id }, include: { med: { select: { name: true, personName: true } } }, orderBy: { dueAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -126,6 +128,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
         members: g.members.map((m) => ({ name: m.name, turn: m.turn, is_me: m.userId === id, received: m.receivedAt !== null, paid_rounds: g.payments.filter((p) => p.memberId === m.id).map((p) => p.round) })),
         created_at: g.createdAt.toISOString(),
       })),
+      care_meds: careMeds.map((m) => ({ person: m.personName, for_me: m.personUserId === id, added: m.createdById === id, name: m.name, dose: m.dose, times: m.times, time_zone: m.timeZone, note: m.note, active: m.active, created_at: m.createdAt.toISOString() })),
+      care_marks: careMarks.map((d) => ({ medicine: d.med.name, person: d.med.personName, due_at: d.dueAt.toISOString(), status: d.status, marked_at: d.markedAt?.toISOString() ?? null })),
     };
     return res;
   });
@@ -146,6 +150,8 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
         if (next) await tx.gameya.update({ where: { id: g.id }, data: { ownerId: next.userId! } });
         else await tx.gameya.delete({ where: { id: g.id } });
       }
+      // Care circles: their family keeps the medicine record (foreign keys let go of the account), minus reminders to them.
+      await tx.$executeRaw`UPDATE care_meds SET remind_user_ids = array_remove(remind_user_ids, ${user.id}::uuid) WHERE ${user.id}::uuid = ANY(remind_user_ids)`;
       // Group splits others made keep the name (their record) but stop pointing at this account.
       await tx.$executeRaw`UPDATE splits SET member_ids = array_remove(member_ids, ${user.id}::uuid) WHERE ${user.id}::uuid = ANY(member_ids)`;
       // Circles they own pass to the longest-standing member, as when an owner leaves;
