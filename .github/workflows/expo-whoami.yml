@@ -1,0 +1,23 @@
+# Diagnostic: which Expo account the EXPO_TOKEN secret belongs to, which accounts it can act for,
+# and who owns the Zaki project. Runs when a pushed commit message contains "[expo-whoami]".
+name: Expo account check
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[expo-whoami]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Accounts and project
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx -y eas-cli@latest whoami || true
+          npx -y eas-cli@latest account:view || true
+          q='{"query":"{ meActor { __typename ... on User { username } ... on Robot { firstName } accounts { name displayName ownerUserActor { username } apps(offset:0, limit:30) { fullName id } } } app { byId(appId:\"249766b3-d4c3-46d0-b596-3004a690def9\") { fullName ownerAccount { name displayName } } } }"}'
+          curl -s https://api.expo.dev/graphql -H "Authorization: Bearer $EXPO_TOKEN" -H 'content-type: application/json' -d "$q" | jq . || true
