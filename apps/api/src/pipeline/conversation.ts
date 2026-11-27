@@ -16,6 +16,7 @@ import { inBackground } from "../lib/background";
 import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
 import { addToList, listFastPath } from "../lists/chat";
+import { briefFastPath } from "../brief/chat";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
@@ -154,6 +155,13 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       counted(prisma, user.id, "reply_fast_path", { list: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [listed.text], response: EMPTY_ACTIONS, now }), listed.cards);
       return { ...result, notices: [...(result.notices ?? []), ...listed.notices.filter((n) => n.userId !== user.id)] };
+    }
+
+    // 1a‴. The daily news brief by rules: "ابعتلي أخبار الكورة كل يوم الساعة 8", "وقف الأخبار". No AI call.
+    const briefed = crisisKeyword ? null : await briefFastPath(prisma, user, message.text, script, aiAllowance != null).catch(() => null);
+    if (briefed) {
+      counted(prisma, user.id, "reply_fast_path", { brief: true });
+      return withCards(prisma, await applyActions(prisma, { user, message, replies: [briefed.text], response: EMPTY_ACTIONS, now }), briefed.cards);
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never

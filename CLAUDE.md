@@ -1342,7 +1342,12 @@ Rules:
   user asked for it); kind "checkin", client_id `brief:<local day>:<n>`, pushed; `nextTickAt` wakes
   for the brief time while asleep or with the budget spent. Bullets are allowed here because the
   user asked for the brief. The brief never offers "ask me for more": Zaki knows only those lines.
-  NEWS_BRIEF=0 stops it. `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
+  NEWS_BRIEF=0 stops it. Layout: its one home is Me > Daily news; from the chat by rules (no AI,
+  apps/api/src/brief/chat.ts, conversation step 1a‴): "ابعتلي أخبار الكورة كل يوم الساعة 8" adds
+  topics and sets the time, "وقف أخبار الكورة" / "stop the news" removes, each answer with an Open
+  card to /me/news; it needs a news word AND an every-day or stop word, so one-off news talk still
+  goes to the model. Not on Today: the brief is a message, never something due.
+  `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
   session can't reach them, so .github/workflows/brief-feeds.yml runs it ("[brief-feeds]").
 
 ## Milestones (PRD §8)
