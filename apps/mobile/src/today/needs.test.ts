@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CircleTask, DaftarEntry, Gameya, Split } from "@fakkarni/shared";
+import { CareMed, type CircleTask, type DaftarEntry, type Gameya, type Split } from "@fakkarni/shared";
 import { gameyaNeeds, myOpenShare, needsYou, type NeedWords } from "./needs";
 
 const words: NeedWords = {
@@ -15,6 +15,9 @@ const words: NeedWords = {
   gameyaToday: "Pay {amount} today",
   gameyaLate: "{amount} is late",
   gameyaHand: "Hand {name} the pot",
+  doseNotMarked: "{time} not marked",
+  yesterday: "Yesterday",
+  clock: (t) => t,
 };
 
 const task = (over: Partial<CircleTask>): CircleTask => ({
@@ -182,5 +185,31 @@ describe("needsYou", () => {
       expect(gameyaNeeds([book({ mine: true, payments: all })], "2026-11-10", words)).toEqual([expect.objectContaining({ id: "g1:hand", line: "Hand A the pot" })]);
       expect(gameyaNeeds([book({ mine: true, payments: all, members: book().members.map((m) => (m.turn === 1 ? { ...m, received: true } : m)) })], "2026-11-10", words)).toEqual([]);
     });
+  });
+
+  it("puts medicine doses nobody marked first, yesterday's before today's", () => {
+    const med = CareMed.parse({
+      id: "00000000-0000-4000-8000-000000000001",
+      circle_id: "00000000-0000-4000-8000-0000000000c1",
+      person_name: "Mama",
+      name: "Concor",
+      times: ["08:00", "20:00"],
+      time_zone: "Africa/Cairo",
+      missed_after_minutes: 60,
+      active: true,
+      created_at: "2026-11-20T10:00:00.000Z",
+      today: [
+        { due_at: "2026-11-27T06:00:00.000Z", time: "08:00", state: "missed" },
+        { due_at: "2026-11-27T18:00:00.000Z", time: "20:00", state: "later" },
+      ],
+      open_missed: [{ due_at: "2026-11-26T18:00:00.000Z", time: "20:00", state: "missed" }],
+    });
+    const rows = needsYou({ care: [med, { ...med, id: "00000000-0000-4000-8000-000000000002", active: false }], tasks: [task({})] }, words);
+    expect(rows.map((r) => [r.kind, r.title, r.line])).toEqual([
+      ["dose", "Mama: Concor", "Yesterday 20:00 not marked"],
+      ["dose", "Mama: Concor", "08:00 not marked"],
+      ["task", "Buy bread", "From Mona"],
+    ]);
+    expect(rows[0]).toMatchObject({ route: "/circle/care?id=00000000-0000-4000-8000-0000000000c1", action: { type: "dose_taken", medId: med.id, dueAt: "2026-11-26T18:00:00.000Z" } });
   });
 });

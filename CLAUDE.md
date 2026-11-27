@@ -1426,6 +1426,27 @@ Rules:
   there too), and "Needs you" worded as on Today. Its row lives in Me › Reminders ("Home screen
   widget", icon apps, kind neutral; `requestPinAppWidget`, else how-to text), not on Me itself.
   Sign-out / delete clears it (db/reset.ts). Optional module: older builds, iPhone and Expo Go skip it.
+- Care circles (2026-11-27, kareem: "care circles"; brothers and sisters share a parent's medicine
+  times). Tables care_meds / care_doses (migration care_circles), routes apps/api/src/routes/care.ts,
+  rules and wording apps/api/src/care/rules.ts (pure), writes care/store.ts, shared shape, `guessDose`
+  and limits in packages/shared/src/care.ts. A medicine belongs to a circle (every member sees it):
+  who takes it (a member or a typed name), name and dose as the doctor wrote them, local "HH:MM"
+  times (≤ 6) in the creator's time zone, who is reminded (members), and how long Zaki waits
+  before telling the family (30 / 60 / 120 min). Any member marks a dose taken or skipped (within
+  24 h; POST /care/meds/:id/doses, `open` undoes). Its own pg-boss queue "care-tick" every minute
+  (care/tick.ts): the reminder at the dose time to the people reminded, then the missed line to
+  every member but the one who takes it; both are chat lines (kind "update", client_id
+  `care:<medId>:<ms>:remind|missed`) + push, the reminder with an "Mark as taken" card (payload
+  `care_dose`, a plain chat yes answers it). Medicine times ignore waking hours and Zaki's daily
+  budget (the family asked for them). A mark after the family was told is told to them too.
+  Delete: the one who added it or the circle owner. Leaving a circle drops the member from its
+  reminders. In /bootstrap, PARSERS, prefetchAll, /me/export, DELETE /me. Free, no AI call.
+  - Never medical advice: no dose suggestions, interactions or "is it safe"; every screen carries
+    the "Reminders and a record only. Follow the doctor's advice." line. Do not add advice.
+  - Phone (Layout map): home is the circle's Medicine tile → /circle/care?id= (list, "+");
+    /care/new (?circle= or ?edit=), /care/[id] (today, 7 days, Edit, Pause, Delete). A dose due or
+    missed shows first in Today's "Needs you" with Taken; the chat "+" offers "Medicine times" for
+    family circles. Entry points show only once GET /care answered (old servers: nothing new).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

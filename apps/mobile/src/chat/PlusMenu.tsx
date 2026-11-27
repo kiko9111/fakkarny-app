@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { router, type Href } from "expo-router";
 import { t } from "@/i18n";
-import { peekCircles, peekLists } from "@/lib/api";
+import { peekCare, peekCircles, peekLists } from "@/lib/api";
 import { photosAvailable } from "@/lib/photos";
 import type { Feature } from "@/lib/unlock";
 import { unlock } from "@/lib/unlock-store";
@@ -14,12 +14,13 @@ const ICON: Record<PlusKey, IconName> = {
   list: "cart-outline",
   ask: "checkmark-circle-outline",
   homework: "school-outline",
+  medicine: "medkit-outline",
   split: "pie-chart-outline",
   receipt: "camera-outline",
   forward: "arrow-redo-outline",
 };
 
-const KIND: Record<PlusKey, IconKind> = { remind: "alarm", list: "primary", ask: "people", homework: "primary", split: "place", receipt: "money", forward: "primary" };
+const KIND: Record<PlusKey, IconKind> = { remind: "alarm", list: "primary", ask: "people", homework: "primary", medicine: "people", split: "place", receipt: "money", forward: "primary" };
 
 type Pick = { place: Feature | null; circles: { id: string; name: string; route: string }[] };
 
@@ -35,7 +36,7 @@ function go(route: string, place: Feature | null) {
  */
 export function PlusMenu({ visible, onClose, onRemind }: { visible: boolean; onClose: () => void; onRemind: () => void }) {
   // Read from the saved copies whenever the sheet opens, so a circle made a minute ago is there.
-  const rows = useMemo<PlusRow[]>(() => plusActions({ photos: photosAvailable, lists: peekLists() !== null, listIds: peekLists()?.map((l) => l.id), circles: peekCircles() ?? [] }), [visible]);
+  const rows = useMemo<PlusRow[]>(() => plusActions({ photos: photosAvailable, lists: peekLists() !== null, listIds: peekLists()?.map((l) => l.id), care: peekCare() !== null, circles: peekCircles() ?? [] }), [visible]);
   // The second step, when more than one circle fits. Its rows stay while the sheet fades out.
   const [pick, setPick] = useState<Pick | null>(null);
   const [picking, setPicking] = useState(false);

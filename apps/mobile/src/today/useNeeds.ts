@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { t } from "@/i18n";
-import { peekDaftar, peekGameyas, peekSplits, peekTasks } from "@/lib/api";
+import { doseClock } from "@/care/clock";
+import { peekCare, peekDaftar, peekGameyas, peekSplits, peekTasks } from "@/lib/api";
 import { localDay } from "@/gameya/logic";
 import { createEmitter } from "@/lib/emitter";
 import { cacheRefreshed, dataChanged } from "@/lib/signals";
@@ -22,10 +23,13 @@ export const needWords = (): NeedWords => ({
   gameyaLate: t.lay.gameya.needLate,
   gameyaHand: t.lay.gameya.needHand,
   money: (n) => fill(t.ui.pounds, { n: formatMoney(n) }),
+  doseNotMarked: t.lay.care.notMarked,
+  yesterday: t.lay.care.yesterday,
+  clock: doseClock,
 });
 
 /** "Needs you" from the copies the phone holds right now. No request. */
-export const savedNeeds = (): NeedRow[] => needsYou({ tasks: peekTasks(), daftar: peekDaftar(), splits: peekSplits(), gameyas: peekGameyas(), today: localDay() }, needWords());
+export const savedNeeds = (): NeedRow[] => needsYou({ tasks: peekTasks(), daftar: peekDaftar(), splits: peekSplits(), gameyas: peekGameyas(), care: peekCare(), today: localDay() }, needWords());
 
 /** Fired by Today when one of its rows was answered: the saved copies already hold the answer. */
 export const needsChanged = createEmitter<void>();

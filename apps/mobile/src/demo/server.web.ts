@@ -1039,6 +1039,81 @@ on("POST", "/gameyas/([^/]+)/received", (_m, b) => {
   return gameyaAnswer();
 });
 on("POST", "/gameyas/([^/]+)/remind", () => ({ reminded: 0, share_text: demoGameya.name }));
+// Care circles (2026-11-27): Dad's pressure pills (Dad is in the circle) and Grandma's (she isn't).
+type DemoMed = { id: string; person_name: string; person_user_id: string | null; name: string; dose: string | null; times: string[]; missed: number; marks: Record<string, { state: "taken" | "skipped"; by: string | null }>; active: boolean };
+const atToday = (hhmm: string) => {
+  const d = new Date();
+  d.setHours(Number(hhmm.slice(0, 2)), Number(hhmm.slice(3)), 0, 0);
+  return d;
+};
+const demoMeds: DemoMed[] = [
+  { id: id(), person_name: L("بابا", "Dad"), person_user_id: BABA, name: L("كونكور", "Concor"), dose: L("حباية", "1 pill"), times: ["08:00", "20:00"], missed: 60, marks: { "08:00": { state: "taken", by: L("سارة", "Sara") } }, active: true },
+  { id: id(), person_name: L("تيتة", "Grandma"), person_user_id: null, name: L("فيتامين د", "Vitamin D"), dose: null, times: ["10:00"], missed: 60, marks: {}, active: true },
+];
+const wireMed = (m: DemoMed) => ({
+  id: m.id,
+  circle_id: "c-family",
+  circle_name: L("بيت العيلة", "Our home"),
+  person_name: m.person_name,
+  person_user_id: m.person_user_id,
+  for_me: false,
+  name: m.name,
+  dose: m.dose,
+  times: m.times,
+  time_zone: "Africa/Cairo",
+  remind_user_ids: [ME, SARA],
+  missed_after_minutes: m.missed,
+  note: null,
+  active: m.active,
+  can_delete: true,
+  created_at: inHours(-24 * 20),
+  today: m.times.map((time) => {
+    const due = atToday(time);
+    const mark = m.marks[time];
+    const late = Date.now() - due.getTime();
+    const state = mark ? mark.state : late < 0 ? "later" : late >= m.missed * 60_000 ? "missed" : "due";
+    return { due_at: iso(due), time, state, by_name: mark?.by ?? null, by_me: mark ? mark.by === null : false, marked_at: mark ? iso(now()) : null };
+  }),
+  open_missed: [],
+  week: { taken: 11, skipped: 1, missed: 1 },
+});
+const findMed = (mid: string) => demoMeds.find((m) => m.id === mid) ?? demoMeds[0]!;
+on("GET", "/care", () => ({ meds: demoMeds.map(wireMed) }));
+on("POST", "/care/meds", (_m, b) => {
+  const m: DemoMed = { id: String(b.id ?? id()), person_name: String(b.person_name ?? ""), person_user_id: (b.person_user_id as string | null) ?? null, name: String(b.name ?? ""), dose: (b.dose as string | null) ?? null, times: (b.times as string[]) ?? [], missed: Number(b.missed_after_minutes ?? 60), marks: {}, active: true };
+  demoMeds.push(m);
+  return { med: wireMed(m) };
+});
+on("PATCH", "/care/meds/([^/]+)", (m, b) => {
+  const med = findMed(m[1]!);
+  if (typeof b.active === "boolean") med.active = b.active;
+  if (Array.isArray(b.times)) med.times = b.times as string[];
+  if (typeof b.name === "string") med.name = b.name;
+  return { med: wireMed(med) };
+});
+on("POST", "/care/meds/([^/]+)/doses", (m, b) => {
+  const med = findMed(m[1]!);
+  const time = med.times.find((x) => iso(atToday(x)) === b.due_at);
+  if (time) {
+    if (b.status === "open") delete med.marks[time];
+    else med.marks[time] = { state: b.status as "taken" | "skipped", by: null };
+  }
+  return { med: wireMed(med) };
+});
+on("GET", "/care/meds/([^/]+)/history", (m) => {
+  const med = wireMed(findMed(m[1]!));
+  const day = (n: number) => {
+    const d = new Date(Date.now() - n * 86_400_000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const past = (n: number) => ({ date: day(n), doses: med.times.map((time, i) => ({ due_at: iso(new Date(atToday(time).getTime() - n * 86_400_000)), time, state: n === 3 && i === 0 ? "missed" : "taken", by_name: L("سارة", "Sara"), by_me: false, marked_at: null })) });
+  return { days: [{ date: day(0), doses: med.today }, ...[1, 2, 3, 4, 5, 6, 7].map(past)] };
+});
+on("DELETE", "/care/meds/([^/]+)", (m) => {
+  const i = demoMeds.findIndex((x) => x.id === m[1]);
+  if (i >= 0) demoMeds.splice(i, 1);
+  return null;
+});
 on("GET", "/pocket-money", () => pocket());
 on("POST", "/pocket-money/paid", (_m, b) => {
   pocketPaid = Math.min(30, pocketPaid + Number(b.amount ?? 0));

@@ -869,6 +869,8 @@ model GameyaPayment {
   @@unique([memberId, round])
   @@index([gameyaId])
   @@map("gameya_payments")
+}
+
 // Care circles (2026-11-27): a family shares one person's medicine schedule (often a parent).
 // Reminders and records only: Zaki never gives medical advice.
 model CareMed {

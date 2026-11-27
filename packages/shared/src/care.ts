@@ -51,7 +51,7 @@ export type CareWeek = z.infer<typeof CareWeek>;
 
 export const CareMed = z.object({
   id: Id,
-  circle_id: Id,
+  circle_id: z.string().min(1),
   circle_name: z.string().default(""),
   person_name: z.string(),
   person_user_id: z.string().nullable().default(null),
