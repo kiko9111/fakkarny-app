@@ -36,6 +36,10 @@ const Env = z.object({
   PUBLIC_URL: z.string().url().optional().or(z.literal("").transform(() => undefined)),
   /** "1" opens Session (the reflect space). Leave off until its evals have run against the model. */
   SESSION_ENABLED: z.string().optional(),
+  /** "0" stops the daily news brief (the setting stays; nothing is sent). */
+  NEWS_BRIEF: z.enum(["0", "1"]).default("1"),
+  /** Optional GNews key (gnews.io, paid plan for a commercial app): the brief reads GNews instead of the RSS feeds. */
+  GNEWS_API_KEY: z.string().optional().transform((v) => v || undefined),
   /** Google Play link shown on the invite page after the web confirm. */
   ANDROID_STORE_URL: z.string().url().optional().or(z.literal("").transform(() => undefined)),
   EXPO_ACCESS_TOKEN: z.string().optional().transform((v) => v || undefined),

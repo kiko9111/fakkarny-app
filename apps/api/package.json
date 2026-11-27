@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "brief:feeds": "tsx src/brief/check-feeds.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",

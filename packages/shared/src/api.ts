@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Item, Memory, Message, TimeOfDay, User } from "./entities";
 import { CheckinInterval, Language, Tone } from "./enums";
+import { BriefTopic, MAX_BRIEF_TOPICS } from "./brief";
 import { CITY_IDS } from "./local";
 
 /** GET /health */
@@ -149,6 +150,9 @@ export const PatchMeRequest = z
     /** An https://ipn.eg/… link from the InstaPay app, or null to remove it. */
     instapay_link: z.string().trim().max(300).nullable(),
     gender: z.enum(["female", "male"]).nullable(),
+    /** Daily news brief topics ([] turns it off) and its local time. */
+    brief_topics: z.array(BriefTopic).max(MAX_BRIEF_TOPICS),
+    brief_time: TimeOfDay.nullable(),
     /** A city id (CITY_IDS), or null to forget it. */
     city: z.enum(CITY_IDS).nullable(),
   })

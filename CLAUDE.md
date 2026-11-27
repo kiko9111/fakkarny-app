@@ -1340,6 +1340,30 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+- Daily news brief (2026-11-27, kareem: "the user chooses topics and Zaki gives a short daily brief").
+  Topics and wording in packages/shared/src/brief.ts (12 topics; free 1, Pro up to 5, limits off
+  while REQUIRE_SUBSCRIPTION=0; 402 `brief_limit` opens the paywall). users.brief_topics /
+  brief_time (PATCH /me; topics with no time get 08:00), migration daily_brief, phone page
+  app/me/news.tsx with the Me row "Daily news". Server in apps/api/src/brief: feeds.ts (public RSS
+  feeds: Masrawy for Egypt, BBC, Guardian, TechCrunch, The Verge, Motor1, ...; no key, no cost),
+  rss.ts (small RSS/Atom reader, untrusted text), news.ts (fresh 30 h, no repeats, sources in
+  turn; GNEWS_API_KEY switches to GNews, a paid licensed API, with the feeds as fallback),
+  rules.ts (window 90 min from the user's time, 6-hour editions, prompt, `digestLines` zod check,
+  `composeBrief`), send.ts. Each topic is read and summarised ONCE per language and edition for
+  everyone (table brief_digests, one Haiku call, `ai_call` purpose "brief_digest" counted on the
+  first user who needed it), so cost grows with topics, not users (at most 96 calls a day), and a
+  brief never uses the user's AI allowance. Without a model key the brief is the headlines as they
+  are. Sent from the tick before the daily budget check and not counted in DAILY_ZAKI_BUDGET (the
+  user asked for it); kind "checkin", client_id `brief:<local day>:<n>`, pushed; `nextTickAt` wakes
+  for the brief time while asleep or with the budget spent. Bullets are allowed here because the
+  user asked for the brief. The brief never offers "ask me for more": Zaki knows only those lines.
+  NEWS_BRIEF=0 stops it. Layout: its one home is Me > Daily news; from the chat by rules (no AI,
+  apps/api/src/brief/chat.ts, conversation step 1a⁗): "ابعتلي أخبار الكورة كل يوم الساعة 8" adds
+  topics and sets the time, "وقف أخبار الكورة" / "stop the news" removes, each answer with an Open
+  card to /me/news; it needs a news word AND an every-day or stop word, so one-off news talk still
+  goes to the model. Not on Today: the brief is a message, never something due.
+  `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
+  session can't reach them, so .github/workflows/brief-feeds.yml runs it ("[brief-feeds]").
 - No-app links (2026-11-27, kareem: "no app web pages"): someone not on Zaki opens a WhatsApp link in
   any browser and answers there. Debts (/d/), splits (/s/) and invites (/i/) came first; now tasks
   (/t/) and household lists (/l/), both in apps/api/src/routes/link-pages.ts, shapes and pure rules

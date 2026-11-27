@@ -1,0 +1,24 @@
+# Checks every news feed the daily news brief reads (apps/api/src/brief/feeds.ts): which answer, how
+# many fresh headlines each has, and sample headlines per topic. The cloud session can't reach the
+# publishers, so this runs on GitHub when a pushed commit message contains "[brief-feeds]", or by
+# hand from the Actions tab. Fails when a topic has no working feed.
+name: News brief feeds
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  feeds:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[brief-feeds]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Check the feeds
+        run: npm run brief:feeds -w @fakkarni/api

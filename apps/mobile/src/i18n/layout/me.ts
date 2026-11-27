@@ -17,6 +17,7 @@ const ar = {
   privacy: "الخصوصية وبياناتي",
   advanced: "متقدم",
   invite: "اعزم صاحبك",
+  news: "أخبارك كل يوم",
   city: "مدينتك",
 
   /** Value lines under the rows. */
@@ -48,6 +49,26 @@ const ar = {
   /** Privacy and my data. */
   account: "الحساب",
   yourData: "بياناتك",
+
+  /** Daily news: the brief Zaki sends at a chosen time about the topics picked. */
+  newsOff: "مقفولة",
+  newsTopics: "المواضيع",
+  newsTime: "الساعة كام",
+  newsMax: "5 مواضيع بالكتير",
+  topics: {
+    egypt: "مصر",
+    world: "العالم",
+    football: "الكورة",
+    sports: "الرياضة",
+    ai: "الذكاء الاصطناعي",
+    tech: "التكنولوجيا",
+    cars: "العربيات",
+    business: "الاقتصاد والفلوس",
+    science: "العلوم",
+    health: "الصحة",
+    entertainment: "أفلام ومسلسلات",
+    gaming: "الألعاب",
+  },
 
   /** Advanced: which update is running. */
   appUpdate: "تحديث التطبيق",
@@ -81,6 +102,7 @@ const en: SameKeys<typeof ar> = {
   privacy: "Privacy and my data",
   advanced: "Advanced",
   invite: "Invite a friend",
+  news: "Daily news",
   city: "City",
 
   checkEvery2: "Every 2 hours",
@@ -106,6 +128,25 @@ const en: SameKeys<typeof ar> = {
 
   account: "Account",
   yourData: "Your data",
+
+  newsOff: "Off",
+  newsTopics: "Topics",
+  newsTime: "Time",
+  newsMax: "5 topics at most",
+  topics: {
+    egypt: "Egypt",
+    world: "World",
+    football: "Football",
+    sports: "Sports",
+    ai: "AI",
+    tech: "Tech",
+    cars: "Cars",
+    business: "Business",
+    science: "Science",
+    health: "Health",
+    entertainment: "Movies and TV",
+    gaming: "Gaming",
+  },
 
   appUpdate: "App update",
   builtIn: "Built-in version",
