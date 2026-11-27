@@ -24,7 +24,7 @@ import { settleCards } from "../chat/more-actions";
 import { CANCELLED_REPLY, CONFIRMED_REPLY, HOME_REPLY, homeCheckin, isCancel, isConfirm, isUndo, LABEL, storedCards, type StoredCard } from "../chat/cards";
 import { UNDO_WINDOW_MS, undoCard } from "../chat/undo";
 import type { Message } from "../generated/prisma/client";
-import { parsePlaceTrigger, readForwarded } from "@fakkarni/shared";
+import { currencyOf, parsePlaceTrigger, readForwarded, swapCurrencyWords } from "@fakkarni/shared";
 import { forwardNote, homeworkCards, homeworkOffer, savedCard } from "../forward/read";
 import { withPlace } from "./place";
 
@@ -243,7 +243,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
         actions = question ? EMPTY_ACTIONS : decided.success ? decided.data : EMPTY_ACTIONS;
         crisis ||= understood.crisis;
         replies = question
-          ? answerQuestion(question, { items: ctx.openItems, ...(ctx.app ? { app: ctx.app } : {}), userId: user.id, tz: user.timezone, now }, script)
+          ? answerQuestion(question, { items: ctx.openItems, ...(ctx.app ? { app: ctx.app } : {}), userId: user.id, tz: user.timezone, now }, script).map((r) => swapCurrencyWords(r, currencyOf(user.city)))
           : templateReply(understood, nowLocal, script, titles);
         modelOk = true;
         codeReply = question ? `question:${question.kind}` : understood.ask ? "ask" : "done";
@@ -332,7 +332,7 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
 
     // 3. Wellbeing safety net: crisis replies always carry helpline info, and never create items.
     if (crisis) {
-      const helpline = helplineFor(user.timezone);
+      const helpline = helplineFor(user.timezone, user.city);
       const digits = helpline.match(/\d{3,}/)?.[0];
       if (!digits || !replies.some((r) => r.includes(digits))) replies = [...replies, helplineMessage(script, helpline)];
       actions = EMPTY_ACTIONS;

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="zaki_widget_label">زكي</string>
+  <string name="zaki_widget_description">مواعيدك، الجرعة الجاية، واللي مستنيك</string>
+  <string name="zaki_widget_empty">افتح زكي مرة عشان يملا ده</string>
+  <string name="zaki_widget_talk">كلّم زكي</string>
+  <string name="zaki_widget_remind">فكّرني</string>
+</resources>

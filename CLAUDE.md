@@ -1361,12 +1361,51 @@ Rules:
   (forward/inbox.ts) and the chat sends them when open; a photo opens /receipt?shared=<file> and
   is read at once (receipts stay the only photos). The bubble shows "Forwarded" and folds past 10
   lines. Evals: evals/cases/forward.jsonl (fwd-*).
+- Local defaults by city (2026-11-27, kareem; scope from the feature study: city-level only, asked
+  once). Pure data and math in packages/shared/src/local.ts: CITIES (Egypt, Saudi, UAE), COUNTRIES
+  (currency, prayer method), `prayerTimes` (astronomical, within a minute or two of the official
+  tables), holidays (`holidaysIn` / `holidaysBetween`: fixed days, Sham El Nessim from Orthodox
+  Easter, moon-based days from HIJRI_DAYS = Umm al-Qura, "expected"; add each new year there,
+  local.test.ts checks them against Node's calendar). users.city (migration user_city, wire
+  `User.city`, PATCH /me {city}); never an exact spot. The city decides: the helpline country
+  (`helplineFor(tz, city)`), Zaki's context (pipeline/local.ts: LOCAL, PRAYER TIMES today, HOLIDAYS
+  next 30 days; a city guessed from the time zone gives prayer times and holidays only), the currency
+  of new Daftar entries and splits and of the money lines (`currencyOf`: only a PICKED city changes
+  money, a guess never). Phone: Me › City (app/me/city.tsx; the one home), Zaki asks once in the chat
+  after the third message (lib/city-ask.ts, local line `local:city:*` with an Open card), Today puts a
+  holiday that runs today or starts tomorrow beside the date (today/holiday.ts). The app's money words
+  are swapped at start-up (`withCurrency`, i18n/currency.ts, prefs "city"); changing to another
+  currency reloads. City row and question appear only once the server's profile carries `city`
+  (`serverKnowsCity`), so an update that lands before the deploy offers nothing it can't save.
+  Not swapped yet: pocket money, circle book posts and homework rewards (EGP), store prices.
+- Home-screen widget (2026-11-27, Android, native; kareem's ask): modules/zaki-widget (local Expo
+  module, Kotlin, RemoteViews; no JS runs in the widget). The app writes what it shows as JSON
+  (`widgetData`, src/widget/data.ts, pure + tested) into SharedPreferences "zaki_widget" after every
+  `itemsChanged` / `cacheRefreshed` / `dataChanged` / `needsChanged` (0.8 s debounce) and when the app
+  is left; src/widget/index.ts, started from startSync. It shows the "Needs you" count and the oldest
+  row (header pill, opens Today), the next repeating reminder ("next dose": its next 12 occurrences
+  from the same anchor as notifications/plan.ts), the next 3 one-off plans (8 sent, so later ones move
+  up as times pass) with a Done button each, and Talk to Zaki / Remind me. Times are instants and the
+  widget writes them itself (android.icu, Latin digits in Arabic), dropping a plan an hour after its
+  last time on its own redraws (system period 30 min). Two layouts (zaki_widget_ltr / _rtl, keep them
+  in step) so it follows the app's language. Links are fakkarni://widget/<chat|remind|today|plans>,
+  mapped by src/app/+native-intent.tsx (`widgetRoute`); every other link passes through. Done hides
+  the row at once (2 days, or until new data) and queues the tap; the app answers it on start, on
+  return, or at once through the module's onDone event while it runs: a plan closes like a tick in
+  Today (local first, PATCH via writeOrQueue), a dose says `doneSay` in the chat like Done on its
+  notification. A tap made while the app never opens again stays queued (its reminders still ring).
+  It follows the Layout map: the app's card (near-white, large radius), near-black ink, words in
+  `primaryInk`, one filled button (Talk to Zaki), soft `primarySoft` fills, Zaki's art, all in the
+  user's theme (drawables zaki_widget_<mark|button|pill|check>_<sunrise|mint|cloud>; add a theme
+  there too), and "Needs you" worded as on Today. Its row lives in Me › Reminders ("Home screen
+  widget", icon apps, kind neutral; `requestPinAppWidget`, else how-to text), not on Me itself.
+  Sign-out / delete clears it (db/reset.ts). Optional module: older builds, iPhone and Expo Go skip it.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
 - [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming came later (2026-11-26, see the repo notes).
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
-- [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
+- [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget: Android since 2026-11-27 (see "Home-screen widget" in the repo notes); iPhone not yet.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
 - [x] M7 Hardening: Sentry, rate limits + daily cap, retries, admin dashboard with AI cost per user, EAS profiles, Dockerfile. Store submission steps are manual (see README launch checklist).

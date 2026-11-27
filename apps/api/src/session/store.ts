@@ -42,7 +42,7 @@ export function renderSessionContext(user: User, s: ReflectSession, now: Date): 
     `Mode: ${s.mode}`,
     `Mood they tapped at the start (1 = very low, 5 = great): ${s.mood}`,
     `Local time now: ${toLocalIso(now, user.timezone)}`,
-    `Helpline to give in a crisis: ${helplineFor(user.timezone)}`,
+    `Helpline to give in a crisis: ${helplineFor(user.timezone, user.city)}`,
   ].join("\n");
 }
 
@@ -105,7 +105,7 @@ export async function sessionTurn(
 
   if (crisis) {
     // Safety net, same as the main chat: the helpline number is always in the reply, and no step.
-    const helpline = helplineFor(user.timezone);
+    const helpline = helplineFor(user.timezone, user.city);
     const digits = helpline.match(/\d{3,}/)?.[0];
     if (replies.length === 0) replies = [CRISIS_CARE[lang]];
     if (!digits || !replies.some((r) => r.includes(digits))) replies = [...replies, helplineMessage(lang, helpline)];

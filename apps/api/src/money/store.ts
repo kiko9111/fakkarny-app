@@ -1,4 +1,4 @@
-import { MoneyKind, sectionKey, type MoneyEntry as WireEntry, type MoneySection as WireSection } from "@fakkarni/shared";
+import { currencyOf, MoneyKind, sectionKey, type MoneyEntry as WireEntry, type MoneySection as WireSection } from "@fakkarni/shared";
 import { Prisma, type MoneyEntry, type MoneySection, type PrismaClient, type User } from "../generated/prisma/client";
 import { postUpdate } from "../daftar/store";
 import type { Notice } from "../proactive/notify";
@@ -250,5 +250,5 @@ export async function moneyFastPath(prisma: PrismaClient, user: User, text: stri
     lang,
     undo: { kind: "money_entry", entryId: added.entry.id },
   };
-  return { text: loggedMoneyLine(lang, section.name, hit.amount, added.monthTotal, hit.kind), notices: added.notices, cards: [card] };
+  return { text: loggedMoneyLine(lang, section.name, hit.amount, added.monthTotal, hit.kind, currencyOf(user.city)), notices: added.notices, cards: [card] };
 }

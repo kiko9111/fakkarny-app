@@ -48,6 +48,8 @@ export const User = z.object({
   instapay_link: z.string().nullable(),
   /** How Zaki addresses them in Arabic ("female" / "male"); null until they say. Old servers omit it. */
   gender: z.enum(["female", "male"]).nullable().default(null),
+  /** The city the user picked (packages/shared/src/local.ts CITIES id); null until then. Old servers omit it. */
+  city: z.string().nullable().default(null),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="zaki_widget_label">Zaki</string>
+  <string name="zaki_widget_description">Your plans, the next dose and what waits for you</string>
+  <string name="zaki_widget_empty">Open Zaki once to fill this in</string>
+  <string name="zaki_widget_talk">Talk to Zaki</string>
+  <string name="zaki_widget_remind">Remind me</string>
+</resources>
