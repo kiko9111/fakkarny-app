@@ -1,3 +1,4 @@
+import { clearParam } from "@/lib/clear-param";
 import { useCallback, useEffect, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import { StyleSheet, View } from "react-native";
@@ -61,7 +62,7 @@ export default function ListsScreen() {
   useEffect(() => {
     if (params.new !== "1") return;
     setMaking(true);
-    router.setParams({ new: undefined });
+    clearParam({ new: undefined });
   }, [params.new]);
 
   const load = useCallback(async () => {

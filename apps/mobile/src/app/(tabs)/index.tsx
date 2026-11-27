@@ -1,3 +1,4 @@
+import { clearParam } from "@/lib/clear-param";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
@@ -110,7 +111,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (compose !== "remind") return;
     // The word is used up, so the next arrival with it starts again.
-    router.setParams({ compose: undefined });
+    clearParam({ compose: undefined });
     // After the sheet that sent her here has left and the tab has taken the screen, or the
     // keyboard does not come up (the same wait as the chat's own "+").
     if (composeWait.current) clearTimeout(composeWait.current);
