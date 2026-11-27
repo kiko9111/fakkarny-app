@@ -85,7 +85,11 @@ Rules:
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
-- Expo: project `@kiki91111/fakkarni` (projectId in apps/mobile/app.json). The build
+- Expo: project `@kiki91111s-team/fakkarni` (projectId in apps/mobile/app.json; moved from the
+  personal account kiki91111 into the organization kiki91111s-team, "kiki91111's team", on
+  2026-11-27 so iPhone testers can be members; app.json `owner` must match; EXPO_TOKEN is
+  kiki91111's, an Owner of the team; `[expo-whoami]` (.github/workflows/expo-whoami.yml) prints
+  who owns the project). The build
   variables (EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SUPABASE_URL,
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
   the development, preview and production environments, not in the repo. Android test
@@ -101,14 +105,11 @@ Rules:
   set runtimeVersion policy to sdkVersion for that publish, do not commit it); open it
   from Expo Go signed in to the Expo account. Purchases, Sentry and push do not work there.
   Other people's iPhones: since 2026-05-12 Expo Go loads EAS updates only for an account that
-  owns the project or is a member of the organization that owns it (a 403 otherwise), and the
-  project belongs to the owner's personal account, so a link or QR code alone opens nothing. A
-  tester needs Expo Go signed in to the owner's account (Projects > fakkarni > Branches >
-  expo-go > the top update; a branch-page open stays on that update), or an Expo organization
-  that owns the project with the tester as a Viewer (owner's decision: a transfer changes
-  app.json `owner`, a conversion changes his login). `eas update --branch` creates no channel,
-  so there is no always-newest exp://u.expo.dev/<projectId>?channel-name=expo-go link until an
-  expo-go channel is created.
+  owns the project or is a member of the organization that owns it (a 403 otherwise). Testers:
+  invite them as Viewer on expo.dev (kiki91111s-team > Members); they sign in to Expo Go with
+  their own Expo account and open fakkarni from the team's projects, or the always-newest link
+  exp://u.expo.dev/249766b3-d4c3-46d0-b596-3004a690def9?channel-name=expo-go (ota-update.yml
+  links channel expo-go to branch expo-go on every publish).
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by

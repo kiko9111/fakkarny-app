@@ -33,6 +33,16 @@ jobs:
           npx eas-cli@latest channel:create preview --non-interactive || true
           npx eas-cli@latest channel:edit preview --branch preview --non-interactive
           npx eas-cli@latest channel:view preview --non-interactive || true
+      # Testers' iPhones open Expo Go by channel: exp://u.expo.dev/<projectId>?channel-name=expo-go
+      # always gets the newest iPhone update. `eas update --branch` creates no channel, so make sure
+      # channel expo-go → branch expo-go exists too.
+      - name: Link the expo-go channel to the expo-go branch
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli@latest channel:create expo-go --non-interactive || true
+          npx eas-cli@latest channel:edit expo-go --branch expo-go --non-interactive || true
       - name: Publish the update
         working-directory: apps/mobile
         env:

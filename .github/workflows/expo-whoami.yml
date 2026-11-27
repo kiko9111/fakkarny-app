@@ -19,8 +19,3 @@ jobs:
         run: |
           gql() { curl -s https://api.expo.dev/graphql -H "Authorization: Bearer $EXPO_TOKEN" -H 'content-type: application/json' -d "$1"; }
           gql '{"query":"{ app { byId(appId:\"249766b3-d4c3-46d0-b596-3004a690def9\") { fullName ownerAccount { name } } } }"}' | jq -c .
-          echo "--- mutations with transfer"
-          gql '{"query":"{ __schema { mutationType { fields { name type { name fields { name args { name type { name kind ofType { name } } } } } } } } }"}' \
-            | jq -r '.data.__schema.mutationType.fields[] | .name as $g | (.type.fields // [])[] | select(.name|test("ransfer")) | "\($g).\(.name)(\([.args[]|"\(.name):\(.type.name // .type.ofType.name)"]|join(", ")))"'
-          echo "--- env var names (preview)"
-          npx -y eas-cli@latest env:list --environment preview --non-interactive 2>&1 | sed -E 's/=.*/=<hidden>/' | head -40 || true
