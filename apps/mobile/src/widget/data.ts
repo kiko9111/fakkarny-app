@@ -48,8 +48,10 @@ export interface WidgetData {
   rtl: boolean;
   /** For the widget's own date words (Latin digits in Arabic). */
   locale: string;
-  /** The theme's main colour for the times. */
+  /** The theme's colour for words (primaryInk). */
   accent: string;
+  /** The user's theme ("sunrise" | "mint" | "cloud"): the widget's art and fills. */
+  theme: string;
   words: WidgetWords;
   needs: { count: number; first: string | null };
   doses: WidgetDose[];
@@ -65,6 +67,7 @@ export interface WidgetInput {
   rtl: boolean;
   locale: string;
   accent: string;
+  theme: string;
   /** Waking hours for repeating reminders (the phone assumes 07:00–23:00, as notifications do). */
   awake?: (at: Date) => boolean;
 }
@@ -120,6 +123,7 @@ export function widgetData(input: WidgetInput): WidgetData {
     rtl: input.rtl,
     locale: input.locale,
     accent: input.accent,
+    theme: input.theme,
     words: input.words,
     needs: { count: input.needs.length, first: first ? `${first.title} · ${first.line}` : null },
     doses: doses.slice(0, MAX_DOSES).map(({ first: _f, ...d }) => d),

@@ -1341,7 +1341,11 @@ Rules:
   return, or at once through the module's onDone event while it runs: a plan closes like a tick in
   Today (local first, PATCH via writeOrQueue), a dose says `doneSay` in the chat like Done on its
   notification. A tap made while the app never opens again stays queued (its reminders still ring).
-  Me shows "Zaki on your home screen" until one is placed (`requestPinAppWidget`, else how-to text).
+  It follows the Layout map: the app's card (near-white, large radius), near-black ink, words in
+  `primaryInk`, one filled button (Talk to Zaki), soft `primarySoft` fills, Zaki's art, all in the
+  user's theme (drawables zaki_widget_<mark|button|pill|check>_<sunrise|mint|cloud>; add a theme
+  there too), and "Needs you" worded as on Today. Its row lives in Me › Reminders ("Home screen
+  widget", icon apps, kind neutral; `requestPinAppWidget`, else how-to text), not on Me itself.
   Sign-out / delete clears it (db/reset.ts). Optional module: older builds, iPhone and Expo Go skip it.
 
 ## Milestones (PRD §8)

@@ -63,6 +63,17 @@ class ZakiWidgetProvider : AppWidgetProvider() {
       }
     }
 
+    /** The drawables of each theme (res/drawable*: zaki_widget_<part>_<theme>). */
+    private class Look(val mark: Int, val button: Int, val pill: Int, val check: Int) {
+      companion object {
+        fun of(theme: String?): Look = when (theme) {
+          "mint" -> Look(R.drawable.zaki_widget_mark_mint, R.drawable.zaki_widget_button_mint, R.drawable.zaki_widget_pill_mint, R.drawable.zaki_widget_check_mint)
+          "cloud" -> Look(R.drawable.zaki_widget_mark_cloud, R.drawable.zaki_widget_button_cloud, R.drawable.zaki_widget_pill_cloud, R.drawable.zaki_widget_check_cloud)
+          else -> Look(R.drawable.zaki_widget_mark_sunrise, R.drawable.zaki_widget_button_sunrise, R.drawable.zaki_widget_pill_sunrise, R.drawable.zaki_widget_check_sunrise)
+        }
+      }
+    }
+
     private class Row(val kind: String, val id: String, val title: String, val at: Long?)
 
     private fun build(ctx: Context, widgetId: Int): RemoteViews {
@@ -72,6 +83,14 @@ class ZakiWidgetProvider : AppWidgetProvider() {
       val now = System.currentTimeMillis()
       val words = data?.optJSONObject("words") ?: JSONObject()
       val accent = parseColor(data?.optString("accent"))
+
+      // The user's theme (Sunrise, Mint, Cloud): Zaki's art, the filled button, the soft fills.
+      val look = Look.of(data?.optString("theme"))
+      v.setImageViewResource(R.id.zw_mark, look.mark)
+      v.setInt(R.id.zw_talk, "setBackgroundResource", look.button)
+      for (id in intArrayOf(R.id.zw_remind, R.id.zw_needs, R.id.zw_need)) v.setInt(id, "setBackgroundResource", look.pill)
+      for (id in intArrayOf(R.id.zw_dose_done, R.id.zw_p0_done, R.id.zw_p1_done, R.id.zw_p2_done)) v.setInt(id, "setBackgroundResource", look.check)
+      accent?.let { c -> for (id in intArrayOf(R.id.zw_remind, R.id.zw_needs, R.id.zw_dose_done, R.id.zw_p0_done, R.id.zw_p1_done, R.id.zw_p2_done)) v.setTextColor(id, c) }
 
       v.setOnClickPendingIntent(R.id.zw_header, open(ctx, "today", widgetId, 0))
       v.setOnClickPendingIntent(R.id.zw_talk, open(ctx, "chat", widgetId, 1))

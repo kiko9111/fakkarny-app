@@ -11,7 +11,7 @@ import { scheduleItem } from "@/notifications";
 import { saveItem } from "@/sync/save-item";
 import { QueuedOffline } from "@/sync/writes";
 import { needsChanged, savedNeeds } from "@/today/useNeeds";
-import { palette } from "@/ui/tokens";
+import { palette, themeId } from "@/ui/tokens";
 import { parseTaps, widgetData, type WidgetTap } from "./data";
 
 /**
@@ -44,6 +44,7 @@ export async function refreshWidget(): Promise<void> {
     rtl: isRTL,
     locale: language === "ar-EG" ? "ar-EG-u-nu-latn" : "en",
     accent: palette.primaryInk,
+    theme: themeId,
   });
   native.set(JSON.stringify(data));
 }

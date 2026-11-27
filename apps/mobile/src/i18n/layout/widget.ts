@@ -14,8 +14,9 @@ const ar = {
   empty: "مفيش حاجة جاية. قول لزكي أي حاجة.",
   talk: "كلّم زكي",
   remind: "فكّرني",
-  /** The row in Me that puts the widget on the home screen. */
-  addRow: "زكي على الشاشة الرئيسية",
+  /** The row in Me › Reminders that puts the widget on the home screen. */
+  row: "ويدجت الشاشة الرئيسية",
+  placed: "على شاشتك",
   howTo: "اضغط مطوّل على الشاشة الرئيسية، وبعدين الأدوات، واختار زكي.",
 };
 
@@ -29,7 +30,8 @@ const en: SameKeys<typeof ar> = {
   empty: "Nothing coming up. Tell Zaki anything.",
   talk: "Talk to Zaki",
   remind: "Remind me",
-  addRow: "Zaki on your home screen",
+  row: "Home screen widget",
+  placed: "On your home screen",
   howTo: "Long-press your home screen, tap Widgets, then pick Zaki.",
 };
 

@@ -6,7 +6,7 @@ const words: WidgetWords = { title: "Zaki", needs: "Needs you · {n}", tomorrow:
 const item = (id: string, at: string | null, extra: Partial<Item> = {}) =>
   ({ id, title: id, type: "reminder", status: "open", remind_at: at, due_at: at, repeat_every_minutes: null, ...extra }) as Item;
 const build = (items: Item[], now: string, needs: { title: string; line: string }[] = []) =>
-  widgetData({ items, needs, now: new Date(now), words, rtl: false, locale: "en", accent: "#C54315", awake: () => true });
+  widgetData({ items, needs, now: new Date(now), words, rtl: false, locale: "en", accent: "#A9461E", theme: "sunrise", awake: () => true });
 
 describe("widgetData", () => {
   it("lists plans soonest first, untimed after, and drops old ones", () => {

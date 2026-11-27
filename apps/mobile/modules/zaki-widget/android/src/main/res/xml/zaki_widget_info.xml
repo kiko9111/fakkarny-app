@@ -10,6 +10,6 @@
   android:updatePeriodMillis="1800000"
   android:initialLayout="@layout/zaki_widget_ltr"
   android:previewLayout="@layout/zaki_widget_ltr"
-  android:previewImage="@drawable/zaki_widget_mark"
+  android:previewImage="@drawable/zaki_widget_mark_sunrise"
   android:description="@string/zaki_widget_description"
   android:widgetCategory="home_screen" />
