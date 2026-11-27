@@ -1,5 +1,12 @@
 import Constants from "expo-constants";
 import {
+  CareMed,
+  CareMedResponse,
+  CareHistoryResponse,
+  type CareDay,
+  type CreateCareMedRequest,
+  type UpdateCareMedRequest,
+  type MarkDoseRequest,
   HouseList,
   HouseListResponse,
   Gameya,
@@ -1030,6 +1037,36 @@ export async function deleteGameya(id: string): Promise<void> {
   saved("/gameyas", parseGameyas, (old) => ({ gameyas: old.filter((g) => g.id !== id) }));
 }
 
+// Care circles (2026-11-27): a family's medicine times. Marks are idempotent (the same dose, the
+// same answer), so they go through writeOrQueue: offline they wait and the screen keeps its guess.
+const parseCare = (raw: unknown): CareMed[] => eachValid(CareMed.safeParse, (raw as { meds?: unknown } | null)?.meds);
+export async function listCare(): Promise<CareMed[]> {
+  return cachedGet("/care", parseCare);
+}
+export const peekCare = (): CareMed[] | null => peek("/care", parseCare);
+/** A medicine as the server (or a guess) has it, into the saved copy. */
+export function savedMed(med: CareMed): CareMed {
+  saved("/care", parseCare, (old) => ({ meds: old.some((m) => m.id === med.id) ? old.map((m) => (m.id === med.id ? med : m)) : [...old, med] }));
+  return med;
+}
+const medAnswer = (raw: unknown): CareMed => savedMed(CareMedResponse.parse(raw).med);
+export async function createMed(body: CreateCareMedRequest): Promise<CareMed> {
+  return medAnswer(await request("/care/meds", { method: "POST", body: JSON.stringify(body) }));
+}
+export async function updateMed(id: string, body: UpdateCareMedRequest): Promise<CareMed> {
+  return medAnswer(await request(`/care/meds/${id}`, { method: "PATCH", body: JSON.stringify(body) }));
+}
+export async function deleteMed(id: string): Promise<void> {
+  await request(`/care/meds/${id}`, { method: "DELETE" });
+  saved("/care", parseCare, (old) => ({ meds: old.filter((m) => m.id !== id) }));
+}
+export async function markDose(id: string, body: MarkDoseRequest): Promise<CareMed> {
+  return medAnswer(await writeOrQueue("POST", `/care/meds/${id}/doses`, body, { alsoOnServerError: true }));
+}
+export async function getMedHistory(id: string): Promise<CareDay[]> {
+  return CareHistoryResponse.parse(await request(`/care/meds/${id}/history`)).days;
+}
+
 // Every tab in one answer (GET /bootstrap, servers from 2026-11-26). The server runs each screen's
 // own GET as this caller and returns their texts together; each is checked with its screen's
 // parser here, exactly like a single answer, before it replaces a saved copy.
@@ -1045,6 +1082,7 @@ const PARSERS: [RegExp, (raw: unknown) => unknown][] = [
   [/^\/pocket-money$/, parsePocket],
   [/^\/lists$/, parseLists],
   [/^\/gameyas$/, parseGameyas],
+  [/^\/care$/, parseCare],
   [/^\/circles\/[^/]+$/, parseCircle],
   [/^\/circles\/[^/]+\/feed$/, parseFeed],
   [/^\/circles\/[^/]+\/trackers$/, parseShared],

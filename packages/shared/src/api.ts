@@ -201,5 +201,9 @@ export const ExportResponse = z.object({
       }),
     )
     .default([]),
+  care_meds: z
+    .array(z.object({ person: z.string(), for_me: z.boolean(), added: z.boolean(), name: z.string(), dose: z.string().nullable(), times: z.array(z.string()), time_zone: z.string(), note: z.string().nullable(), active: z.boolean(), created_at: z.string() }))
+    .default([]),
+  care_marks: z.array(z.object({ medicine: z.string(), person: z.string(), due_at: z.string(), status: z.string().nullable(), marked_at: z.string().nullable() })).default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

@@ -18,6 +18,7 @@ import { card, findTracker, kindOf, pickCircle, type Ctx, type One } from "./act
 import { foldName, LABEL, matchByName, type PendingPayload, type StoredCard } from "./cards";
 import { confirmTrip, runListAction } from "../lists/chat";
 import { assignHomeworkBatch } from "../homework/store";
+import { answerDoseCard } from "../care/chat";
 
 /**
  * The app actions added on 2026-11-23 ("Zaki can do everything in the app from the chat"):
@@ -625,6 +626,10 @@ export async function runMorePending(prisma: PrismaClient, user: User, c: Stored
     }
     case "list_trip":
       return confirmTrip(prisma, user, c, p.listId, now);
+    case "care_dose": {
+      const r = await answerDoseCard(prisma, user, p.medId, new Date(p.dueAt), now);
+      return r.ok ? withNotices(done(r.label), r.notices) : fail(r.label);
+    }
     case "iftar": {
       const made = await inviteToIftar(prisma, p.circleId, user, p.on, p.note, now);
       if (!made) return fail(LABEL.notFound(lang, "circle"));

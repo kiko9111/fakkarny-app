@@ -181,6 +181,9 @@ model User {
   linkTasks       LinkTask[]
   gameyasOwned    Gameya[]           @relation("GameyaOwner")
   gameyaSeats     GameyaMember[]     @relation("GameyaSeat")
+  careMedsMade    CareMed[]          @relation("CareMedMaker")
+  careMedsFor     CareMed[]          @relation("CareMedPerson")
+  careDosesMarked CareDose[]         @relation("CareDoseMarker")
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
@@ -346,6 +349,7 @@ model Circle {
   trackers      Tracker[]
   moneySections MoneySection[]
   splits        Split[]
+  careMeds      CareMed[]
 
   @@map("circles")
 }
@@ -865,4 +869,58 @@ model GameyaPayment {
   @@unique([memberId, round])
   @@index([gameyaId])
   @@map("gameya_payments")
+}
+
+// Care circles (2026-11-27): a family shares one person's medicine schedule (often a parent).
+// Reminders and records only: Zaki never gives medical advice.
+model CareMed {
+  id                 String   @id @default(uuid()) @db.Uuid
+  circleId           String   @map("circle_id") @db.Uuid
+  createdById        String?  @map("created_by_id") @db.Uuid
+  // Who takes it, in the family's words ("Mama"); personUserId when that person is a member.
+  personName         String   @map("person_name")
+  personUserId       String?  @map("person_user_id") @db.Uuid
+  // The medicine and the dose as the family wrote them (from the doctor's note). Never checked.
+  name               String
+  dose               String?
+  // Local "HH:MM" times, sorted, in timeZone.
+  times              String[] @default([])
+  timeZone           String   @map("time_zone")
+  // Members who get the reminder at dose time.
+  remindUserIds      String[] @default([]) @map("remind_user_ids") @db.Uuid
+  // Not marked this long after its time: the other members are told.
+  missedAfterMinutes Int      @default(60) @map("missed_after_minutes")
+  note               String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+
+  circle     Circle     @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("CareMedMaker", fields: [createdById], references: [id], onDelete: SetNull)
+  personUser User?      @relation("CareMedPerson", fields: [personUserId], references: [id], onDelete: SetNull)
+  doses      CareDose[]
+
+  @@index([circleId])
+  @@index([active])
+  @@map("care_meds")
+}
+
+// One dose time of a CareMed, written when Zaki reminds, alerts, or someone marks it.
+model CareDose {
+  id         String    @id @default(uuid()) @db.Uuid
+  medId      String    @map("med_id") @db.Uuid
+  dueAt      DateTime  @map("due_at")
+  // null = not marked; "taken" | "skipped"
+  status     String?
+  byUserId   String?   @map("by_user_id") @db.Uuid
+  markedAt   DateTime? @map("marked_at")
+  remindedAt DateTime? @map("reminded_at")
+  alertedAt  DateTime? @map("alerted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  med    CareMed @relation(fields: [medId], references: [id], onDelete: Cascade)
+  byUser User?   @relation("CareDoseMarker", fields: [byUserId], references: [id], onDelete: SetNull)
+
+  @@unique([medId, dueAt])
+  @@map("care_doses")
 }
