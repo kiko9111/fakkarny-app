@@ -43,7 +43,9 @@ export type PendingPayload =
   | { kind: "iftar"; circleId: string; on: string; note: string | null }
   | { kind: "split_circle"; circleId: string; amount: number; title: string }
   | { kind: "split_i_paid"; splitId: string }
-  | { kind: "list_trip"; listId: string };
+  | { kind: "list_trip"; listId: string }
+  /** A forwarded homework list for one child (forward/read.ts): sent as one batch on Yes. */
+  | { kind: "homework_batch"; circleId: string; assigneeId: string; items: { title: string; subject: string | null; dueAt: string | null }[] };
 
 /** How to take back a done card. Only the user's own things; nothing that reached other people. */
 export type UndoPayload =
@@ -65,7 +67,9 @@ export type UndoPayload =
   | { kind: "task_remind"; taskId: string; remindAt: string | null }
   | { kind: "item_status"; itemId: string; status: "open" }
   | { kind: "list_items"; listId: string; itemIds: string[] }
-  | { kind: "list_undone"; listId: string; itemIds: string[] };
+  | { kind: "list_undone"; listId: string; itemIds: string[] }
+  /** What a forwarded message saved: Undo cancels those plans (only ones still open). */
+  | { kind: "items_cancel"; itemIds: string[] };
 
 /** Cards for the wire, without the server-only fields. Tolerates anything stored (old rows: null). */
 export function wireActions(json: unknown): ChatAction[] {
@@ -233,6 +237,14 @@ export const LABEL = {
     l === "english" ? `Split ${egp(l, total)} in ${circle} between ${people}, and tell each one their share?` : `أقسم ${egp(l, total)} في ${circle} على ${people}، وأقول لكل واحد نصيبه؟`,
   splitIPaid: (l: ReplyLang) => (l === "english" ? "Marked your share as paid ✓" : "اتسجّل إنك دفعت نصيبك ✓"),
   noSplit: (l: ReplyLang) => (l === "english" ? "I couldn't find that split" : "مالقيتش القسمة دي"),
+  homeworkBatchAsk: (l: ReplyLang, person: string, n: number, circle: string) =>
+    l === "english" ? `Send ${n === 1 ? "this homework" : `these ${n} homework items`} to ${person} (${circle})?` : `أبعت ${n === 1 ? "الواجب ده" : `الـ${n} واجبات دول`} لـ ${person} (${circle})؟`,
+  homeworkBatchSent: (l: ReplyLang, person: string, n: number) => (l === "english" ? `Sent ${person} ${n} homework item${n === 1 ? "" : "s"}` : `اتبعت لـ ${person} ${n === 1 ? "واجب" : `${n} واجبات`}`),
+  forwardSaved: (l: ReplyLang, titles: string[]) => {
+    const shown = titles.slice(0, 3).map(q).join(l === "english" ? ", " : "، ");
+    const more = titles.length > 3 ? (l === "english" ? ` +${titles.length - 3}` : ` +${titles.length - 3}`) : "";
+    return l === "english" ? `Saved from the message: ${shown}${more}` : `اتسجل من الرسالة: ${shown}${more}`;
+  },
   forgot: (l: ReplyLang, n: number) => (l === "english" ? `Forgot ${n} thing${n === 1 ? "" : "s"}` : n === 1 ? "نسيت الحاجة دي" : `نسيت ${n} حاجات`),
   nothingToForget: (l: ReplyLang) => (l === "english" ? "I don't have that saved" : "مش محفوظة عندي أصلاً"),
   setting: (l: ReplyLang, what: string) => (l === "english" ? `Settings: ${what}` : `الإعدادات: ${what}`),

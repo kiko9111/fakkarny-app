@@ -13,6 +13,7 @@ import { QuickReplies } from "@/chat/QuickReplies";
 import { TypingIndicator } from "@/chat/TypingIndicator";
 import { isWriting } from "@/chat/writing";
 import { useChat } from "@/chat/useChat";
+import { forwardArrived, takeForward } from "@/forward/inbox";
 import type { LocalMessage } from "@/db/messages";
 import { dateLocale, t } from "@/i18n";
 import { track } from "@/lib/analytics";
@@ -103,6 +104,21 @@ export default function ChatScreen() {
     toLatest();
     void send(text).then(followUp).catch(() => {});
   };
+  // A message from WhatsApp (shared to Zaki, or pasted): sent as soon as the chat is open. It is
+  // already marked as forwarded; the rules that read the user's own words (trackers, tabs) skip it.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    const sendWaiting = () => {
+      const text = takeForward();
+      if (!text) return;
+      track("forward_sent", { chars: Math.round(text.length / 100) * 100 });
+      toLatest();
+      void sendRef.current(text).catch(() => {});
+    };
+    sendWaiting();
+    return forwardArrived.subscribe(sendWaiting);
+  }, [toLatest]);
   const navigation = useNavigation();
   // Today's "+" sends her here to say a reminder: the starter goes in the box, once per arrival.
   const composer = useRef<ChatInputHandle>(null);

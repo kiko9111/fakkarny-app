@@ -8,11 +8,12 @@ const row = (rows: ReturnType<typeof plusActions>, key: string) => rows.find((r)
 describe("the chat's +", () => {
   it("offers a reminder, asking someone and a split to someone with nothing yet", () => {
     const rows = plusActions({ photos: false, lists: false, circles: [] });
-    expect(keys(rows)).toEqual(["remind", "ask", "split"]);
+    expect(keys(rows)).toEqual(["remind", "ask", "split", "forward"]);
     expect(row(rows, "remind")!.step).toEqual({ compose: "remind" });
     // No circle: asking someone starts with making one.
     expect(row(rows, "ask")!.step).toEqual({ go: "/circle/new" });
     expect(row(rows, "split")).toMatchObject({ place: "daftar", step: { go: "/split/new" } });
+    expect(row(rows, "forward")).toMatchObject({ place: null, step: { go: "/forward" } });
   });
 
   it("opens the only list, starts the first one, and asks which when there are several", () => {
@@ -23,7 +24,7 @@ describe("the chat's +", () => {
   });
 
   it("shows the receipt only with the photo picker and lists only once the server has them", () => {
-    expect(keys(plusActions({ photos: true, lists: true, circles: [] }))).toEqual(["remind", "list", "ask", "split", "receipt"]);
+    expect(keys(plusActions({ photos: true, lists: true, circles: [] }))).toEqual(["remind", "list", "ask", "split", "receipt", "forward"]);
     const rows = plusActions({ photos: true, lists: true, circles: [] });
     expect(row(rows, "receipt")).toMatchObject({ place: "daftar", step: { go: "/receipt" } });
     expect(row(rows, "list")).toMatchObject({ place: "today", step: { go: "/list" } });
