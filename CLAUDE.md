@@ -1349,6 +1349,27 @@ Rules:
   goes to the model. Not on Today: the brief is a message, never something due.
   `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
   session can't reach them, so .github/workflows/brief-feeds.yml runs it ("[brief-feeds]").
+- Forward from WhatsApp (2026-11-27, kareem: "add forward to whatsapp in a smart way"). A forwarded
+  message is an ordinary chat message whose text starts with `FORWARD_MARK` ("↪ ",
+  packages/shared/src/forward.ts: `markForwarded` tidies WhatsApp copies (time stamps go, the
+  newest kept as "(sent …)", "<Media omitted>" / deleted lines go), `readForwarded`, `routeShare`).
+  So it is saved in SQLite first, goes out through the outbox, needs no column, and old builds show
+  "↪ text". Server (pipeline/conversation.ts + apps/api/src/forward/read.ts): no rule shortcut acts
+  on it (money, trackers, lists, yes/no, undo, status, alarm words are someone else's), the model
+  gets `forwardNote` (someone else's words, "(sent …)" dates, one item per thing, no memories, no
+  money logged), memories are dropped and at most 6 plans kept, what it saved gets one card
+  `forward_saved` whose Undo cancels them all (undo `items_cancel`), and a school homework list
+  (`homeworkDrafts`: 2+ lines with subjects) is offered as a pending `homework_batch` card per child
+  in her family circles (members marked "teen", else everyone without a grown-up role; never when
+  she is a teen) that sends the batch on Yes. Forwarded words never decide the reply language
+  (`userTexts` skips them). `ai_call` carries `forwarded: true`; `forward_read` counts.
+  Phone: the chat's "+" has "From WhatsApp" (app/forward.tsx, paste; every build, iPhone too); on
+  Android builds from 2026-11-27 Zaki is a share target (app.json intentFilters SEND text/plain,
+  image/*; modules/zaki-share, optional, `take()` + "onShare"; a shared .txt chat export is read
+  as words, its newest 6000 characters). Words are parked in prefs `pending_forward`
+  (forward/inbox.ts) and the chat sends them when open; a photo opens /receipt?shared=<file> and
+  is read at once (receipts stay the only photos). The bubble shows "Forwarded" and folds past 10
+  lines. Evals: evals/cases/forward.jsonl (fwd-*).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

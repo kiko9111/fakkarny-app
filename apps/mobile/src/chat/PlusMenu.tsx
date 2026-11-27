@@ -16,9 +16,10 @@ const ICON: Record<PlusKey, IconName> = {
   homework: "school-outline",
   split: "pie-chart-outline",
   receipt: "camera-outline",
+  forward: "arrow-redo-outline",
 };
 
-const KIND: Record<PlusKey, IconKind> = { remind: "alarm", list: "primary", ask: "people", homework: "primary", split: "place", receipt: "money" };
+const KIND: Record<PlusKey, IconKind> = { remind: "alarm", list: "primary", ask: "people", homework: "primary", split: "place", receipt: "money", forward: "primary" };
 
 type Pick = { place: Feature | null; circles: { id: string; name: string; route: string }[] };
 

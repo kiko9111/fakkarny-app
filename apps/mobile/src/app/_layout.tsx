@@ -13,6 +13,7 @@ import { startSync } from "@/sync";
 // Defines the place reminders' geofence task as the bundle loads (also when the system starts the app only for it).
 import "@/places/fire";
 import { startUpdates } from "@/lib/updates";
+import { startShareIntake } from "@/forward/intake";
 import { Backdrop, FeedbackHost, fonts, GlassHeader, glassBar, palette, Text, withGround } from "@/ui";
 import { appFonts } from "@/ui/fonts";
 
@@ -37,6 +38,8 @@ export default function RootLayout() {
     startSync();
     if (Platform.OS !== "web" && !isDemo) startUpdates();
   }, []);
+  // "Share → Zaki" from WhatsApp (Android builds from 2026-11-27): words go to the chat, a receipt photo to the reader.
+  useEffect(() => (Platform.OS !== "web" && !isDemo ? startShareIntake() : undefined), []);
   // Analytics: which screens people use (the route pattern only, never ids or content).
   const pathname = usePathname();
   useEffect(() => {
@@ -79,6 +82,7 @@ export default function RootLayout() {
           <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
           <Stack.Screen name="memories" options={{ title: t.lay.me.memory }} />
           <Stack.Screen name="places" options={{ title: t.places.title }} />
+          <Stack.Screen name="forward" options={{ title: t.lay.chat.forwardTitle }} />
           <Stack.Screen
             name="paywall"
             options={{ presentation: "modal", title: "" }}
