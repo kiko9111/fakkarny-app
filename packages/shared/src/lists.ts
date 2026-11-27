@@ -67,6 +67,8 @@ export const HouseList = z.object({
   open_count: z.number().int(),
   trip: ListTrip.nullable().default(null),
   items: z.array(HouseListItem),
+  /** A no-app link is on (POST /lists/:id/link gives it; old servers never send this). */
+  has_link: z.boolean().default(false),
   updated_at: Instant,
 });
 export type HouseList = z.infer<typeof HouseList>;

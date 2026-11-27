@@ -84,4 +84,11 @@ describe("quick replies", () => {
     expect(quickReplies(["a", "b", "c"], [])).toEqual(["a", "b"]);
     expect(quickReplies(["a ", "b"], ["a"])).toEqual(["b"]);
   });
+
+  it("offers medicine times in a family circle once the server has care circles", () => {
+    expect(row(plusActions({ photos: false, lists: false, circles: [circle("1", "family")] }), "medicine")).toBeUndefined();
+    expect(row(plusActions({ photos: false, lists: false, care: true, circles: [circle("1", "friends")] }), "medicine")).toBeUndefined();
+    // A parent's circle may hold only the one who adds it: no need for others yet.
+    expect(row(plusActions({ photos: false, lists: false, care: true, circles: [circle("1", "family", 1), circle("2", "friends")] }), "medicine")).toMatchObject({ place: "people", step: { go: "/care/new?circle=1" } });
+  });
 });

@@ -1,8 +1,9 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { authAvailable } from "@/auth";
-import { dateLocale, language, t } from "@/i18n";
+import { dateLocale, language, listComma, t } from "@/i18n";
 import { countLine, joinLine, planLine, planNow } from "@/me/lines";
+import { newsLine } from "@/me/news";
 import { InviteCard } from "@/me/parts";
 import { useAccount, useAlarms, useMe } from "@/me/useMe";
 import { usePlaces } from "@/places/store";
@@ -51,6 +52,7 @@ export default function MeScreen() {
 
       <RowGroup>
         <NavRow icon="chatbubble-ellipses-outline" title={m.zaki} value={user ? joinLine([tone, checkins]) : undefined} onPress={() => router.push("/me/zaki")} />
+        <NavRow icon="newspaper-outline" title={m.news} value={user ? newsLine(user.brief_topics, user.brief_time, m.topics, m.newsOff, listComma) : undefined} onPress={() => router.push("/me/news")} />
         <NavRow icon="color-palette-outline" title={m.look} value={joinLine([theme, language === "en" ? t.onboarding.english : t.onboarding.arabic])} onPress={() => router.push("/me/look")} />
         {serverKnowsCity() || user?.city ? (
           <NavRow icon="business-outline" kind="place" title={m.city} value={user ? cityLine(user.city) : undefined} onPress={() => router.push("/me/city")} />

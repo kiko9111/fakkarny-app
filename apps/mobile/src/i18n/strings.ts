@@ -687,6 +687,10 @@ const arEG = {
     remove: "شيل",
     tooMany: "دي أقصى عدد قوايم",
     already: "موجودة في القايمة",
+    shareLink: "ابعت لينك",
+    stopLink: "وقّف اللينك",
+    stopLinkAsk: "اللي معاه اللينك مش هيقدر يفتح القايمة تاني.",
+    linkStopped: "اللينك وقف",
   },
   ui: {
     alarm: "منبّه",
@@ -1511,6 +1515,10 @@ const en: DeepStringShape<Strings> = {
     remove: "Remove",
     tooMany: "That's the most lists for now",
     already: "Already on the list",
+    shareLink: "Send a link",
+    stopLink: "Stop the link",
+    stopLinkAsk: "Whoever has the link won't be able to open the list again.",
+    linkStopped: "Link stopped",
   },
   ui: {
     alarm: "Alarm",

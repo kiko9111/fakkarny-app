@@ -309,7 +309,7 @@ Rules:
   sync then jams for good. `toWireMessage` sends "upsell" and "update" as "chat" unless
   the request carries `x-message-kinds: 2` (sent by the app since Zaki M9). When adding a
   message kind or any enum value the phone parses, gate it the same way.
-- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`).
+- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`); a new one follows "No-app links".
 - Family plan sharing: a member with an active plan of tier "family" covers 6 people in
   all: the payer plus the first 5 others by join time across all of the payer's family
   circles, never 6 per circle (apps/api/src/billing/family.ts); used for the AI allowance
@@ -1340,6 +1340,56 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+- Daily news brief (2026-11-27, kareem: "the user chooses topics and Zaki gives a short daily brief").
+  Topics and wording in packages/shared/src/brief.ts (12 topics; free 1, Pro up to 5, limits off
+  while REQUIRE_SUBSCRIPTION=0; 402 `brief_limit` opens the paywall). users.brief_topics /
+  brief_time (PATCH /me; topics with no time get 08:00), migration daily_brief, phone page
+  app/me/news.tsx with the Me row "Daily news". Server in apps/api/src/brief: feeds.ts (public RSS
+  feeds: Masrawy for Egypt, BBC, Guardian, TechCrunch, The Verge, Motor1, ...; no key, no cost),
+  rss.ts (small RSS/Atom reader, untrusted text), news.ts (fresh 30 h, no repeats, sources in
+  turn; GNEWS_API_KEY switches to GNews, a paid licensed API, with the feeds as fallback),
+  rules.ts (window 90 min from the user's time, 6-hour editions, prompt, `digestLines` zod check,
+  `composeBrief`), send.ts. Each topic is read and summarised ONCE per language and edition for
+  everyone (table brief_digests, one Haiku call, `ai_call` purpose "brief_digest" counted on the
+  first user who needed it), so cost grows with topics, not users (at most 96 calls a day), and a
+  brief never uses the user's AI allowance. Without a model key the brief is the headlines as they
+  are. Sent from the tick before the daily budget check and not counted in DAILY_ZAKI_BUDGET (the
+  user asked for it); kind "checkin", client_id `brief:<local day>:<n>`, pushed; `nextTickAt` wakes
+  for the brief time while asleep or with the budget spent. Bullets are allowed here because the
+  user asked for the brief. The brief never offers "ask me for more": Zaki knows only those lines.
+  NEWS_BRIEF=0 stops it. Layout: its one home is Me > Daily news; from the chat by rules (no AI,
+  apps/api/src/brief/chat.ts, conversation step 1a⁗): "ابعتلي أخبار الكورة كل يوم الساعة 8" adds
+  topics and sets the time, "وقف أخبار الكورة" / "stop the news" removes, each answer with an Open
+  card to /me/news; it needs a news word AND an every-day or stop word, so one-off news talk still
+  goes to the model. Not on Today: the brief is a message, never something due.
+  `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
+  session can't reach them, so .github/workflows/brief-feeds.yml runs it ("[brief-feeds]").
+- No-app links (2026-11-27, kareem: "no app web pages"): someone not on Zaki opens a WhatsApp link in
+  any browser and answers there. Debts (/d/), splits (/s/) and invites (/i/) came first; now tasks
+  (/t/) and household lists (/l/), both in apps/api/src/routes/link-pages.ts, shapes and pure rules
+  in packages/shared/src/links.ts, words in apps/api/src/links/rules.ts (gender-neutral Arabic).
+  - The recipe for any new one (gam'eya turns, medicine doses) is at the top of
+    apps/api/src/web/link-page.ts: a unique `code` (`withFreshCode`), a GET page through
+    `renderShell` + `sendPage`, answers only as POST forms (`acceptForms`, `postButton`; a link
+    preview never answers) then a 303 back (`backTo`), the app user told by `postUpdate` + push,
+    `PAGE_LIMIT` / `ANSWER_LIMIT`, `getAppBlock` at the end.
+  - The shell (web/shell.ts) has the app's look since this change: Sunrise colours, a soft mesh,
+    86% white card, pill buttons, the spark-smile tile; no emoji on buttons; a page adds its own
+    CSS through `meta.css` with the shell's variables (--primary, --soft, --wash, --line…).
+  - Tasks by link: table link_tasks (creator, other_name, title, note, due_at, status pending |
+    accepted | declined | done | cancelled, web_views). POST /link-tasks (phone-made id), GET
+    /link-tasks, POST /link-tasks/:id/share (the ask while pending, a nudge once accepted),
+    /cancel. The page: accept / already done / not this time, then Done; a decline can still be
+    taken on (`linkTaskNext`). Each answer: a chat line to the creator (client_id
+    `linktask:<id>:<status>`) + push. Only the creator sees them: on the circle's feed as
+    `link_tasks` (old servers: none) and on its Tasks screen ("+" › Send a link, /task/link).
+    In /me/export; removed with the account (FK).
+  - Lists by link: house_lists.share_code (POST /lists/:id/link gives the same link until DELETE
+    stops it; wire `has_link`). The page lists open and recently got things, ticks and unticks,
+    and adds (splitThings); a typed name is kept on the item (added_by_name / done_by_name) and in
+    a `zaki_name` cookie on /l. Adds: a chat line to every person of the list, a push only to the
+    one out shopping; the last open thing ticked: chat + push to all. List screen: "Send a link",
+    "Stop the link".
 - Forward from WhatsApp (2026-11-27, kareem: "add forward to whatsapp in a smart way"). A forwarded
   message is an ordinary chat message whose text starts with `FORWARD_MARK` ("↪ ",
   packages/shared/src/forward.ts: `markForwarded` tidies WhatsApp copies (time stamps go, the
@@ -1400,6 +1450,27 @@ Rules:
   there too), and "Needs you" worded as on Today. Its row lives in Me › Reminders ("Home screen
   widget", icon apps, kind neutral; `requestPinAppWidget`, else how-to text), not on Me itself.
   Sign-out / delete clears it (db/reset.ts). Optional module: older builds, iPhone and Expo Go skip it.
+- Care circles (2026-11-27, kareem: "care circles"; brothers and sisters share a parent's medicine
+  times). Tables care_meds / care_doses (migration care_circles), routes apps/api/src/routes/care.ts,
+  rules and wording apps/api/src/care/rules.ts (pure), writes care/store.ts, shared shape, `guessDose`
+  and limits in packages/shared/src/care.ts. A medicine belongs to a circle (every member sees it):
+  who takes it (a member or a typed name), name and dose as the doctor wrote them, local "HH:MM"
+  times (≤ 6) in the creator's time zone, who is reminded (members), and how long Zaki waits
+  before telling the family (30 / 60 / 120 min). Any member marks a dose taken or skipped (within
+  24 h; POST /care/meds/:id/doses, `open` undoes). Its own pg-boss queue "care-tick" every minute
+  (care/tick.ts): the reminder at the dose time to the people reminded, then the missed line to
+  every member but the one who takes it; both are chat lines (kind "update", client_id
+  `care:<medId>:<ms>:remind|missed`) + push, the reminder with an "Mark as taken" card (payload
+  `care_dose`, a plain chat yes answers it). Medicine times ignore waking hours and Zaki's daily
+  budget (the family asked for them). A mark after the family was told is told to them too.
+  Delete: the one who added it or the circle owner. Leaving a circle drops the member from its
+  reminders. In /bootstrap, PARSERS, prefetchAll, /me/export, DELETE /me. Free, no AI call.
+  - Never medical advice: no dose suggestions, interactions or "is it safe"; every screen carries
+    the "Reminders and a record only. Follow the doctor's advice." line. Do not add advice.
+  - Phone (Layout map): home is the circle's Medicine tile → /circle/care?id= (list, "+");
+    /care/new (?circle= or ?edit=), /care/[id] (today, 7 days, Edit, Pause, Delete). A dose due or
+    missed shows first in Today's "Needs you" with Taken; the chat "+" offers "Medicine times" for
+    family circles. Entry points show only once GET /care answered (old servers: nothing new).
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

@@ -9,6 +9,8 @@ export const APP_EVENTS = [
   "screen", // props.route: the route pattern, ids replaced ("/circle/[id]")
   "place_introduced", // Zaki introduced a place (props.place)
   "place_opened", // props.place, props.via: "tap" | "ask"
+  "link_task_sent", // a task sent by link to someone not on Zaki
+  "list_link_sent", // a household list's no-app link sent
   "city_asked", // Zaki asked for the user's city in the chat (once)
   "city_picked", // props.changed: a city was already set
   "place_overview", // "what can you do?"
@@ -40,6 +42,8 @@ export const APP_EVENTS = [
   "list_trip", // "I'm going shopping" tapped
   "gameya_created", // a gam'eya book made on its screen
   "gameya_paid", // a payment ticked on a gam'eya screen
+  "care_med_added", // a medicine added to a care circle
+  "care_dose_marked", // a dose marked taken or skipped from its screen (props.status)
   "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
   "forward_in", // something shared or pasted for Zaki: props.kind "chat" | "receipt" | "none", props.source "share" | "paste"
   "forward_sent", // the chat sent a forwarded message (props.chars: its length, rounded to 100)

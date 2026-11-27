@@ -116,6 +116,7 @@ starting = (async () => {
       receipts: createExpoReceiptChecker(fetch, env.EXPO_ACCESS_TOKEN),
       log: app.log,
       requireSubscription: env.REQUIRE_SUBSCRIPTION === "1",
+      news: env.NEWS_BRIEF === "1" ? { gnewsKey: env.GNEWS_API_KEY } : undefined,
     });
   }
   // A signal during the start: stop instead of opening the port.

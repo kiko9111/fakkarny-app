@@ -13,6 +13,6 @@ export function testPrisma(): PrismaClient {
 
 export async function resetDb(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "reflect_messages", "reflect_sessions", "session_consents", "tracker_entries", "trackers", "circle_posts", "circle_tasks", "daftar_entries", "invites", "circle_members", "circles", "events", "splits", "photos", "pocket_money", "house_list_items", "house_lists", "gameya_payments", "gameya_members", "gameyas", "summaries", "memories", "items", "messages", "devices", "push_tickets", "users" CASCADE',
+    'TRUNCATE TABLE "reflect_messages", "reflect_sessions", "session_consents", "tracker_entries", "trackers", "circle_posts", "circle_tasks", "daftar_entries", "invites", "circle_members", "circles", "events", "splits", "photos", "pocket_money", "house_list_items", "house_lists", "gameya_payments", "gameya_members", "gameyas", "care_doses", "care_meds", "summaries", "memories", "items", "messages", "devices", "push_tickets", "brief_digests", "users" CASCADE',
   );
 }

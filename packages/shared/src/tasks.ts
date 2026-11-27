@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LinkTask } from "./links";
 import { MAX_HOMEWORK_PHOTOS, PhotoUpload } from "./photos";
 
 /**
@@ -136,7 +137,12 @@ export type CommentRequest = z.infer<typeof CommentRequest>;
 export const PostResponse = z.object({ post: CirclePost });
 export type PostResponse = z.infer<typeof PostResponse>;
 
-export const CircleFeedResponse = z.object({ posts: z.array(CirclePost), tasks: z.array(CircleTask) });
+export const CircleFeedResponse = z.object({
+  posts: z.array(CirclePost),
+  tasks: z.array(CircleTask),
+  /** The caller's own tasks for people not on Zaki in this circle (old servers: none). */
+  link_tasks: z.array(LinkTask).default([]),
+});
 export type CircleFeedResponse = z.infer<typeof CircleFeedResponse>;
 
 /** An iftar invitation to the whole circle (Ramadan pack). `on` is a calendar day. */
