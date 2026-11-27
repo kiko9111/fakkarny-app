@@ -49,8 +49,8 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
         {monthLabel(data.month, dateLocale)}
       </Text>
       <TileGrid>
-        <Tile title={t.book.spent} icon="arrow-up-circle-outline" value={formatMoney(data.totals.expense)} />
-        <Tile title={t.book.income} icon="arrow-down-circle-outline" value={formatMoney(data.totals.income)} />
+        <Tile title={t.book.spent} icon="arrow-up-circle-outline" kind="money" value={formatMoney(data.totals.expense)} />
+        <Tile title={t.book.income} icon="arrow-down-circle-outline" kind="people" value={formatMoney(data.totals.income)} />
       </TileGrid>
 
       {gift.length ? (
@@ -91,7 +91,7 @@ function SectionRow({ s }: { s: MoneySection }) {
   return (
     <Card onPress={() => router.push({ pathname: "/money/[id]", params: { id: s.id } })} accessibilityLabel={s.name}>
       <View style={styles.head}>
-        <IconTile name={s.circle_id ? "people" : income ? "wallet" : "receipt"} color={income ? palette.ok : palette.primaryInk} bg={income ? palette.okSoft : palette.primarySoft} />
+        <IconTile name={s.circle_id ? "people-outline" : income ? "cash-outline" : "wallet-outline"} kind={income ? "people" : "money"} />
         <View style={styles.flex}>
           <Text variant="headline">{s.name}</Text>
           <Text variant="small" color={palette.inkSoft}>

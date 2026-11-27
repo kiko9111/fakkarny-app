@@ -6,7 +6,7 @@ import { dateLocale, t } from "@/i18n";
 import { planLine, planNow } from "@/me/lines";
 import { Field, FieldGroup, MeInput } from "@/me/parts";
 import { useMe } from "@/me/useMe";
-import { Button, Icon, notify, palette, Screen, space, Text } from "@/ui";
+import { Button, IconTile, notify, palette, Screen, space, Text } from "@/ui";
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { day: "numeric", month: "long" });
 
@@ -34,7 +34,7 @@ export default function PaymentsScreen() {
 
       <FieldGroup title={m.plan}>
         <View style={styles.plan}>
-          <Icon name="sparkles" size={22} color={plan.kind === "free" ? palette.inkSoft : palette.primaryInk} />
+          <IconTile name="sparkles" kind={plan.kind === "free" ? "neutral" : "primary"} size={36} />
           <Text variant="bodyStrong" style={styles.flex}>
             {planLine(plan, m, longDate)}
           </Text>

@@ -68,8 +68,8 @@ export function PeopleView({ reloadKey }: { reloadKey: number }) {
   return (
     <>
       <TileGrid>
-        <Tile title={t.ui.owedToYou} icon="arrow-down-circle-outline" value={formatMoney(totals.owedToMe)} line={unit} tone="ok" />
-        <Tile title={t.ui.youOwe} icon="arrow-up-circle-outline" value={formatMoney(totals.iOwe)} line={unit} tone="primary" />
+        <Tile title={t.ui.owedToYou} icon="arrow-down-circle-outline" kind="people" value={formatMoney(totals.owedToMe)} line={unit} tone="ok" />
+        <Tile title={t.ui.youOwe} icon="arrow-up-circle-outline" kind="money" value={formatMoney(totals.iOwe)} line={unit} tone="primary" />
       </TileGrid>
 
       {shared === null ? offline ? <Note icon="cloud-offline-outline">{offline}</Note> : <LoadingCards count={2} tile={false} /> : null}

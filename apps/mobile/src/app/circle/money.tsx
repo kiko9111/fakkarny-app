@@ -68,7 +68,7 @@ export default function CircleMoneyScreen() {
             {books.map((s) => (
               <ListRow
                 key={s.id}
-                leading={<IconTile name="people" size={40} />}
+                leading={<IconTile name="wallet-outline" kind="money" size={40} />}
                 title={s.name}
                 meta={`${pounds(s.month_total)} · ${fill(t.book.yourShare, { n: formatMoney(s.my_share) })}`}
                 onPress={() => router.push({ pathname: "/money/[id]", params: { id: s.id } })}
@@ -80,7 +80,7 @@ export default function CircleMoneyScreen() {
               return (
                 <ListRow
                   key={s.id}
-                  leading={<IconTile name="restaurant-outline" size={40} />}
+                  leading={<IconTile name="pie-chart-outline" kind="place" size={40} />}
                   title={s.title || t.split.untitled}
                   meta={[day(s.created_at), pounds(s.total), left ? fill(t.split.leftToPay, { n: left }) : null, s.mine === false && s.owner_name ? fill(t.split.from, { name: s.owner_name }) : null].filter(Boolean).join(" · ")}
                   onPress={() => router.push({ pathname: "/split/[id]", params: { id: s.id } })}

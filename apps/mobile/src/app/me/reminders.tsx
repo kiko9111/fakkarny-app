@@ -5,7 +5,7 @@ import { countLine } from "@/me/lines";
 import { FieldGroup } from "@/me/parts";
 import { useAlarms } from "@/me/useMe";
 import { usePlaces } from "@/places/store";
-import { Button, Icon, NavRow, palette, RowGroup, Screen, space, Text } from "@/ui";
+import { Button, IconTile, NavRow, palette, RowGroup, Screen, space, Text } from "@/ui";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
@@ -29,7 +29,7 @@ export default function RemindersScreen() {
             const at = a.remind_at ?? a.due_at;
             return (
               <View key={a.id} style={[styles.alarm, i > 0 && styles.line]}>
-                <Icon name="alarm" size={22} color={palette.primaryInk} />
+                <IconTile name="alarm-outline" kind="alarm" size={36} />
                 <View style={styles.flex}>
                   <Text variant="bodyStrong" numberOfLines={2}>
                     {a.title}

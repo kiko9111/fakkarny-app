@@ -87,12 +87,12 @@ export default function HomeworkHelpScreen() {
           {[task.subject, task.title].filter(Boolean).join(" · ")}
         </Text>
       ) : null}
-      {help ? null : <Note icon="bulb-outline">{plain(t.homework.helpIntro)}</Note>}
+      {help ? null : <Note icon="color-wand-outline">{plain(t.homework.helpIntro)}</Note>}
       {help ? null : (
         <>
           <TextField value={text} onChangeText={setText} placeholder={t.homework.helpPlaceholder} maxLength={2000} multiline />
           <PagePhotos photos={photos} onChange={setPhotos} disabled={busy} />
-          <Button label={busy ? t.homework.thinking : t.homework.helpAsk} icon="sparkles-outline" size="lg" block busy={busy} disabled={!ready} onPress={() => void ask()} />
+          <Button label={busy ? t.homework.thinking : t.homework.helpAsk} icon="color-wand-outline" size="lg" block busy={busy} disabled={!ready} onPress={() => void ask()} />
         </>
       )}
       {message ? (

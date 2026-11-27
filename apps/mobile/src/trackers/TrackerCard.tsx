@@ -20,7 +20,7 @@ export const TRACKER_ICON: Record<TrackerKind, IconName> = {
   spending: "receipt",
   savings: "wallet",
   fasting: "moon",
-  charity: "heart",
+  charity: "ribbon",
   custom: "create",
 };
 

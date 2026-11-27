@@ -42,8 +42,8 @@ export default function MoneyScreen() {
     { key: "debt", icon: "swap-horizontal-outline", kind: "people", label: t.lay.daftar.addDebt, onPress: () => router.push("/daftar/new") },
     { key: "split", icon: "pie-chart-outline", kind: "place", label: t.lay.daftar.addSplit, onPress: () => router.push("/split/new") },
     // From Splits the receipt fills a new split; elsewhere its total goes into a section.
-    ...(photosAvailable ? [{ key: "receipt", icon: "camera-outline" as const, label: t.lay.daftar.addReceipt, onPress: () => (part === "split" ? router.push({ pathname: "/receipt", params: { for: "split" } }) : router.push("/receipt")) }] : []),
-    { key: "section", icon: "folder-open-outline", label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") },
+    ...(photosAvailable ? [{ key: "receipt", icon: "camera-outline" as const, kind: "money" as const, label: t.lay.daftar.addReceipt, onPress: () => (part === "split" ? router.push({ pathname: "/receipt", params: { for: "split" } }) : router.push("/receipt")) }] : []),
+    { key: "section", icon: "folder-open-outline", kind: "neutral", label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") },
   ];
   const add = useAddSheet(actions);
   const navigation = useNavigation();

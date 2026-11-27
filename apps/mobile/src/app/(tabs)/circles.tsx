@@ -31,8 +31,8 @@ export default function CirclesScreen() {
   useLive(load);
 
   const add = useAddSheet([
-    { key: "new", icon: "people-outline", label: t.circles.newTitle, onPress: newCircle },
-    { key: "code", icon: "key-outline", label: t.ui.haveCode, onPress: () => router.push("/invite") },
+    { key: "new", icon: "people-outline", kind: "people", label: t.circles.newTitle, onPress: newCircle },
+    { key: "code", icon: "key-outline", kind: "neutral", label: t.ui.haveCode, onPress: () => router.push("/invite") },
   ]);
   const navigation = useNavigation();
   useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);

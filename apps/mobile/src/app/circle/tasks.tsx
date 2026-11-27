@@ -18,7 +18,7 @@ export default function CircleTasksScreen() {
   const actions = useMemo<AddAction[]>(
     () => [
       alone
-        ? { key: "invite", icon: "logo-whatsapp", label: words.invite, onPress: invite }
+        ? { key: "invite", icon: "logo-whatsapp", kind: "people", label: words.invite, onPress: invite }
         : { key: "ask", icon: "checkmark-circle-outline", kind: "people", label: words.askSomeone, onPress: () => router.push({ pathname: "/task/new", params: { circle: id } }) },
     ],
     [alone, id, invite, words],

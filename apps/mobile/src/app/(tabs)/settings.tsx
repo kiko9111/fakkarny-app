@@ -45,7 +45,7 @@ export default function MeScreen() {
       </View>
 
       <RowGroup>
-        <NavRow icon="happy-outline" title={m.zaki} value={user ? joinLine([tone, checkins]) : undefined} onPress={() => router.push("/me/zaki")} />
+        <NavRow icon="chatbubble-ellipses-outline" title={m.zaki} value={user ? joinLine([tone, checkins]) : undefined} onPress={() => router.push("/me/zaki")} />
         <NavRow icon="color-palette-outline" title={m.look} value={joinLine([theme, language === "en" ? t.onboarding.english : t.onboarding.arabic])} onPress={() => router.push("/me/look")} />
         <NavRow icon="notifications-outline" kind="alarm" title={m.reminders} value={joinLine([countLine(alarms.length, m.alarmsOne, m.alarmsCount), countLine(places.length, m.placesOne, m.placesCount)])} onPress={() => router.push("/me/reminders")} />
         <NavRow icon="card-outline" kind="money" title={m.payments} value={user ? (user.instapay_link ? m.instapaySet : m.instapayNone) : undefined} onPress={() => router.push("/me/payments")} />
@@ -60,7 +60,7 @@ export default function MeScreen() {
 
       {showBrainSettings() ? (
         <RowGroup>
-          <NavRow icon="hardware-chip-outline" title={m.advanced} onPress={() => router.push("/me/advanced")} />
+          <NavRow icon="hardware-chip-outline" kind="neutral" title={m.advanced} onPress={() => router.push("/me/advanced")} />
         </RowGroup>
       ) : null}
 

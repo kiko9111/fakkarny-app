@@ -400,7 +400,7 @@ Rules:
   an alias). Look (revised 2026-11-27, see "Layout map"): a soft colour mesh behind every screen
   (assets/bg/mesh-*.jpg via `Backdrop`; navigators use `screenLayout={withGround}` so each screen
   carries its own mesh and mounted screens underneath never show through; headers use
-  `GlassHeader`), frosted translucent surfaces (`glass` token: white 68% + bright edge + tinted
+  `GlassHeader`), translucent white cards (`glass` token: white 86% + bright edge + soft theme-tinted
   shadow; real backdrop blur on web only), large radii, glossy pill buttons. No blur or gradient
   native module: the mesh and Zaki art are images. Themes the user picks: Sunrise (default), Mint
   or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads). Session has
@@ -408,7 +408,7 @@ Rules:
   family, Rubik (Arabic and Latin in the same files, owner pick 2026-11-27; src/ui/fonts.ts loads it at
   run time from @expo-google-fonts/rubik, so it reaches builds over the air); Ionicons; no emoji on buttons/chips (`plain()`). Use
   `notify`/`confirm`/`ask` from src/ui/feedback instead of Alert. Dates use `dateLocale`.
-- Logo and icons: the liquid-glass spark smile. The app icon, Android adaptive layers, splash,
+- Logo and icons: the spark smile on a rounded tile in the theme's colours. The app icon, Android adaptive layers, splash,
   favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
   SVG (assets/logo/zaki-mark.svg, `node scripts/make-logo.mjs` in apps/mobile, needs Playwright; the
   tile colours are THEMES at the top of the script); keep them in step if the mark changes. The splash is configured through the
@@ -1273,8 +1273,17 @@ Rules:
     fill `palette.wash`. Icons identify: one Ionicon per meaning across the app (tasks
     checkmark-circle, homework school, lists cart, money wallet, split pie-chart, receipt camera,
     reminder notifications, alarm alarm, place location, tracker stats-chart, memory bulb, privacy
-    shield), in a soft square coloured by `kind` (tokens.ts: money yellow, people green, place
-    blue, alarm violet, else the theme) on `IconTile`, `Tile`, `NavRow` and sheet rows.
+    shield, invite heart, plan sparkles, Zaki chat bubble, "Zaki does it for you" color-wand), in
+    a soft square coloured by `kind` (tokens.ts: money yellow, people / done / trackers green,
+    place / split blue, alarm / memory violet, `neutral` for housekeeping rows, else the theme) on
+    `IconTile`, `Tile`, `NavRow` and sheet rows. `IconName` is typed, so a name Ionicons lacks
+    fails the typecheck; a new icon must not reuse another meaning's glyph.
+  - Contrast (computed 2026-11-27, all three themes): text is 4.5:1 or more on a card and on the
+    mesh under the header line. For that `primary` (the filled button under white words) is
+    deeper than the first orange (#CE491A / #12856E / #7659E6), `inkFaint` is only a shade
+    lighter than `inkSoft`, and each kind's ink is checked on its square. `primary` is a fill and
+    an icon colour, never small text: words in the theme's colour use `primaryInk`. Re-compute
+    after changing a theme colour or a mesh spot (the darkest mesh pixel below the top 11%).
   - The browser preview does not flip paddingStart / paddingEnd in Arabic (the phone does): shared
     rows use paddingHorizontal. Its sample data (demo/server.web.ts, `SEED` restarts a saved
     preview) has something for every new screen.

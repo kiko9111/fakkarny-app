@@ -123,7 +123,7 @@ export function usePocketMoney(opts?: { circleId?: string; empty?: ReactNode }):
       {loaded && accounts.length === 0 ? (opts?.empty ?? <EmptyState title={plain(t.homework.pocketEmpty)} />) : null}
       {mine.length ? sortAccounts(mine).map(card) : null}
       {children.length ? sortAccounts(children).map(card) : null}
-      {accounts.length ? <Note icon="shield-checkmark-outline">{t.homework.recordsOnly}</Note> : null}
+      {accounts.length ? <Note icon="information-circle-outline">{t.homework.recordsOnly}</Note> : null}
     </>
   );
   return { view, load };

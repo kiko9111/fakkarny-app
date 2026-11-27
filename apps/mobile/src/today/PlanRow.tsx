@@ -3,7 +3,7 @@ import type { Item } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
 import { planTimes } from "@/lib/plan-time";
-import { glass, Icon, palette, radius, space, Text } from "@/ui";
+import { glass, Icon, IconTile, palette, radius, space, Text } from "@/ui";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString(dateLocale, { hour: "numeric", minute: "2-digit" });
@@ -11,7 +11,8 @@ const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Dat
 
 /**
  * One plan in Today and Plans: a round check to finish it, the title, when it is (and when Zaki
- * reminds, if apart), the place for a place reminder, and a bell when it rings as an alarm.
+ * reminds, if apart), the place for a place reminder, and at the end a violet alarm square when it rings as an alarm
+ * or a blue pin when it waits for a place.
  */
 export function PlanRow({ item, onDone }: { item: Item; onDone: () => void }) {
   const { main, reminder } = planTimes(item);
@@ -57,8 +58,10 @@ export function PlanRow({ item, onDone }: { item: Item; onDone: () => void }) {
       </View>
       {item.alarm ? (
         <View accessible accessibilityRole="image" accessibilityLabel={t.ui.alarm}>
-          <Icon name="notifications" size={18} color={palette.primaryInk} />
+          <IconTile name="alarm" kind="alarm" size={32} />
         </View>
+      ) : place ? (
+        <IconTile name="location" kind="place" size={32} />
       ) : null}
       {item.important ? <Icon name="star" size={18} color={palette.primary} /> : null}
     </View>

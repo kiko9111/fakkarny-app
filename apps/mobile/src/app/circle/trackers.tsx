@@ -27,7 +27,7 @@ export default function CircleTrackersScreen() {
   }, [id]);
   useLive(load);
 
-  const add = useAddSheet([{ key: "tracker", icon: "stats-chart-outline", label: t.lay.circle.startTracker, onPress: () => router.push({ pathname: "/tracker/new", params: { circle: id } }) }]);
+  const add = useAddSheet([{ key: "tracker", icon: "stats-chart-outline", kind: "people", label: t.lay.circle.startTracker, onPress: () => router.push({ pathname: "/tracker/new", params: { circle: id } }) }]);
 
   return (
     <Screen>

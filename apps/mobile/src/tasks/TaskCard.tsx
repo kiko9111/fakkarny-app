@@ -219,8 +219,8 @@ export function TaskCard({ task: fromList, showCircle, onChanged }: { task: Circ
       {!draft && (homeworkOpen || toReview || helpParent) ? (
         <View style={styles.actions}>
           {homeworkOpen ? <Button label={t.tasks.handIn} size="sm" icon="cloud-upload-outline" disabled={busy} onPress={() => setDraft("hand_in")} /> : null}
-          {homeworkOpen ? <Button label={plain(t.homework.checkOpen)} size="sm" kind="outline" icon="sparkles-outline" onPress={() => router.push({ pathname: "/homework/check", params: { task: task.id } })} /> : null}
-          {helpParent ? <Button label={plain(t.homework.helpOpen)} size="sm" kind="text" icon="bulb-outline" onPress={() => router.push({ pathname: "/homework/help", params: { task: task.id } })} /> : null}
+          {homeworkOpen ? <Button label={plain(t.homework.checkOpen)} size="sm" kind="outline" icon="color-wand-outline" onPress={() => router.push({ pathname: "/homework/check", params: { task: task.id } })} /> : null}
+          {helpParent ? <Button label={plain(t.homework.helpOpen)} size="sm" kind="text" icon="color-wand-outline" onPress={() => router.push({ pathname: "/homework/help", params: { task: task.id } })} /> : null}
           {toReview ? <Button label={t.tasks.wellDone} size="sm" icon="star" disabled={busy} onPress={() => void work(() => reviewHomework(task.id, "approved"), t.tasks.approvedSent)} /> : null}
           {toReview ? <Button label={t.tasks.redo} size="sm" kind="outline" icon="refresh" disabled={busy} onPress={() => setDraft("redo")} /> : null}
         </View>

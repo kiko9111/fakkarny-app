@@ -53,16 +53,16 @@ export default function PrivacyScreen() {
       {authAvailable ? (
         <RowGroup title={m.account}>
           {account ? (
-            <NavRow icon="log-out-outline" title={t.settings.signOut} value={`${t.settings.signedInAs} ${account}`} onPress={() => void signOut().then(() => setAccount(null))} />
+            <NavRow icon="log-out-outline" kind="neutral" title={t.settings.signOut} value={`${t.settings.signedInAs} ${account}`} onPress={() => void signOut().then(() => setAccount(null))} />
           ) : (
-            <NavRow icon="log-in-outline" title={t.settings.signIn} onPress={() => router.push("/onboarding")} />
+            <NavRow icon="log-in-outline" kind="neutral" title={t.settings.signIn} onPress={() => router.push("/onboarding")} />
           )}
         </RowGroup>
       ) : null}
 
       <RowGroup title={m.yourData}>
-        <NavRow icon="download-outline" title={t.settings.export} onPress={() => void doExport()} />
-        <NavRow icon="document-text-outline" title={t.paywall.termsLink} onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))} />
+        <NavRow icon="download-outline" kind="neutral" title={t.settings.export} onPress={() => void doExport()} />
+        <NavRow icon="document-text-outline" kind="neutral" title={t.paywall.termsLink} onPress={() => void Linking.openURL(legalUrl(API_URL, "terms", language))} />
         <NavRow icon="lock-closed-outline" kind="place" title={t.paywall.privacyLink} onPress={() => void Linking.openURL(legalUrl(API_URL, "privacy", language))} />
       </RowGroup>
 

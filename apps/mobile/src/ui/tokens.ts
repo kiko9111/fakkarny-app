@@ -39,7 +39,7 @@ export const palette = {
   calmGround: "#FAFAFD",
   primarySoftGlass: th.primarySoft + "CC",
   onPrimary: "#FFFFFF",
-  family: "#1F7A6E",
+  family: "#1F786C",
   familySoft: "#E0F2EE",
   friends: "#9A600E",
   friendsSoft: "#FCEFD8",
@@ -57,7 +57,8 @@ export const palette = {
 
 /**
  * What an icon is about, as a soft square and an ink that reads on it (AA): money yellow, people
- * and done green, places and splits blue, alarms and memory violet; anything else the theme's own.
+ * and done green, places and splits blue, alarms and memory violet, `neutral` for housekeeping
+ * (a code, an export, a setting); anything else the theme's own.
  */
 export const kind = {
   primary: { bg: th.primarySoft, ink: th.primaryInk },
@@ -65,6 +66,7 @@ export const kind = {
   people: { bg: "#DCF3E5", ink: "#1E7446" },
   place: { bg: "#DEEAFF", ink: "#2A5BBD" },
   alarm: { bg: "#EBE5FD", ink: "#5E44C4" },
+  neutral: { bg: th.surfaceAlt, ink: th.inkSoft },
 } as const;
 export type IconKind = keyof typeof kind;
 

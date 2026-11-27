@@ -113,7 +113,7 @@ export default function ReceiptScreen() {
       {state.step === "pick" ? (
         <>
           <Text variant="body">{t.receipt.intro}</Text>
-          <Note icon="sparkles-outline">{t.receipt.costNote}</Note>
+          <Note icon="color-wand-outline">{t.receipt.costNote}</Note>
           {pickButtons}
         </>
       ) : null}

@@ -27,7 +27,7 @@ export default function CircleHomeworkScreen() {
   const actions = useMemo<AddAction[]>(
     () =>
       alone
-        ? [{ key: "invite", icon: "logo-whatsapp", label: words.invite, onPress: invite }]
+        ? [{ key: "invite", icon: "logo-whatsapp", kind: "people", label: words.invite, onPress: invite }]
         : [
             { key: "week", icon: "school-outline", label: words.addWeek, onPress: () => router.push({ pathname: "/homework/plan", params: { circle: id } }) },
             // The new-task form starts as homework when it reads `homework=1`.
@@ -95,7 +95,7 @@ export default function CircleHomeworkScreen() {
             ))}
             {!alone && !child ? (
               <RowGroup>
-                <NavRow icon="help-circle-outline" title={words.explain} onPress={() => router.push("/homework/help")} />
+                <NavRow icon="color-wand-outline" title={words.explain} onPress={() => router.push("/homework/help")} />
               </RowGroup>
             ) : null}
           </>

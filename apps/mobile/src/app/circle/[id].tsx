@@ -186,7 +186,7 @@ export default function CircleScreen() {
         <Tile
           title={t.lay.circle.trackers}
           icon="stats-chart-outline"
-          kind="place"
+          kind="people"
           value={trackers.length ? String(trackers.length) : undefined}
           line={trackers.length ? undefined : t.lay.circle.startTracker}
           onPress={open("/circle/trackers")}
