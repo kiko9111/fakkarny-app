@@ -1,6 +1,7 @@
 import type { Item, Memory, Message, PrismaClient, Summary, User } from "../generated/prisma/client";
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
+import { describeLocal } from "./local";
 import { detectScriptInContext, type Script } from "./rules";
 import { loadAppData, loadAppNumbers, loadPeopleNumbers, type AppData } from "../chat/actions";
 
@@ -246,7 +247,8 @@ export function renderContext(ctx: ConversationContext): string {
   lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories, user.gender)}`);
   // Arabic needs it for every "you": when nobody knows yet, Zaki asks once, lightly.
   if (!user.gender && !ctx.memories.some((m) => m.content.includes("المؤنث"))) lines.push("GENDER: not set yet. In an Arabic conversation, when it fits naturally (never in distress, and not if you already asked in the recent chat), ask once how to address them (إنت ولا إنتي؟) and save the answer with the app tool: settings, setting address, text female or male.");
-  lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
+  lines.push(...describeLocal(user.city, tz, now));
+  lines.push(`HELPLINE (only for distress): ${helplineFor(tz, user.city)}`);
   lines.push("");
   lines.push("MEMORIES (what you know about their life):");
   lines.push(ctx.memories.length ? ctx.memories.map((m) => `- [${m.kind}] ${m.subject}: ${m.content}`).join("\n") : "- (nothing yet)");
@@ -280,7 +282,7 @@ export function renderPhoneReplyContext(ctx: ConversationContext): string {
   if (script) lines.push(`REPLY SCRIPT: ${script.split(" (")[0]}`);
   lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories, user.gender).split(" (")[0]}`);
   if (user.name) lines.push(`USER NAME: ${user.name}`);
-  lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
+  lines.push(`HELPLINE (only for distress): ${helplineFor(tz, user.city)}`);
   const memories = ctx.memories.slice(0, PHONE_MAX_MEMORIES);
   if (memories.length) lines.push(`MEMORIES: ${memories.map((m) => `${m.subject}: ${m.content}`).join(" · ")}`);
   return lines.join("\n");
@@ -296,7 +298,7 @@ export function renderPhoneContext(ctx: ConversationContext): string {
   if (script) lines.push(`REPLY SCRIPT: ${script.split(" (")[0]}`);
   lines.push(`ADDRESS THE USER AS: ${addressAs(ctx.memories, user.gender).split(" (")[0]}`);
   if (user.name) lines.push(`USER NAME: ${user.name}`);
-  lines.push(`HELPLINE (only for distress): ${helplineFor(tz)}`);
+  lines.push(`HELPLINE (only for distress): ${helplineFor(tz, user.city)}`);
   const memories = ctx.memories.slice(0, PHONE_MAX_MEMORIES);
   if (memories.length) lines.push(`MEMORIES: ${memories.map((m) => `${m.subject}: ${m.content}`).join(" · ")}`);
   // The most recently touched items first: that is what the user talks about next.

@@ -4,7 +4,10 @@ import { router, useNavigation } from "expo-router";
 import type { CircleTask, DaftarEntry, HouseList, Item, ListTrackersResponse, Split, Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { listUpcoming } from "@/db/items";
-import { t, dateLocale, listComma } from "@/i18n";
+import { t, dateLocale, language, listComma } from "@/i18n";
+import { prefs } from "@/lib/prefs";
+import { localDayOf } from "@/lib/unlock";
+import { holidayNote } from "@/today/holiday";
 import { PLACE_ICON, preview, sortLists } from "@/lists/logic";
 import { listDaftar, listLists, listSplits, listTasks, listTrackers, peekDaftar, peekLists, peekSplits, peekTasks, peekTrackers } from "@/lib/api";
 import { comingUp } from "@/lib/coming-up";
@@ -101,7 +104,11 @@ export default function TodayScreen() {
   useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
 
   const done = (i: Item) => () => void complete(i.id).catch(() => {});
-  const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
+  const holiday = holidayNote(prefs.get("city"), localDayOf(new Date()), language === "en" ? "en" : "ar");
+  const dateLine = [
+    new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" }),
+    holiday ? (holiday.when === "today" ? holiday.name : fill(t.lay.today.tomorrowHoliday, { name: holiday.name })) : "",
+  ].filter(Boolean).join(" · ");
 
   return (
     <Screen onRefresh={reload}>

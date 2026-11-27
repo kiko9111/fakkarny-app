@@ -1325,6 +1325,24 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+- Local defaults by city (2026-11-27, kareem; scope from the feature study: city-level only, asked
+  once). Pure data and math in packages/shared/src/local.ts: CITIES (Egypt, Saudi, UAE), COUNTRIES
+  (currency, prayer method), `prayerTimes` (astronomical, within a minute or two of the official
+  tables), holidays (`holidaysIn` / `holidaysBetween`: fixed days, Sham El Nessim from Orthodox
+  Easter, moon-based days from HIJRI_DAYS = Umm al-Qura, "expected"; add each new year there,
+  local.test.ts checks them against Node's calendar). users.city (migration user_city, wire
+  `User.city`, PATCH /me {city}); never an exact spot. The city decides: the helpline country
+  (`helplineFor(tz, city)`), Zaki's context (pipeline/local.ts: LOCAL, PRAYER TIMES today, HOLIDAYS
+  next 30 days; a city guessed from the time zone gives prayer times and holidays only), the currency
+  of new Daftar entries and splits and of the money lines (`currencyOf`: only a PICKED city changes
+  money, a guess never). Phone: Me › City (app/me/city.tsx; the one home), Zaki asks once in the chat
+  after the third message (lib/city-ask.ts, local line `local:city:*` with an Open card), Today puts a
+  holiday that runs today or starts tomorrow beside the date (today/holiday.ts). The app's money words
+  are swapped at start-up (`withCurrency`, i18n/currency.ts, prefs "city"); changing to another
+  currency reloads. City row and question appear only once the server's profile carries `city`
+  (`serverKnowsCity`), so an update that lands before the deploy offers nothing it can't save.
+  Not swapped yet: pocket money, circle book posts and homework rewards (EGP), store prices.
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages

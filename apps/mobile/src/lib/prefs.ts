@@ -13,8 +13,11 @@ import "./storage";
  * off the cloud fallback when the phone model fails. `brain_last_ms`: last on-phone reply time. `reply_last_ms`: last whole reply wait (send to reply).
  * `reply_stream`: "1" when the server last said it sends chat replies while they are written
  * (read and written by lib/api.ts under the same `pref:` name; it cannot import this file).
+ * `city`: the city id the user picked (packages/shared/src/local.ts), read at start-up for the
+ * currency words; also on the server. `city_ask`: how many messages before Zaki asks for it,
+ * "done" once asked.
  */
-export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak" | "split_daftar" | "brain" | "brain_model" | "brain_fallback" | "brain_last_ms" | "reply_last_ms" | "reply_stream";
+export type PrefKey = "language" | "always_direct" | "onboarded" | "pending_invite" | "pending_referral" | "offer_tracker" | "theme" | "unlocked" | "streak" | "split_daftar" | "brain" | "brain_model" | "brain_fallback" | "brain_last_ms" | "reply_last_ms" | "reply_stream" | "city" | "city_ask";
 
 export const prefs = {
   get(key: PrefKey): string | null {
@@ -29,6 +32,6 @@ export const prefs = {
     else localStorage.setItem(`pref:${key}`, value);
   },
   clear() {
-    for (const k of ["language", "always_direct", "onboarded", "pending_invite", "pending_referral", "offer_tracker", "theme", "unlocked"] as const) localStorage.removeItem(`pref:${k}`);
+    for (const k of ["language", "always_direct", "onboarded", "pending_invite", "pending_referral", "offer_tracker", "theme", "unlocked", "city", "city_ask"] as const) localStorage.removeItem(`pref:${k}`);
   },
 };

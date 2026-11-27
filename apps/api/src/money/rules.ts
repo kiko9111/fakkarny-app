@@ -1,4 +1,4 @@
-import { BUDGET_WARN_AT } from "@fakkarni/shared";
+import { BUDGET_WARN_AT, DEFAULT_CURRENCY, moneyWords, type Currency } from "@fakkarni/shared";
 import { localToUtc, toLocalIso } from "../lib/time";
 import type { ReplyLang } from "../pipeline/rules";
 import { normalize } from "../trackers/match";
@@ -92,9 +92,9 @@ export function budgetLine(lang: ReplyLang, section: string, total: number, budg
 }
 
 /** What Zaki says after logging an amount from chat. */
-export function loggedMoneyLine(lang: ReplyLang, section: string, amount: number, monthTotal: number, kind: "expense" | "income"): string {
-  if (lang === "english") return kind === "income" ? `Logged EGP ${num(amount)} in “${section}” 🌟` : `Logged EGP ${num(amount)} in “${section}”. This month so far: ${num(monthTotal)}.`;
-  return kind === "income" ? `سجّلت ${num(amount)} جنيه في «${section}» 🌟` : `سجّلت ${num(amount)} جنيه في «${section}». الشهر ده لحد دلوقتي: ${num(monthTotal)}.`;
+export function loggedMoneyLine(lang: ReplyLang, section: string, amount: number, monthTotal: number, kind: "expense" | "income", cur: Currency = DEFAULT_CURRENCY): string {
+  if (lang === "english") return kind === "income" ? `Logged ${moneyWords(num(amount), cur, "en")} in “${section}” 🌟` : `Logged ${moneyWords(num(amount), cur, "en")} in “${section}”. This month so far: ${num(monthTotal)}.`;
+  return kind === "income" ? `سجّلت ${moneyWords(num(amount), cur, "ar")} في «${section}» 🌟` : `سجّلت ${moneyWords(num(amount), cur, "ar")} في «${section}». الشهر ده لحد دلوقتي: ${num(monthTotal)}.`;
 }
 
 export interface MoneyHit {
@@ -108,7 +108,7 @@ const NOT_A_LOG = /[?؟]|فكرني|فكريني|remind|بكره|tomorrow|هدف
 const DEBT_WORDS = /سلف|استلف|عليا|ليا |عليه|\bowe|\blent\b|borrow|رجع|\bback\b|(?:^|\s)ل[ا-ي]+ (?:\d|ب)|\bto [a-z]+$/;
 const EXPENSE = /(?:^|\s)(?:دفعت|صرفت|اشتريت|جبت|spent|paid|bought)(?=\s)/;
 const INCOME = /(?:^|\s)(?:قبضت|اتقبضت|خدت مرتبي|نزل المرتب|جالي|كسبت|got paid|earned|received)(?=\s)/;
-const FILLER = /^(?:في|علي|على|عالـ?|ع|ب|بـ|on|for|in|at|the|a|جنيه|ج|egp|le|pounds?)\s+/;
+const FILLER = /^(?:في|علي|على|عالـ?|ع|ب|بـ|on|for|in|at|the|a|جنيه|ج|egp|le|pounds?|ريال|درهم|sar|aed|riyals?|dirhams?)\s+/;
 
 /**
  * "دفعت 300 بنزين" → expense 300 "بنزين"; "قبضت 5000" → income 5000. Strict on purpose: plans,
@@ -166,13 +166,14 @@ const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "ما
 const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /** The end-of-month "gift": a short, warm look back. Templates only, nothing invented. */
-export function giftLines(lang: ReplyLang, g: GiftInput): string[] {
+export function giftLines(lang: ReplyLang, g: GiftInput, cur: Currency = DEFAULT_CURRENCY): string[] {
   const ar = lang !== "english";
+  const m = (n: number) => moneyWords(num(n), cur, ar ? "ar" : "en");
   const name = (ar ? MONTHS_AR : MONTHS_EN)[Number(g.month.slice(5)) - 1]!;
   const lines = [ar ? `🎁 هدية آخر الشهر من زكي: ملخّص ${name}` : `🎁 Zaki's end-of-month gift: your ${name} in a nutshell`];
-  if (g.expense > 0) lines.push(ar ? `صرفت ${num(g.expense)} جنيه في الشهر.` : `You spent EGP ${num(g.expense)} this month.`);
-  if (g.income > 0) lines.push(ar ? `ودخلك ${num(g.income)} جنيه.` : `Your income was EGP ${num(g.income)}.`);
-  if (g.income > 0 && g.income > g.expense) lines.push(ar ? `يعني فضل معاك ${num(g.income - g.expense)} 🌟 برافو عليك!` : `That leaves EGP ${num(g.income - g.expense)} 🌟 Well done!`);
+  if (g.expense > 0) lines.push(ar ? `صرفت ${m(g.expense)} في الشهر.` : `You spent ${m(g.expense)} this month.`);
+  if (g.income > 0) lines.push(ar ? `ودخلك ${m(g.income)}.` : `Your income was ${m(g.income)}.`);
+  if (g.income > 0 && g.income > g.expense) lines.push(ar ? `يعني فضل معاك ${num(g.income - g.expense)} 🌟 برافو عليك!` : `That leaves ${m(g.income - g.expense)} 🌟 Well done!`);
   const top = [...g.sections].filter((s) => s.total > 0).sort((a, b) => b.total - a.total)[0];
   if (top) lines.push(ar ? `أكبر قسم: «${top.name}» بـ${num(top.total)}.` : `Biggest section: “${top.name}” at ${num(top.total)}.`);
   const budgeted = g.sections.filter((s) => s.budget);
@@ -185,7 +186,7 @@ export function giftLines(lang: ReplyLang, g: GiftInput): string[] {
     );
   }
   if (g.previousExpense && g.expense > 0 && g.expense < g.previousExpense) {
-    lines.push(ar ? `وصرفت أقل من الشهر اللي قبله بـ${num(g.previousExpense - g.expense)} 💪` : `And EGP ${num(g.previousExpense - g.expense)} less than the month before 💪`);
+    lines.push(ar ? `وصرفت أقل من الشهر اللي قبله بـ${num(g.previousExpense - g.expense)} 💪` : `And ${m(g.previousExpense - g.expense)} less than the month before 💪`);
   }
   lines.push(ar ? `شهر جديد، بداية جديدة. أنا معاك 💛` : `New month, fresh start. I'm with you 💛`);
   return lines;

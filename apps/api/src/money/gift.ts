@@ -1,4 +1,4 @@
-import type { MonthGift } from "@fakkarni/shared";
+import { currencyOf, type MonthGift } from "@fakkarni/shared";
 import type { PrismaClient, User } from "../generated/prisma/client";
 import { giftLines, monthOf, previousMonth } from "./rules";
 import { langFor, toWireSection, visibleTo } from "./store";
@@ -13,5 +13,5 @@ export async function monthGift(prisma: PrismaClient, user: User, now: Date, mon
   const income = sum(cur, "income");
   const previousExpense = sum(prev, "expense") || null;
   const sections = cur.filter((s) => s.kind === "expense").map((s) => ({ name: s.name, total: s.circle_id ? s.my_share : s.month_total, budget: s.circle_id ? null : s.budget }));
-  return { month: m, expense, income, lines: expense || income ? giftLines(langFor(user), { month: m, expense, income, sections, previousExpense }) : [] };
+  return { month: m, expense, income, lines: expense || income ? giftLines(langFor(user), { month: m, expense, income, sections, previousExpense }, currencyOf(user.city)) : [] };
 }
