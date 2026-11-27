@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Item, Memory, Message, TimeOfDay, User } from "./entities";
 import { CheckinInterval, Language, Tone } from "./enums";
+import { BriefTopic, MAX_BRIEF_TOPICS } from "./brief";
 
 /** GET /health */
 export const HealthResponse = z.object({
@@ -148,6 +149,9 @@ export const PatchMeRequest = z
     /** An https://ipn.eg/… link from the InstaPay app, or null to remove it. */
     instapay_link: z.string().trim().max(300).nullable(),
     gender: z.enum(["female", "male"]).nullable(),
+    /** Daily news brief topics ([] turns it off) and its local time. */
+    brief_topics: z.array(BriefTopic).max(MAX_BRIEF_TOPICS),
+    brief_time: TimeOfDay.nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");

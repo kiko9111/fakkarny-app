@@ -98,6 +98,7 @@ export default function RootLayout() {
           <Stack.Screen name="circle/trackers" options={{ title: t.lay.circle.trackers }} />
           <Stack.Screen name="me/zaki" options={{ title: t.lay.me.zaki }} />
           <Stack.Screen name="me/look" options={{ title: t.lay.me.look }} />
+          <Stack.Screen name="me/news" options={{ title: t.lay.me.news }} />
           <Stack.Screen name="me/reminders" options={{ title: t.lay.me.reminders }} />
           <Stack.Screen name="me/payments" options={{ title: t.lay.me.payments }} />
           <Stack.Screen name="me/memory" options={{ title: t.lay.me.memory }} />

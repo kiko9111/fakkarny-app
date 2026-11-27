@@ -47,14 +47,15 @@ export function useMe(onFresh?: (user: User) => void) {
     }, []),
   );
 
-  const save = useCallback(async (patch: PatchMeRequest) => {
+  /** `handled` may take a failure itself (say, a 402 that opens the paywall); true stops the error toast. */
+  const save = useCallback(async (patch: PatchMeRequest, handled?: (err: unknown) => boolean) => {
     const before = latest.current;
     if (before) setUser({ ...before, ...patch } as User);
     try {
       setUser(await patchMe(patch));
     } catch (err) {
       setUser(before);
-      notify(failText(err, t.saved.offline), "error");
+      if (!handled?.(err)) notify(failText(err, t.saved.offline), "error");
     }
   }, []);
 

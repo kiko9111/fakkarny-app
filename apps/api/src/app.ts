@@ -156,7 +156,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(cardRoutes, { prisma, publicUrl: deps.invites?.publicUrl });
     app.register(photoRoutes, { prisma, authenticate, model: deps.model, now: deps.now, requireSubscription: billing.requireSubscription });
     app.register(homeworkRoutes, { prisma, authenticate, model: deps.model, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
-    app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
+    app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser, requireSubscription: billing.requireSubscription });
     app.register(bootstrapRoutes, { authenticate });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });
   }

@@ -14,6 +14,8 @@ import type { PushSender } from "./push";
 import { writeProactive } from "./write";
 import { nextTickAt } from "./schedule";
 import { checkupClientId, checkupLines, hasSomething, isCheckupTime } from "./checkup";
+import { sendDailyBrief } from "../brief/send";
+import type { NewsDeps } from "../brief/news";
 import { isMomentTime, momentClientId, momentLines, momentPrompt, MOMENT_EVERY_DAYS, MOMENT_SYSTEM, pickMemory, QUIET_AFTER_USER_MIN } from "./memory-moment";
 
 /**
@@ -53,6 +55,8 @@ export interface TickDeps {
   log?: FastifyBaseLogger;
   /** Skip users whose chat is locked (FR-9). */
   requireSubscription?: boolean;
+  /** Where the daily news brief reads the news (brief/news.ts); no brief without it. */
+  news?: Omit<NewsDeps, "now">;
 }
 
 /** Which language to start a conversation in: follow how the user last wrote, else their setting. */
@@ -396,6 +400,14 @@ async function pushToUser(deps: TickDeps, user: User, body: string, kind: Messag
  */
 export async function tickUser(deps: TickDeps, user: User, now: Date): Promise<{ sent: boolean; budgetSpent: boolean }> {
   await postDueReminders(deps.prisma, user, now);
+  // The news brief the user asked for: at their time, and not counted in Zaki's daily budget.
+  if (deps.news) {
+    const brief = await sendDailyBrief({ prisma: deps.prisma, model: deps.model, news: deps.news }, user, () => scriptFor(deps.prisma, user), now);
+    if (brief) {
+      await pushToUser(deps, user, [brief.texts[0], brief.texts[1]?.split("\n")[0]].filter(Boolean).join("\n"), "checkin");
+      return { sent: true, budgetSpent: false };
+    }
+  }
   if ((await zakiSentToday(deps.prisma, user, now)) >= DAILY_ZAKI_BUDGET) return { sent: false, budgetSpent: true };
   const sent =
     (await sendMonthGift(deps, user, now)) ||

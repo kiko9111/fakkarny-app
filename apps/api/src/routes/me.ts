@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
-import { INSTALL_ID_HEADER, parseInstapayLink, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
+import { briefTopicLimit, DEFAULT_BRIEF_TIME, INSTALL_ID_HEADER, knownTopics, parseInstapayLink, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
+import { hasPro } from "../billing/plan";
 import { isValidTimeZone } from "../lib/time";
 import { forgetCachedUser, installAuthId, linkInstallToAccount, type AuthConfig } from "../plugins/auth";
 import { toWireEntry, withPeople as daftarPeople } from "../daftar/store";
@@ -12,6 +13,8 @@ export interface MeRoutesOptions {
   prisma: PrismaClient;
   auth: AuthConfig;
   authenticate: preHandlerAsyncHookHandler;
+  /** Free users follow FREE_BRIEF_TOPICS news topics only while subscriptions are on. */
+  requireSubscription?: boolean;
   /** Deletes the Supabase auth user too (needs the service role key); optional. */
   deleteAuthUser?: (sub: string) => Promise<void>;
 }
@@ -52,8 +55,20 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
     }
     if (b.always_direct !== undefined) data.alwaysDirect = b.always_direct;
     if (b.gender !== undefined) data.gender = b.gender;
+    if (b.brief_topics !== undefined) {
+      const topics = knownTopics(b.brief_topics);
+      if (topics.length > 1 && opts.requireSubscription) {
+        const now = new Date();
+        const pro = hasPro(req.user, now) || (await coveredByFamilyPlan(prisma, req.user.id, now));
+        if (topics.length > briefTopicLimit(pro)) return reply.code(402).send({ error: "brief_limit" });
+      }
+      data.briefTopics = topics;
+      // Turning the brief on without a time: the default, so the user is never left waiting for nothing.
+      if (topics.length && b.brief_time === undefined && !req.user.briefTime) data.briefTime = DEFAULT_BRIEF_TIME;
+    }
+    if (b.brief_time !== undefined) data.briefTime = b.brief_time;
     // New waking hours or time zone: let the proactive tick look again now (proactive/schedule.ts).
-    if (b.timezone || b.wake_time || b.sleep_time || b.checkin_interval_h) data.nextTickAt = null;
+    if (b.timezone || b.wake_time || b.sleep_time || b.checkin_interval_h || b.brief_topics || b.brief_time !== undefined) data.nextTickAt = null;
     if (b.instapay_link !== undefined) {
       const link = b.instapay_link ? parseInstapayLink(b.instapay_link) : null;
       if (b.instapay_link && !link) return reply.code(400).send({ error: "invalid_instapay_link" });

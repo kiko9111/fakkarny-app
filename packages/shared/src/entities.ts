@@ -48,6 +48,9 @@ export const User = z.object({
   instapay_link: z.string().nullable(),
   /** How Zaki addresses them in Arabic ("female" / "male"); null until they say. Old servers omit it. */
   gender: z.enum(["female", "male"]).nullable().default(null),
+  /** Daily news brief: topic names (strings, so a phone keeps working when the server adds one) and local "HH:MM". Old servers omit them. */
+  brief_topics: z.array(z.string()).default([]),
+  brief_time: TimeOfDay.nullable().default(null),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });

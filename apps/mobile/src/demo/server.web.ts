@@ -249,6 +249,8 @@ function seed(): State {
       always_direct: false,
       instapay_link: null,
       gender: null,
+      brief_topics: ["football", "ai"],
+      brief_time: "08:00",
       created_at: inHours(-24 * 3),
       last_active_at: iso(now()),
     },

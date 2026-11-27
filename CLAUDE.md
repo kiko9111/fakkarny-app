@@ -1325,6 +1325,26 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+- Daily news brief (2026-11-27, kareem: "the user chooses topics and Zaki gives a short daily brief").
+  Topics and wording in packages/shared/src/brief.ts (12 topics; free 1, Pro up to 5, limits off
+  while REQUIRE_SUBSCRIPTION=0; 402 `brief_limit` opens the paywall). users.brief_topics /
+  brief_time (PATCH /me; topics with no time get 08:00), migration daily_brief, phone page
+  app/me/news.tsx with the Me row "Daily news". Server in apps/api/src/brief: feeds.ts (public RSS
+  feeds: Masrawy for Egypt, BBC, Guardian, TechCrunch, The Verge, Motor1, ...; no key, no cost),
+  rss.ts (small RSS/Atom reader, untrusted text), news.ts (fresh 30 h, no repeats, sources in
+  turn; GNEWS_API_KEY switches to GNews, a paid licensed API, with the feeds as fallback),
+  rules.ts (window 90 min from the user's time, 6-hour editions, prompt, `digestLines` zod check,
+  `composeBrief`), send.ts. Each topic is read and summarised ONCE per language and edition for
+  everyone (table brief_digests, one Haiku call, `ai_call` purpose "brief_digest" counted on the
+  first user who needed it), so cost grows with topics, not users (at most 96 calls a day), and a
+  brief never uses the user's AI allowance. Without a model key the brief is the headlines as they
+  are. Sent from the tick before the daily budget check and not counted in DAILY_ZAKI_BUDGET (the
+  user asked for it); kind "checkin", client_id `brief:<local day>:<n>`, pushed; `nextTickAt` wakes
+  for the brief time while asleep or with the budget spent. Bullets are allowed here because the
+  user asked for the brief. The brief never offers "ask me for more": Zaki knows only those lines.
+  NEWS_BRIEF=0 stops it. `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
+  session can't reach them, so .github/workflows/brief-feeds.yml runs it ("[brief-feeds]").
+
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
