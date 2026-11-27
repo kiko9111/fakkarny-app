@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { sortLinkTasks } from "@/tasks/logic";
+import { LinkTaskCard } from "@/tasks/LinkTaskCard";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { t } from "@/i18n";
 import { taskSections } from "@/tasks/jobs";
@@ -9,7 +11,7 @@ import { IntroPanel, LoadingCards, Screen, useAddSheet, type AddAction } from "@
 /** A circle's tasks (homework has its own screen): what waits for me, what is open, the last finished. */
 export default function CircleTasksScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { circle, tasks, failed, load } = useCircleJob(id);
+  const { circle, tasks, linkTasks, failed, load } = useCircleJob(id);
   const { invite } = useCircleInvite(id);
   const words = t.lay.circlejobs;
 
@@ -20,15 +22,18 @@ export default function CircleTasksScreen() {
       alone
         ? { key: "invite", icon: "logo-whatsapp", kind: "people", label: words.invite, onPress: invite }
         : { key: "ask", icon: "checkmark-circle-outline", kind: "people", label: words.askSomeone, onPress: () => router.push({ pathname: "/task/new", params: { circle: id } }) },
+      // Someone who is not on Zaki answers on a web page from a WhatsApp link.
+      { key: "link", icon: "link-outline", kind: "people", label: words.sendLink, hint: words.sendLinkHint, onPress: () => router.push({ pathname: "/task/link", params: { circle: id } }) },
     ],
     [alone, id, invite, words],
   );
   const add = useAddSheet(actions);
 
   const { waiting, open, done } = taskSections(tasks ?? []);
-  const empty = waiting.length + open.length + done.length === 0;
+  const byLink = sortLinkTasks(linkTasks ?? [], new Date());
+  const empty = waiting.length + open.length + done.length + byLink.length === 0;
   // Titles only when there is more than one group to tell apart.
-  const titled = [waiting, open, done].filter((g) => g.length).length > 1;
+  const titled = [waiting, open, done, byLink].filter((g) => g.length).length > 1;
   const reload = () => void load();
 
   return (
@@ -60,6 +65,10 @@ export default function CircleTasksScreen() {
             {titled && done.length ? <JobHeading title={words.done} /> : null}
             {done.map((task) => (
               <TaskCard key={task.id} task={task} onChanged={reload} />
+            ))}
+            {titled && byLink.length ? <JobHeading title={words.byLink} /> : null}
+            {byLink.map((task) => (
+              <LinkTaskCard key={task.id} task={task} onChanged={reload} />
             ))}
           </>
         )}

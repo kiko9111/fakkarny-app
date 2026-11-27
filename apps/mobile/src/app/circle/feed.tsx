@@ -16,7 +16,7 @@ import { ask, Badge, Button, Card, Chip, HeaderPlus, notify, palette, plain, Scr
 export default function CircleFeedScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { circle, failed, showHeld, loadCircle } = useCircle(id);
-  const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [] });
+  const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [], link_tasks: [] });
   const [summary, setSummary] = useState<string[] | null>(null);
 
   const load = useCallback(async () => {

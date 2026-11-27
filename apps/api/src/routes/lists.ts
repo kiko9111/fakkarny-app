@@ -11,6 +11,10 @@ import {
 } from "@fakkarni/shared";
 import type { PrismaClient } from "../generated/prisma/client";
 import { inBackground } from "../lib/background";
+import { listShareText } from "../links/rules";
+import { listLinkUrl } from "../links/store";
+import { withFreshCode } from "../web/link-page";
+import { baseUrl } from "./circles";
 import { pushNotices } from "../proactive/notify";
 import type { PushSender } from "../proactive/push";
 import {
@@ -29,6 +33,7 @@ export interface ListRoutesOptions {
   authenticate: preHandlerAsyncHookHandler;
   now?: () => Date;
   push?: PushSender;
+  publicUrl?: string;
 }
 
 const IdParam = z.object({ id: z.uuid() });
@@ -283,5 +288,35 @@ export const listRoutes: FastifyPluginAsync<ListRoutesOptions> = async (
     return {
       list: toWireList(out.list, req.user.id, at),
     } satisfies HouseListResponse;
+  });
+
+  /**
+   * The list's no-app link: anyone holding it sees, ticks and adds in a browser (GET /l/:code).
+   * Asking again gives the same link; DELETE stops it (a new one is a new code).
+   */
+  app.post("/lists/:id/link", async (req, reply) => {
+    const p = IdParam.safeParse(req.params);
+    const list = p.success ? await findList(prisma, req.user.id, p.data.id, now()) : null;
+    if (!list) return reply.code(404).send({ error: "not_found" });
+    const code =
+      list.shareCode ??
+      (await withFreshCode(async (c) => {
+        const n = await prisma.houseList.updateMany({ where: { id: list.id, shareCode: null }, data: { shareCode: c } });
+        if (n.count) return c;
+        // Someone else made it a moment ago: use theirs.
+        return (await prisma.houseList.findUniqueOrThrow({ where: { id: list.id }, select: { shareCode: true } })).shareCode!;
+      }));
+    if (!list.shareCode) inBackground(prisma.event.create({ data: { userId: req.user.id, name: "list_link_made", propsJson: { shared: Boolean(list.circleId) } } }));
+    const url = listLinkUrl(baseUrl(req, opts.publicUrl), code);
+    const lang = req.user.language === "en" ? "en" : "ar";
+    return { url, share_text: listShareText({ lang, from: req.user.name, list: list.name, open: list.items.filter((i) => !i.doneAt).length, url }) };
+  });
+
+  app.delete("/lists/:id/link", async (req, reply) => {
+    const p = IdParam.safeParse(req.params);
+    if (!p.success) return reply.code(404).send({ error: "not_found" });
+    const n = await prisma.houseList.updateMany({ where: { id: p.data.id, ...visibleLists(req.user.id) }, data: { shareCode: null, updatedAt: now() } });
+    if (!n.count) return reply.code(404).send({ error: "not_found" });
+    return answer(req.user.id, p.data.id, now());
   });
 };

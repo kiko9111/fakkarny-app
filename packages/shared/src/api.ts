@@ -184,6 +184,9 @@ export const ExportResponse = z.object({
   pocket_money: z.array(z.object({ role: z.enum(["child", "parent"]), kind: z.string(), amount: z.number(), title: z.string().nullable(), at: z.string() })).default([]),
   /** Household list things the user added or ticked off, with their list's name. */
   list_items: z.array(z.object({ list: z.string(), title: z.string(), qty: z.string().nullable(), added: z.boolean(), done_at: z.string().nullable(), created_at: z.string() })).default([]),
+  link_tasks: z
+    .array(z.object({ other_name: z.string(), title: z.string(), note: z.string().nullable(), status: z.string(), due_at: z.string().nullable(), done_at: z.string().nullable(), created_at: z.string() }))
+    .default([]),
   gameyas: z
     .array(
       z.object({
