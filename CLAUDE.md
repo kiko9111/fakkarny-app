@@ -67,7 +67,10 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:41Z (153c511; the live check at
+  server answers, a 404 that the old one still does. Deployed 2026-11-27 12:01Z (7558ae9; the live check at
+  12:08Z passed, server in `europe-west4-drams3a`): main at ac6a334 (through #86, local defaults by city,
+  migration user_city; #81's widget is phone-only). An earlier deploy that morning (e8f0645) carried
+  #85 gam'eya. #83 (daily news brief) merged after and is NOT deployed. Before that, 2026-11-26 22:41Z (153c511; the live check at
   22:48Z passed): main at ab604e0 (through #77, household lists, migration household_lists).
   Before that, 22:10Z (db553d7; the live check at 22:16Z passed, server in
   `europe-west4-drams3a`): main at 8313c9e (through #74, group bill split, migration group_splits;
