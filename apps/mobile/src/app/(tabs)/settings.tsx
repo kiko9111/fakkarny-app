@@ -7,7 +7,8 @@ import { InviteCard } from "@/me/parts";
 import { useAccount, useAlarms, useMe } from "@/me/useMe";
 import { usePlaces } from "@/places/store";
 import { shareInvite } from "@/referral/share";
-import { Button, glass, Icon, NavRow, palette, PersonAvatar, radius, RowGroup, Screen, space, Text, themeId } from "@/ui";
+import { pinWidget, widgetAvailable, widgetsPlaced } from "@/widget";
+import { Button, glass, Icon, NavRow, notify, palette, PersonAvatar, radius, RowGroup, Screen, space, Text, themeId } from "@/ui";
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
 
@@ -47,6 +48,10 @@ export default function MeScreen() {
         <NavRow icon="chatbubble-ellipses-outline" title={m.zaki} value={user ? joinLine([tone, checkins]) : undefined} onPress={() => router.push("/me/zaki")} />
         <NavRow icon="color-palette-outline" title={m.look} value={joinLine([theme, language === "en" ? t.onboarding.english : t.onboarding.arabic])} onPress={() => router.push("/me/look")} />
         <NavRow icon="notifications-outline" kind="alarm" title={m.reminders} value={joinLine([countLine(alarms.length, m.alarmsOne, m.alarmsCount), countLine(places.length, m.placesOne, m.placesCount)])} onPress={() => router.push("/me/reminders")} />
+        {/* The home-screen widget: offered on Android builds that have it, until one is placed. */}
+        {widgetAvailable && widgetsPlaced() === 0 ? (
+          <NavRow icon="apps-outline" kind="neutral" title={t.lay.widget.addRow} onPress={() => (pinWidget() ? undefined : notify(t.lay.widget.howTo))} />
+        ) : null}
         <NavRow icon="card-outline" kind="money" title={m.payments} value={user ? (user.instapay_link ? m.instapaySet : m.instapayNone) : undefined} onPress={() => router.push("/me/payments")} />
       </RowGroup>
 
