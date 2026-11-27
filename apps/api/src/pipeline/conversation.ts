@@ -16,6 +16,7 @@ import { inBackground } from "../lib/background";
 import { logEntryWithStats, loggedLine, trackerFastPath } from "../trackers/store";
 import { moneyFastPath } from "../money/store";
 import { addToList, listFastPath } from "../lists/chat";
+import { gameyaFastPath } from "../gameya/chat";
 import { isPlainYes, pendingStatus, statusDoneReply } from "../proactive/status";
 import type { MessagePipeline } from "./types";
 import { answerCard, attachCards, debtCards, runAppActions } from "../chat/actions";
@@ -154,6 +155,14 @@ export function createConversationPipeline(deps: { model: FriendModel; log?: Fas
       counted(prisma, user.id, "reply_fast_path", { list: true });
       const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [listed.text], response: EMPTY_ACTIONS, now }), listed.cards);
       return { ...result, notices: [...(result.notices ?? []), ...listed.notices.filter((n) => n.userId !== user.id)] };
+    }
+
+    // 1a‴. The gam'eya by rules: "دفعت الجمعية", "الدور على مين", "اعمل جمعية". No AI call.
+    const gameya = crisisKeyword ? null : await gameyaFastPath(prisma, user, message.text, script, now).catch(() => null);
+    if (gameya) {
+      counted(prisma, user.id, "reply_fast_path", { gameya: true });
+      const result = await withCards(prisma, await applyActions(prisma, { user, message, replies: [gameya.text], response: EMPTY_ACTIONS, now }), gameya.cards);
+      return { ...result, notices: [...(result.notices ?? []), ...gameya.notices.filter((n) => n.userId !== user.id)] };
     }
 
     // 1b. Free AI allowance. Rule-answered messages above don't count. Distress is never

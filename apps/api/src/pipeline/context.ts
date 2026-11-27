@@ -1,3 +1,5 @@
+import { standLine } from "../gameya/chat";
+import { toWireGameya } from "../gameya/store";
 import type { Item, Memory, Message, PrismaClient, Summary, User } from "../generated/prisma/client";
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
@@ -113,6 +115,10 @@ export function describeApp(app: AppData | undefined, userId: string, tz = "Afri
           : "none yet (things to buy go on a new household grocery list)"
       }`,
     );
+  }
+  if (app.gameyas?.length) {
+    const at = new Date();
+    lines.push(`- GAM'EYAS (rotating savings circles, records only; "دفعت الجمعية" is recorded by the app itself): ${app.gameyas.map((g) => `${standLine("en", toWireGameya(g, "", userId, at))}${g.ownerId === userId ? " (the user organizes it)" : ""}`).join(" · ")}`);
   }
   if (app.numbers) lines.push(...describeNumbers(app, userId, tz));
   return lines;
