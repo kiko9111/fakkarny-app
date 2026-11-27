@@ -1,4 +1,5 @@
 import type { Language } from "@fakkarni/shared";
+import { strings as care } from "./care";
 import { strings as chat } from "./chat";
 import { strings as circle } from "./circle";
 import { strings as circlejobs } from "./circlejobs";
@@ -14,7 +15,7 @@ import { strings as widget } from "./widget";
  * The layout rebuild's words, one file per area so areas can be written side by side. Screens
  * read them as `t.lay.<area>.<key>`; each file checks that English has the Arabic keys.
  */
-const areas = { common, circle, circlejobs, today, daftar, gameya, chat, me, tabs, widget };
+const areas = { common, circle, circlejobs, today, daftar, gameya, chat, me, tabs, widget, care };
 type Areas = typeof areas;
 export type LayoutStrings = { [A in keyof Areas]: Areas[A]["en"] };
 

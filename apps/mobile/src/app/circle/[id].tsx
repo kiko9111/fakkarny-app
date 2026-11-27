@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
-import { checkinOrder, type CheckinKind, type CircleDetail, type CircleFeedResponse, type HouseList, type MoneySection, type PocketAccount, type SharedTracker, type Split } from "@fakkarni/shared";
+import { checkinOrder, type CareMed, type CheckinKind, type CircleDetail, type CircleFeedResponse, type HouseList, type MoneySection, type PocketAccount, type SharedTracker, type Split } from "@fakkarni/shared";
+import { careSummary } from "@/care/logic";
+import { doseClock } from "@/care/clock";
 import { fill, guessCheckin } from "@/circles/logic";
 import { latestCheckin, listSummary, moneyTile, moreCheckins, pocketOwed, showsHomework, taskCounts } from "@/circles/summary";
 import { ago, CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
 import { dateLocale, t } from "@/i18n";
-import { checkIn, getCircleFeed, getCircleTrackers, getMoney, getPocketMoney, listLists, listSplits, peekCircleFeed, peekCircleTrackers, peekLists, peekMoney, peekPocketMoney, peekSplits, saveCircle } from "@/lib/api";
+import { checkIn, getCircleFeed, getCircleTrackers, getMoney, getPocketMoney, listCare, listLists, listSplits, peekCircleFeed, peekCare, peekCircleTrackers, peekLists, peekMoney, peekPocketMoney, peekSplits, saveCircle } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { QueuedOffline } from "@/sync/writes";
 import { Button, Card, Chip, IconButton, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, Tile, TileGrid, ZakiAvatar, type IconName } from "@/ui";
@@ -31,6 +33,8 @@ export default function CircleScreen() {
   const [sections, setSections] = useState<MoneySection[] | null>(() => peekMoney()?.sections ?? null);
   const [pocket, setPocket] = useState<PocketAccount[] | null>(() => peekPocketMoney());
   const [splits, setSplits] = useState<Split[] | null>(() => peekSplits());
+  // As with lists: a server from before care circles answers 404, and the tile stays hidden.
+  const [care, setCare] = useState<CareMed[] | null>(() => peekCare());
   const [more, setMore] = useState(false);
 
   // Each part loads on its own: the circle shows as soon as it arrives, and a feed or tracker
@@ -38,13 +42,14 @@ export default function CircleScreen() {
   const load = useCallback(async () => {
     // What the phone holds first (the same objects when nothing changed: no redraw), then the server.
     showHeld();
-    const held = { feed: peekCircleFeed(id), trackers: peekCircleTrackers(id), lists: peekLists(), money: peekMoney(), pocket: peekPocketMoney(), splits: peekSplits() };
+    const held = { feed: peekCircleFeed(id), trackers: peekCircleTrackers(id), lists: peekLists(), money: peekMoney(), pocket: peekPocketMoney(), splits: peekSplits(), care: peekCare() };
     if (held.feed) setFeed(held.feed);
     if (held.trackers) setTrackers(held.trackers);
     if (held.lists) setLists(held.lists);
     if (held.money) setSections(held.money.sections);
     if (held.pocket) setPocket(held.pocket);
     if (held.splits) setSplits(held.splits);
+    if (held.care) setCare(held.care);
     const feedDone = getCircleFeed(id).then(setFeed, () => {});
     const trackersDone = getCircleTrackers(id).then(setTrackers, () => {});
     void listLists().then(setLists, () => {});
@@ -54,6 +59,7 @@ export default function CircleScreen() {
     );
     void getPocketMoney().then(setPocket, () => {});
     void listSplits().then(setSplits, () => {});
+    void listCare().then(setCare, () => {});
     await loadCircle();
     await Promise.all([feedDone, trackersDone]);
   }, [id, showHeld, loadCircle]);
@@ -107,6 +113,7 @@ export default function CircleScreen() {
   const owed = pocketOwed(pocket, id);
   const list = listSummary(lists, id);
   const money = moneyTile(sections, splits, id);
+  const meds = careSummary(care, id);
   const checkinChips = (
     <View style={styles.chips}>
       {(others ? moreCheckins(checkinOrder(circle.family_type)) : checkinOrder(circle.family_type)).map((kind) => (
@@ -180,6 +187,17 @@ export default function CircleScreen() {
         ) : null}
         {lists ? (
           <Tile title={t.lay.circle.lists} icon="cart-outline" value={String(list.open)} line={list.top?.name} onPress={() => router.push({ pathname: "/list", params: { circle: id } })} />
+        ) : null}
+        {care && (meds.count > 0 || family) ? (
+          <Tile
+            title={t.lay.care.title}
+            icon="medkit-outline"
+            kind="people"
+            value={meds.count ? String(meds.left) : undefined}
+            line={meds.missed ? fill(t.lay.care.missedN, { n: meds.missed }) : meds.next ? fill(t.lay.care.nextAt, { time: doseClock(meds.next) }) : meds.count ? t.lay.care.allDone : t.lay.care.add}
+            tone={meds.missed ? "warn" : undefined}
+            onPress={open("/circle/care")}
+          />
         ) : null}
         <Tile
           title={t.lay.circle.money}

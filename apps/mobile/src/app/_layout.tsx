@@ -100,6 +100,9 @@ export default function RootLayout() {
           <Stack.Screen name="circle/homework" options={{ title: t.lay.circlejobs.homeworkTitle }} />
           <Stack.Screen name="circle/money" options={{ title: t.lay.circlejobs.moneyTitle }} />
           <Stack.Screen name="circle/trackers" options={{ title: t.lay.circle.trackers }} />
+          <Stack.Screen name="circle/care" options={{ title: t.lay.care.title }} />
+          <Stack.Screen name="care/new" options={{ presentation: "modal", title: t.lay.care.newTitle }} />
+          <Stack.Screen name="care/[id]" options={{ title: "" }} />
           <Stack.Screen name="me/zaki" options={{ title: t.lay.me.zaki }} />
           <Stack.Screen name="me/look" options={{ title: t.lay.me.look }} />
           <Stack.Screen name="me/news" options={{ title: t.lay.me.news }} />
