@@ -42,6 +42,8 @@ export const APP_EVENTS = [
   "list_trip", // "I'm going shopping" tapped
   "gameya_created", // a gam'eya book made on its screen
   "gameya_paid", // a payment ticked on a gam'eya screen
+  "care_med_added", // a medicine added to a care circle
+  "care_dose_marked", // a dose marked taken or skipped from its screen (props.status)
   "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
   "forward_in", // something shared or pasted for Zaki: props.kind "chat" | "receipt" | "none", props.source "share" | "paste"
   "forward_sent", // the chat sent a forwarded message (props.chars: its length, rounded to 100)
