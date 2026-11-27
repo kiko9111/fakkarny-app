@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import { daftarTotals, type DaftarEntry, type Item, type PocketAccount } from "@fakkarni/shared";
+import { daftarTotals, type DaftarEntry, type Gameya, type Item, type PocketAccount } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { listDebts } from "@/db/items";
-import { t } from "@/i18n";
-import { getPocketMoney, listDaftar, peekDaftar, peekPocketMoney } from "@/lib/api";
+import { dateLocale, t } from "@/i18n";
+import { getPocketMoney, listDaftar, listGameyas, peekDaftar, peekGameyas, peekPocketMoney } from "@/lib/api";
+import { gameyaLine } from "@/gameya/logic";
 import { failText } from "@/lib/errors";
 import { summarizeDebts } from "@/lib/group";
 import { useLive } from "@/lib/live";
@@ -25,6 +26,7 @@ export function PeopleView({ reloadKey }: { reloadKey: number }) {
   const { owedToMe, iOwe } = summarizeDebts(items);
   const [shared, setShared] = useState<DaftarEntry[] | null>(() => peekDaftar());
   const [pocket, setPocket] = useState<PocketAccount[]>(() => peekPocketMoney() ?? []);
+  const [gameyas, setGameyas] = useState<Gameya[]>(() => peekGameyas() ?? []);
   const [offline, setOffline] = useState<string | null>(null);
 
   const loadShared = useCallback(async () => {
@@ -35,6 +37,9 @@ export function PeopleView({ reloadKey }: { reloadKey: number }) {
     // Pocket money is a small extra here: with no answer the saved rows stay.
     void getPocketMoney()
       .then(setPocket)
+      .catch(() => {});
+    void listGameyas()
+      .then(setGameyas)
       .catch(() => {});
     try {
       setShared(await listDaftar());
@@ -61,7 +66,7 @@ export function PeopleView({ reloadKey }: { reloadKey: number }) {
   const privateNotes = [...owedToMe.map((p) => ({ p, mine: true })), ...iOwe.map((p) => ({ p, mine: false }))];
   const pocketList = pocketRows(pocket);
   const unit = fill(t.ui.pounds, { n: "" }).trim();
-  const nothing = shared !== null && shared.length === 0 && privateNotes.length === 0 && pocketList.length === 0;
+  const nothing = shared !== null && shared.length === 0 && privateNotes.length === 0 && pocketList.length === 0 && gameyas.length === 0;
 
   if (nothing) return <IntroPanel title={t.lay.daftar.peopleEmpty} action={t.lay.common.add} onAction={() => router.push("/daftar/new")} say={t.lay.daftar.peopleSay} />;
 
@@ -105,6 +110,14 @@ export function PeopleView({ reloadKey }: { reloadKey: number }) {
           </Card>
         )),
       )}
+
+      {gameyas.length ? (
+        <RowGroup title={t.lay.gameya.group}>
+          {gameyas.map((g, i) => (
+            <NavRow key={g.id} first={i === 0} icon="sync-circle-outline" kind="money" title={g.name} value={gameyaLine(g, t.lay.gameya, dateLocale)} onPress={() => router.push({ pathname: "/gameya/[id]", params: { id: g.id } })} />
+          ))}
+        </RowGroup>
+      ) : null}
 
       {pocketList.length ? (
         <RowGroup title={t.homework.pocketTitle}>
