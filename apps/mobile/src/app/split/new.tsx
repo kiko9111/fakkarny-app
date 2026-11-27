@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Pressable, Share, StyleSheet, Switch, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT, type Circle } from "@fakkarni/shared";
@@ -20,7 +20,7 @@ import { Button, Card, Chip, Icon, IconButton, notify, palette, radius, Screen, 
  * Daftar or the chat ("احسبلي 1850 على 5" fills the bill and the number of people).
  */
 export default function NewSplitScreen() {
-  const params = useLocalSearchParams<{ subtotal?: string; people?: string }>();
+  const params = useLocalSearchParams<{ subtotal?: string; people?: string; circle?: string }>();
   const [d, setD] = useState<Draft>(() => takeDraft() ?? {
     title: "",
     subtotal: params.subtotal ?? "",
@@ -47,6 +47,15 @@ export default function NewSplitScreen() {
       notify(t.split.offline, "error");
     }
   };
+  // Opened from a circle's Money screen: that circle's people are already in.
+  const fromCircle = useRef(params.circle);
+  useEffect(() => {
+    const id = fromCircle.current;
+    fromCircle.current = undefined;
+    if (id && !d.circleId) void pickCircle(id);
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Back from a receipt photo: take its items, keep the names already typed.
   useFocusEffect(
     useCallback(() => {

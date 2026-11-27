@@ -1,330 +1,188 @@
-import { useCallback, useMemo, useState } from "react";
-import { useLive } from "@/lib/live";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { router } from "expo-router";
-import type {
-  CircleTask,
-  HouseList,
-  Item,
-  ListTrackersResponse,
-  Tracker,
-} from "@fakkarni/shared";
+import { router, useNavigation } from "expo-router";
+import type { CircleTask, DaftarEntry, HouseList, Item, ListTrackersResponse, Split, Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
-import { PlanRow } from "@/components/PlanRow";
 import { listUpcoming } from "@/db/items";
 import { t, dateLocale, listComma } from "@/i18n";
 import { PLACE_ICON, preview, sortLists } from "@/lists/logic";
-import {
-  getMe,
-  listLists,
-  listTasks,
-  listTrackers,
-  peekLists,
-  peekMe,
-  peekTasks,
-  peekTrackers,
-} from "@/lib/api";
-import { useItems } from "@/lib/useItems";
-import { TaskCard } from "@/tasks/TaskCard";
-import { canAdd } from "@/trackers/logic";
+import { listDaftar, listLists, listSplits, listTasks, listTrackers, peekDaftar, peekLists, peekSplits, peekTasks, peekTrackers } from "@/lib/api";
 import { comingUp } from "@/lib/coming-up";
+import { useLive } from "@/lib/live";
+import { useItems } from "@/lib/useItems";
+import { NeedRow } from "@/today/NeedRow";
+import { needsYou } from "@/today/needs";
+import { PlanRow } from "@/today/PlanRow";
+import { needsChanged, needWords } from "@/today/useNeeds";
+import { canAdd } from "@/trackers/logic";
 import { TrackerCard } from "@/trackers/TrackerCard";
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Icon,
-  IconTile,
-  palette,
-  radius,
-  Screen,
-  SectionHeader,
-  space,
-  Text,
-  ZakiAvatar,
-} from "@/ui";
+import { Badge, Card, IconTile, IntroPanel, NavRow, palette, RowGroup, Screen, SectionHeader, space, Text, useAddSheet, type AddAction } from "@/ui";
 
-const greeting = () => {
-  const h = new Date().getHours();
-  return h < 12 ? t.ui.morning : h < 18 ? t.ui.afternoon : t.ui.evening;
-};
+/** How many lists with something open Today shows before "See all". */
+const MAX_LISTS = 3;
 
 /**
- * The Personal space in one screen: what's coming up, requests waiting for you, what you
- * track, and a quiet door to Session. The friend never sends this as a list unprompted.
+ * "What needs me?": what waits for an answer, the plans, the lists with something open, what is
+ * tracked, and a quiet door to A space for you. The friend never sends this as a list unprompted.
  */
 export default function TodayScreen() {
-  const { items, refresh, complete } = useItems(listUpcoming);
-  const [name, setName] = useState<string | null>(() => peekMe()?.name ?? null);
-  const [tasks, setTasks] = useState<CircleTask[]>(() => peekTasks() ?? []);
-  const asked = useMemo(
-    () =>
-      tasks.filter(
-        (task) => task.status === "pending" && task.role === "assignee",
-      ),
-    [tasks],
-  );
-  const [trackers, setTrackers] = useState<Tracker[] | null>(
-    () => peekTrackers()?.trackers ?? null,
-  );
-  const [limit, setLimit] = useState<number | null>(
-    () => peekTrackers()?.limit ?? 1,
-  );
+  // Plans come from SQLite a moment after the first draw: until then "nothing planned" is not known.
+  const [plansRead, setPlansRead] = useState(false);
+  const loadPlans = useCallback(async () => {
+    const rows = await listUpcoming();
+    setPlansRead(true);
+    return rows;
+  }, []);
+  const { items, refresh, complete } = useItems(loadPlans);
+
+  const [tasks, setTasks] = useState<CircleTask[] | null>(() => peekTasks());
+  const [daftar, setDaftar] = useState<DaftarEntry[] | null>(() => peekDaftar());
+  const [splits, setSplits] = useState<Split[] | null>(() => peekSplits());
+  const [trackers, setTrackers] = useState<Tracker[] | null>(() => peekTrackers()?.trackers ?? null);
+  const [limit, setLimit] = useState<number | null>(() => peekTrackers()?.limit ?? 1);
   // null until this server has answered GET /lists once (a server from before lists says 404: no section).
   const [lists, setLists] = useState<HouseList[] | null>(() => peekLists());
 
+  /** What the phone holds (the same objects when nothing changed: no redraw). No request. */
+  const readSaved = useCallback(() => {
+    const held = { tasks: peekTasks(), daftar: peekDaftar(), splits: peekSplits(), trackers: peekTrackers(), lists: peekLists() };
+    if (held.tasks) setTasks(held.tasks);
+    if (held.daftar) setDaftar(held.daftar);
+    if (held.splits) setSplits(held.splits);
+    if (held.trackers) {
+      setTrackers(held.trackers.trackers);
+      setLimit(held.trackers.limit);
+    }
+    if (held.lists) setLists(held.lists);
+  }, []);
   const loadOnline = useCallback(() => {
+    readSaved();
     const showTrackers = (r: ListTrackersResponse) => {
       setTrackers(r.trackers);
       setLimit(r.limit);
     };
-    // What the phone holds first (the same objects when nothing changed: no redraw), then the server.
-    const held = { me: peekMe(), tasks: peekTasks(), trackers: peekTrackers() };
-    if (held.me) setName(held.me.name);
-    if (held.tasks) setTasks(held.tasks);
-    if (held.trackers) showTrackers(held.trackers);
-    getMe()
-      .then((u) => setName(u.name))
-      .catch(() => {});
-    listTasks()
-      .then(setTasks)
-      .catch(() => {});
-    listTrackers()
-      .then(showTrackers)
-      .catch(() => {});
-    const heldLists = peekLists();
-    if (heldLists) setLists(heldLists);
-    listLists()
-      .then(setLists)
-      .catch(() => {});
-  }, []);
+    const quiet = () => {};
+    listTasks().then(setTasks).catch(quiet);
+    listDaftar().then(setDaftar).catch(quiet);
+    listSplits().then(setSplits).catch(quiet);
+    listTrackers().then(showTrackers).catch(quiet);
+    listLists().then(setLists).catch(quiet);
+  }, [readSaved]);
   useLive(loadOnline);
   const reload = () => {
     loadOnline();
     return refresh();
   };
+  // A row's answer is already in the saved copies: draw from them, and tell the tab's badge.
+  const answered = () => {
+    readSaved();
+    needsChanged.emit();
+  };
 
-  const { soon, repeating, more } = comingUp(items, new Date());
+  const needs = useMemo(() => needsYou({ tasks, daftar, splits }, needWords()), [tasks, daftar, splits]);
+  const { soon, repeating } = comingUp(items, new Date());
+  const noPlans = soon.length === 0 && repeating.length === 0;
+  const openLists = lists ? sortLists(lists).filter((l) => l.open_count > 0) : [];
   const own = (trackers ?? []).filter((x) => !x.pack).length;
-  const replace = (next: Tracker) =>
-    setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
-  const dateLine = new Date().toLocaleDateString(dateLocale, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const replace = (next: Tracker) => setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
+  const remind = () => router.navigate({ pathname: "/", params: { compose: "remind" } });
+
+  const actions: AddAction[] = [
+    { key: "remind", icon: "notifications-outline", kind: "alarm", label: t.lay.today.addRemind, onPress: remind },
+    // A server from before lists has none to make.
+    ...(lists === null ? [] : [{ key: "list", icon: "cart-outline", label: t.lay.today.addList, onPress: () => router.push("/list") } satisfies AddAction]),
+    { key: "tracker", icon: "stats-chart-outline", kind: "people", label: t.lay.today.addTracker, onPress: () => router.push(canAdd(own, limit) ? "/tracker/new" : "/paywall") },
+  ];
+  const add = useAddSheet(actions);
+  const navigation = useNavigation();
+  useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
+
+  const done = (i: Item) => () => void complete(i.id).catch(() => {});
+  const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
 
   return (
     <Screen onRefresh={reload}>
-      <View style={styles.hero}>
-        <ZakiAvatar size={52} glow />
-        <View style={styles.flex}>
-          <Text variant="caption" color={palette.inkSoft}>
-            {dateLine}
-          </Text>
-          <Text variant="title">
-            {name
-              ? fill(t.ui.hello, { greeting: greeting(), name })
-              : fill(t.ui.helloAnon, { greeting: greeting() })}
-          </Text>
-          <Text variant="small" color={palette.inkSoft}>
-            {t.ui.todayLine}
-          </Text>
-        </View>
-      </View>
+      <Text variant="caption" color={palette.inkSoft} style={styles.date}>
+        {dateLine}
+      </Text>
 
-      {asked.length ? (
+      {needs.length ? (
         <>
-          <SectionHeader title={t.ui.askedOfYou} />
-          {asked.map((task) => (
-            <TaskCard key={task.id} task={task} showCircle onChanged={reload} />
+          <SectionHeader title={fill(t.lay.today.needsCount, { n: needs.length })} />
+          {needs.map((need) => (
+            <NeedRow key={`${need.kind}:${need.id}`} need={need} onAnswered={answered} />
           ))}
         </>
       ) : null}
 
-      {lists === null ? null : (
-        <SectionHeader
-          title={t.lists.title}
-          action={lists.length ? t.lists.seeAll : t.lists.new}
-          onAction={() => router.push("/list")}
-        />
-      )}
-      {lists === null ? null : lists.length === 0 ? (
-        <Card
-          onPress={() => router.push("/list")}
-          accessibilityLabel={t.lists.new}
-        >
-          <Text variant="small" color={palette.inkSoft}>
-            {t.lists.emptyAll}
-          </Text>
-        </Card>
+      {!plansRead ? null : noPlans && needs.length === 0 ? (
+        <IntroPanel title={t.lay.today.emptyTitle} action={t.lay.today.emptyAction} onAction={remind} say={t.lay.today.emptySay} />
       ) : (
-        sortLists(lists)
-          .slice(0, 2)
-          .map((l) => (
-            <Card
-              key={l.id}
-              onPress={() =>
-                router.push({ pathname: "/list/[id]", params: { id: l.id } })
-              }
-              accessibilityLabel={l.name}
-            >
+        <>
+          <SectionHeader title={t.lay.common.plans} action={t.lay.common.seeAll} onAction={() => router.push("/upcoming")} />
+          {noPlans ? (
+            <Text variant="small" color={palette.inkSoft}>
+              {t.lay.today.noPlans}
+            </Text>
+          ) : null}
+          {soon.map((i) => (
+            <PlanRow key={i.id} item={i} onDone={done(i)} />
+          ))}
+          {repeating.length ? (
+            <>
+              <SectionHeader title={t.ui.repeating} />
+              {repeating.map((i) => (
+                <PlanRow key={i.id} item={i} onDone={done(i)} />
+              ))}
+            </>
+          ) : null}
+        </>
+      )}
+
+      {openLists.length ? (
+        <>
+          <SectionHeader title={t.lists.title} action={t.lay.common.seeAll} onAction={() => router.push("/list")} />
+          {openLists.slice(0, MAX_LISTS).map((l) => (
+            <Card key={l.id} onPress={() => router.push({ pathname: "/list/[id]", params: { id: l.id } })} accessibilityLabel={l.name}>
               <View style={styles.listRow}>
                 <IconTile name={PLACE_ICON[l.place]} size={36} />
                 <View style={styles.flex}>
-                  <Text variant="bodyStrong">{l.name}</Text>
-                  {l.open_count ? (
-                    <Text
-                      variant="small"
-                      color={palette.inkSoft}
-                      numberOfLines={1}
-                    >
-                      {preview(l, listComma)}
-                    </Text>
-                  ) : null}
+                  <Text variant="bodyStrong" numberOfLines={1}>
+                    {l.name}
+                  </Text>
+                  <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
+                    {preview(l, listComma)}
+                  </Text>
                 </View>
-                {l.open_count ? (
-                  <Badge
-                    label={fill(t.lists.count, { n: l.open_count })}
-                    tone="primary"
-                  />
-                ) : (
-                  <Badge label={t.lists.allDone} tone="ok" />
-                )}
+                <Badge label={fill(t.lists.count, { n: l.open_count })} tone="primary" />
               </View>
             </Card>
-          ))
-      )}
-
-      <SectionHeader
-        title={t.ui.comingUp}
-        action={more > 0 ? fill("{n} +", { n: more }) : undefined}
-        onAction={() => router.push("/upcoming")}
-      />
-      {soon.length === 0 && repeating.length === 0 ? (
-        <Card>
-          <EmptyState
-            title={t.ui.noPlansTitle}
-            body={t.ui.noPlansBody}
-            action={
-              <Button
-                label={t.ui.tabZaki}
-                kind="tonal"
-                size="sm"
-                icon="chatbubble-ellipses-outline"
-                onPress={() => router.navigate("/")}
-              />
-            }
-          />
-        </Card>
-      ) : (
-        soon.map((i: Item) => (
-          <PlanRow
-            key={i.id}
-            item={i}
-            onDone={() => void complete(i.id).catch(() => {})}
-          />
-        ))
-      )}
-      {repeating.length ? (
-        <>
-          <SectionHeader title={t.ui.repeating} />
-          {repeating.map((i: Item) => (
-            <PlanRow
-              key={i.id}
-              item={i}
-              onDone={() => void complete(i.id).catch(() => {})}
-            />
           ))}
         </>
       ) : null}
 
-      <SectionHeader
-        title={t.ui.tracking}
-        action={
-          canAdd(own, limit)
-            ? t.trackers.add.replace(/^\+\s*/, "")
-            : t.trackers.addPro
-        }
-        onAction={() =>
-          router.push(canAdd(own, limit) ? "/tracker/new" : "/paywall")
-        }
-      />
-      {trackers?.map((tr) => (
-        <TrackerCard
-          key={tr.id}
-          tracker={tr}
-          onChanged={replace}
-          onRemoved={loadOnline}
-        />
-      ))}
-      {trackers && trackers.length === 0 ? (
-        <Card>
-          <EmptyState
-            title={t.trackers.empty}
-            action={
-              <Button
-                label={t.trackers.add}
-                kind="tonal"
-                size="sm"
-                icon="add"
-                onPress={() => router.push("/tracker/new")}
-              />
-            }
-          />
-        </Card>
-      ) : null}
       {trackers?.length ? (
-        <Text variant="caption" color={palette.inkSoft} align="center">
-          {t.trackers.chatHint}
-        </Text>
+        <>
+          <SectionHeader title={t.ui.tracking} />
+          {trackers.map((tr) => (
+            <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={loadOnline} />
+          ))}
+        </>
       ) : null}
 
-      <Card
-        onPress={() => router.push("/session")}
-        tone={palette.calmSoft}
-        style={styles.reflect}
-        accessibilityLabel={t.ui.reflectTitle}
-      >
-        <View style={styles.reflectIcon}>
-          <Icon name="leaf" size={22} color={palette.calm} />
-        </View>
-        <View style={styles.flex}>
-          <Text variant="headline" color={palette.calm}>
-            {t.ui.reflectTitle}
-          </Text>
-          <Text variant="small" color={palette.inkSoft}>
-            {t.ui.reflectBody}
-          </Text>
-        </View>
-        <Icon name="chevron-forward" size={18} color={palette.calm} />
-      </Card>
+      <View style={styles.last}>
+        <RowGroup>
+          <NavRow icon="leaf-outline" kind="alarm" title={t.lay.common.spaceForYou} onPress={() => router.push("/session")} />
+        </RowGroup>
+      </View>
+      {add.sheet}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  date: { paddingHorizontal: space.xs },
   listRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   flex: { flex: 1, minWidth: 0 },
-  hero: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space.lg,
-    paddingVertical: space.sm,
-  },
-  reflect: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space.md,
-    marginTop: space.md,
-  },
-  reflectIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: palette.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  last: { marginTop: space.md },
 });

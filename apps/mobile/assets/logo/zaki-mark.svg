@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" data-shape="square" data-mood="happy" data-mark="full"
+  style="--base-a:#FFC592;--base-b:#FF9F7C;--light:#FFEDB8;--blush:#FF8BA5;--warm:#FFC48E;--ink:#C2452A;--mark-b:#FFF3EA">
+  <!--
+    Zaki's mark: the spark smile (a dot eye, a four-point spark for the other eye, a smile) on a
+    soft mesh tile. The ONE source of the app icon, the Android adaptive layers, the splash, the
+    favicon and the in-app art (assets/zaki/*.png). `node scripts/make-logo.mjs` (apps/mobile)
+    renders them all; it only sets the attributes and colours on the root element:
+      data-shape  square (full bleed) | squircle (transparent corners, glass edge) | none (no tile)
+      data-mood   happy | calm (the dot eye closes, the smile rests)
+      data-mark   full | flat (one flat colour, no shadow: Android's themed icon) | none
+      colours     base-a → base-b: the tile, top-left to bottom-right; light: the glow in the top
+                  corner; blush: the second colour, on the spark's side; warm: the lift in the
+                  bottom corner; ink: the mark's shadow; mark-b: the foot of the white mark.
+    Opened as it is, this file is the Sunrise app icon.
+  -->
+  <defs>
+    <style>
+      svg[data-shape="square"] .tile { clip-path: url(#square) }
+      svg[data-shape="squircle"] .tile { clip-path: url(#squircle) }
+      svg[data-shape="none"] .tile, svg[data-shape="square"] .edge { display: none }
+      svg[data-mood="happy"] .calm, svg[data-mood="calm"] .happy { display: none }
+      svg[data-mark="none"] .mark { display: none }
+      svg[data-mark="flat"] .mark { filter: none; fill: #fff; stroke: #fff }
+      svg[data-mark="full"] .mark { filter: url(#lift); fill: url(#white); stroke: url(#white) }
+      .line { fill: none; stroke-linecap: round }
+    </style>
+    <clipPath id="square"><rect width="1024" height="1024"/></clipPath>
+    <clipPath id="squircle"><path id="squircle-path" d="M1006.0 512.0L1005.6 607.9L1004.5 652.9L1002.6 688.3L1000.0 718.4L996.6 745.1L992.4 769.3L987.5 791.3L981.8 811.7L975.3 830.6L968.1 848.1L960.0 864.5L951.1 879.7L941.4 893.9L930.9 907.2L919.5 919.5L907.2 930.9L893.9 941.4L879.7 951.1L864.5 960.0L848.1 968.1L830.6 975.3L811.7 981.8L791.3 987.5L769.3 992.4L745.1 996.6L718.4 1000.0L688.3 1002.6L652.9 1004.5L607.9 1005.6L512.0 1006.0L416.1 1005.6L371.1 1004.5L335.7 1002.6L305.6 1000.0L278.9 996.6L254.7 992.4L232.7 987.5L212.3 981.8L193.4 975.3L175.9 968.1L159.5 960.0L144.3 951.1L130.1 941.4L116.8 930.9L104.5 919.5L93.1 907.2L82.6 893.9L72.9 879.7L64.0 864.5L55.9 848.1L48.7 830.6L42.2 811.7L36.5 791.3L31.6 769.3L27.4 745.1L24.0 718.4L21.4 688.3L19.5 652.9L18.4 607.9L18.0 512.0L18.4 416.1L19.5 371.1L21.4 335.7L24.0 305.6L27.4 278.9L31.6 254.7L36.5 232.7L42.2 212.3L48.7 193.4L55.9 175.9L64.0 159.5L72.9 144.3L82.6 130.1L93.1 116.8L104.5 104.5L116.8 93.1L130.1 82.6L144.3 72.9L159.5 64.0L175.9 55.9L193.4 48.7L212.3 42.2L232.7 36.5L254.7 31.6L278.9 27.4L305.6 24.0L335.7 21.4L371.1 19.5L416.1 18.4L512.0 18.0L607.9 18.4L652.9 19.5L688.3 21.4L718.4 24.0L745.1 27.4L769.3 31.6L791.3 36.5L811.7 42.2L830.6 48.7L848.1 55.9L864.5 64.0L879.7 72.9L893.9 82.6L907.2 93.1L919.5 104.5L930.9 116.8L941.4 130.1L951.1 144.3L960.0 159.5L968.1 175.9L975.3 193.4L981.8 212.3L987.5 232.7L992.4 254.7L996.6 278.9L1000.0 305.6L1002.6 335.7L1004.5 371.1L1005.6 416.1Z"/></clipPath>
+
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:var(--base-a)"/>
+      <stop offset="1" style="stop-color:var(--base-b)"/>
+    </linearGradient>
+    <!-- Eased fall-offs (about (1-t)²), so no glow has an edge. -->
+    <radialGradient id="light" gradientUnits="userSpaceOnUse" cx="150" cy="110" r="620">
+      <stop offset="0" style="stop-color:var(--light)" stop-opacity=".95"/>
+      <stop offset=".2" style="stop-color:var(--light)" stop-opacity=".66"/>
+      <stop offset=".4" style="stop-color:var(--light)" stop-opacity=".36"/>
+      <stop offset=".6" style="stop-color:var(--light)" stop-opacity=".16"/>
+      <stop offset=".8" style="stop-color:var(--light)" stop-opacity=".04"/>
+      <stop offset="1" style="stop-color:var(--light)" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blush" gradientUnits="userSpaceOnUse" cx="930" cy="400" r="720">
+      <stop offset="0" style="stop-color:var(--blush)" stop-opacity=".95"/>
+      <stop offset=".2" style="stop-color:var(--blush)" stop-opacity=".74"/>
+      <stop offset=".4" style="stop-color:var(--blush)" stop-opacity=".46"/>
+      <stop offset=".6" style="stop-color:var(--blush)" stop-opacity=".22"/>
+      <stop offset=".8" style="stop-color:var(--blush)" stop-opacity=".06"/>
+      <stop offset="1" style="stop-color:var(--blush)" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm" gradientUnits="userSpaceOnUse" cx="930" cy="1010" r="520">
+      <stop offset="0" style="stop-color:var(--warm)" stop-opacity=".85"/>
+      <stop offset=".25" style="stop-color:var(--warm)" stop-opacity=".5"/>
+      <stop offset=".5" style="stop-color:var(--warm)" stop-opacity=".22"/>
+      <stop offset=".75" style="stop-color:var(--warm)" stop-opacity=".06"/>
+      <stop offset="1" style="stop-color:var(--warm)" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The soft glow inside the tile, behind the face. -->
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="512" cy="470" r="470">
+      <stop offset="0" stop-color="#fff" stop-opacity=".13"/>
+      <stop offset=".35" stop-color="#fff" stop-opacity=".07"/>
+      <stop offset=".7" stop-color="#fff" stop-opacity=".03"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The glass edge: bright along the top, gone by the bottom. -->
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".6"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".1"/>
+    </linearGradient>
+    <linearGradient id="white" gradientUnits="userSpaceOnUse" x1="0" y1="270" x2="0" y2="760">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset=".55" stop-color="#fff"/>
+      <stop offset="1" style="stop-color:var(--mark-b)"/>
+    </linearGradient>
+    <filter id="lift" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="20"/>
+      <feOffset dy="14" result="b"/>
+      <feFlood style="flood-color:var(--ink)" flood-opacity=".26"/>
+      <feComposite in2="b" operator="in" result="soft"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dy="3" result="c"/>
+      <feFlood style="flood-color:var(--ink)" flood-opacity=".14"/>
+      <feComposite in2="c" operator="in" result="near"/>
+      <feMerge><feMergeNode in="soft"/><feMergeNode in="near"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g class="tile" id="tile">
+    <rect width="1024" height="1024" fill="url(#base)"/>
+    <rect width="1024" height="1024" fill="url(#blush)"/>
+    <rect width="1024" height="1024" fill="url(#warm)"/>
+    <rect width="1024" height="1024" fill="url(#light)"/>
+    <rect width="1024" height="1024" fill="url(#glow)"/>
+    <use class="edge" href="#squircle-path" fill="none" stroke="url(#edge)" stroke-width="9"/>
+  </g>
+
+  <!-- The face. #face is scaled about the centre for the Android layers (safe zone). -->
+  <g id="face">
+    <g class="mark">
+      <g class="happy">
+        <circle cx="364" cy="412" r="68" stroke="none"/>
+        <path class="line" stroke-width="94" d="M306 596Q512 772 718 596"/>
+      </g>
+      <g class="calm">
+        <path class="line" stroke-width="46" d="M304 432Q364 366 424 432"/>
+        <path class="line" stroke-width="94" d="M318 606Q512 756 706 606"/>
+      </g>
+      <!-- The spark: four soft points; the stroke rounds its tips. -->
+      <path stroke-width="20" stroke-linejoin="round" d="M658 288Q670 392 774 404Q670 416 658 520Q646 416 542 404Q646 392 658 288Z"/>
+    </g>
+  </g>
+</svg>

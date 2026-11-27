@@ -6,7 +6,7 @@ import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
 import { reduceMotion } from "./motion";
 import { plain } from "./plain";
-import { palette, radius, shadow, space } from "./tokens";
+import { kind as kinds, palette, radius, shadow, space, type IconKind } from "./tokens";
 
 /**
  * The one "+" of a screen (spec rule 4) and the sheet of what can be added there (rule 5). The
@@ -29,6 +29,8 @@ import { palette, radius, shadow, space } from "./tokens";
 export interface AddAction {
   key: string;
   icon: IconName;
+  /** What the row is about: colours its icon (tokens.ts `kind`). */
+  kind?: IconKind;
   label: string;
   /** One short line under the label, when the label alone leaves a doubt. */
   hint?: string;
@@ -39,7 +41,7 @@ export interface AddAction {
 export function HeaderPlus({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={4} style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}>
-      <Icon name="add" size={28} color={palette.primaryInk} />
+      <Icon name="add" size={26} color={palette.primaryInk} />
     </Pressable>
   );
 }
@@ -98,8 +100,8 @@ export function AddSheet({ visible, onClose, title, actions }: { visible: boolea
           </Text>
           {actions.map((a, i) => (
             <Pressable key={a.key} onPress={() => choose(a)} accessibilityRole="button" accessibilityLabel={a.hint ? `${plain(a.label)}, ${a.hint}` : plain(a.label)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-              <View style={styles.icon}>
-                <Icon name={a.icon} size={20} color={palette.primaryInk} />
+              <View style={[styles.icon, { backgroundColor: kinds[a.kind ?? "primary"].bg }]}>
+                <Icon name={a.icon} size={20} color={kinds[a.kind ?? "primary"].ink} />
               </View>
               <View style={[styles.rowBody, i > 0 && styles.hairline]}>
                 <Text variant="bodyStrong" numberOfLines={1}>
@@ -120,8 +122,8 @@ export function AddSheet({ visible, onClose, title, actions }: { visible: boolea
 }
 
 const styles = StyleSheet.create({
-  plus: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", marginHorizontal: space.xs },
-  plusPressed: { backgroundColor: palette.wash },
+  plus: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", marginHorizontal: space.md, backgroundColor: palette.surfaceStrong, ...shadow.card },
+  plusPressed: { backgroundColor: palette.primarySoft },
   fill: { flex: 1, justifyContent: "flex-end" },
   scrim: { backgroundColor: palette.scrim },
   sheet: { alignSelf: "center", width: "100%", maxWidth: 560, backgroundColor: palette.surfaceSolid, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, paddingTop: space.sm, ...shadow.raised },
@@ -129,7 +131,7 @@ const styles = StyleSheet.create({
   title: { paddingHorizontal: space.xl, paddingBottom: space.sm },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.xl, minHeight: 56 },
   rowPressed: { backgroundColor: palette.wash },
-  icon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: palette.primarySoft },
+  icon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   rowBody: { flex: 1, minWidth: 0, minHeight: 56, justifyContent: "center", paddingVertical: space.sm },
   hairline: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineStrong },
 });

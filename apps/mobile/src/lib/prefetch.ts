@@ -1,3 +1,4 @@
+import { cacheRefreshed } from "./signals";
 import { getCircle, getCircleFeed, getCircleTrackers, getMe, getMoney, getPocketMoney, listCircles, listLists, listDaftar, listMemories, listSplits, listTasks, listTrackers, refreshAll } from "./api";
 import { PREFETCH_AT_ONCE, PREFETCH_AFTER_CHAT_MS, planPrefetch } from "./prefetch-plan";
 
@@ -31,6 +32,8 @@ export function prefetchAll(now = Date.now(), changed = false): void {
     if (await refreshAll()) return;
     const first = [quiet(listCircles), quiet(getMe), quiet(listTasks), quiet(listTrackers), quiet(listDaftar), quiet(getMoney), quiet(listSplits), quiet(listMemories), quiet(getPocketMoney), quiet(listLists)];
     const [circles] = (await inTurns(first)) as [Awaited<ReturnType<typeof listCircles>> | null];
+    // What reads the saved copies without asking (the Today tab's badge) looks again.
+    cacheRefreshed.emit();
     // Each circle the user is in (detail, feed and shared trackers).
     const more = (circles ?? []).slice(0, 8).flatMap((c) => [quiet(() => getCircle(c.id)), quiet(() => getCircleFeed(c.id)), quiet(() => getCircleTrackers(c.id))]);
     await inTurns(more);

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
-import { router, useNavigation } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
-import { ChatInput } from "@/chat/ChatInput";
+import { ChatInput, type ChatInputHandle } from "@/chat/ChatInput";
 import { dayLabel, opensDay } from "@/chat/days";
 import { createEntrance } from "@/chat/entrance";
+import { quickReplies } from "@/chat/plus";
 import { MessageBubble } from "@/chat/MessageBubble";
 import { QuickReplies } from "@/chat/QuickReplies";
 import { TypingIndicator } from "@/chat/TypingIndicator";
@@ -100,6 +101,19 @@ export default function ChatScreen() {
     void send(text).then(followUp).catch(() => {});
   };
   const navigation = useNavigation();
+  // Today's "+" sends her here to say a reminder: the starter goes in the box, once per arrival.
+  const composer = useRef<ChatInputHandle>(null);
+  const { compose } = useLocalSearchParams<{ compose?: string }>();
+  const composeWait = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (compose !== "remind") return;
+    // The word is used up, so the next arrival with it starts again.
+    router.setParams({ compose: undefined });
+    // After the tab has taken the screen, or the keyboard does not come up.
+    if (composeWait.current) clearTimeout(composeWait.current);
+    composeWait.current = setTimeout(() => composer.current?.startReminder(), 80);
+  }, [compose]);
+  useEffect(() => () => void (composeWait.current && clearTimeout(composeWait.current)), []);
   // New users are asked to start the trial; lapsed subscribers see that everything is saved.
   const [neverSubscribed, setNeverSubscribed] = useState(true);
   useEffect(() => {
@@ -117,6 +131,8 @@ export default function ChatScreen() {
   }, [navigation, typing, offline]);
 
   const fresh = loaded && messages.length === 0;
+  // A new chat gets starters made for a busy household; later, two quick replies (what the "+" starts is not repeated).
+  const chips = useMemo(() => (fresh ? t.chat.starters : quickReplies(t.chat.quickReplies, t.lay.chat.inPlus)), [fresh]);
   // Inverted list: newest at the bottom, keyboard-friendly.
   const data = useMemo(() => {
     const all = loaded && messages.length === 0 ? [GREETING] : messages;
@@ -217,16 +233,15 @@ export default function ChatScreen() {
               <IconButton name="close" label={t.ui.cancel} onPress={() => setSuggestion(null)} size={32} />
             </View>
           ) : null}
-          {/* A new chat gets starters made for a busy household; later, the usual quick replies. */}
           <QuickReplies
-            options={fresh ? t.chat.starters : t.chat.quickReplies}
+            options={chips}
             onPick={(text) => {
-              const index = (fresh ? t.chat.starters : t.chat.quickReplies).indexOf(text);
+              const index = chips.indexOf(text);
               track(fresh ? "starter_tapped" : "quick_reply", { index });
               say(text);
             }}
           />
-          <ChatInput onSend={say} />
+          <ChatInput ref={composer} onSend={say} />
         </>
       )}
     </KeyboardAvoidingView>

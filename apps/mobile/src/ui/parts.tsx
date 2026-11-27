@@ -5,7 +5,7 @@ import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
 import { plain } from "./plain";
 import { ZakiAvatar } from "./Zaki";
-import { glass, minTouch, palette, radius, space } from "./tokens";
+import { fonts, glass, kind, minTouch, palette, radius, space, type IconKind } from "./tokens";
 
 /**
  * A scrolling page over the colour mesh, with pull-to-refresh when `onRefresh` is given.
@@ -82,8 +82,11 @@ export function SectionHeader({ title, action, onAction }: { title: string; acti
   );
 }
 
-/** Rounded tile holding an icon, tinted by what it belongs to (family, friends, Zaki…). */
-export function IconTile({ name, color = palette.primaryInk, bg = palette.primarySoft, size = 44 }: { name: IconName; color?: string; bg?: string; size?: number }) {
+/**
+ * Rounded tile holding an icon. `kind` colours it by what it is about (money, people, place,
+ * alarm; tokens.ts); `color` / `bg` are for a circle's own colours (family, friends).
+ */
+export function IconTile({ name, kind: k = "primary", color = kind[k].ink, bg = kind[k].bg, size = 44 }: { name: IconName; kind?: IconKind; color?: string; bg?: string; size?: number }) {
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.32, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
       <Icon name={name} size={Math.round(size * 0.5)} color={color} />
@@ -161,7 +164,7 @@ export function Badge({ label, tone = "neutral" }: { label: string; tone?: "neut
   const [bg, fg] = map[tone];
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Text variant="caption" color={fg} style={{ fontFamily: "IBMPlexSansArabic_600SemiBold" }}>
+      <Text variant="caption" color={fg} style={{ fontFamily: fonts.bodySemi }}>
         {plain(label)}
       </Text>
     </View>
@@ -218,7 +221,7 @@ export const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   row: { ...glass, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 64 },
   strike: { textDecorationLine: "line-through" },
-  chip: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: 40, paddingHorizontal: space.md + 2, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.glassEdge, backgroundColor: palette.surface },
+  chip: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: 40, paddingHorizontal: space.md + 2, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.lineStrong, backgroundColor: palette.surface },
   badge: { paddingHorizontal: space.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
   track: { height: 8, borderRadius: 4, backgroundColor: palette.wash, overflow: "hidden" },
   fill: { height: 8, borderRadius: 4 },

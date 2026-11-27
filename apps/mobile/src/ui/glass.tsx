@@ -11,8 +11,8 @@ const MESH: Record<ThemeId | "calm", number> = {
 };
 
 /**
- * The ground behind the whole app: near-white, with a faint glow of the theme in the top corner
- * and a fainter one opposite. It is a small image (assets/bg, drawn by scripts/make-meshes.mjs),
+ * The ground behind the whole app: a light mesh of the theme (a glow in the top corner, a blush
+ * at the side, a paler glow below). It is a small image (assets/bg, drawn by scripts/make-meshes.mjs),
  * so it works in every build without a gradient or blur module.
  * `calm` is Session's own fixed ground, the same in every theme.
  */
@@ -39,7 +39,7 @@ export function withGround({ children }: { children: ReactNode }) {
 }
 
 /** The bar behind a header: the ground under a light veil of white, with a hairline lower edge. */
-export const glassBar = "rgba(255,255,255,0.6)";
+export const glassBar = "rgba(255,255,255,0.45)";
 export function GlassHeader() {
   return (
     <View style={styles.bar}>

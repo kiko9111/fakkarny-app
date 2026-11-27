@@ -79,7 +79,8 @@ export function DaftarCard({ entry: fromList, onChanged }: { entry: DaftarEntry;
               label={t.daftar.actions[a]}
               icon={ICON[a]}
               size="sm"
-              kind={a === "resend" || a === "nudge" ? (n === 0 ? "whatsapp" : "outline") : n === 0 ? "filled" : a === "cancel" || a === "dispute" ? "danger" : "outline"}
+              // A list of cards: no card's button is the screen's one filled button (the "+" sheet makes things).
+              kind={a === "cancel" || a === "dispute" ? "danger" : n === 0 ? "tonal" : "outline"}
               disabled={busy}
               onPress={() => void run(a)}
             />

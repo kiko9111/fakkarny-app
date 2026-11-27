@@ -6,7 +6,7 @@ import { Icon, type IconName } from "./Icon";
 import { Text } from "./Text";
 import { ZakiAvatar } from "./Zaki";
 import { plain } from "./plain";
-import { glass, palette, radius, shadow, space } from "./tokens";
+import { fonts, glass, kind as kinds, palette, radius, shadow, space, type IconKind } from "./tokens";
 
 /**
  * The layout rebuild's shared pieces (spec: "Ten rules every screen follows").
@@ -43,19 +43,24 @@ const TONE: Record<TileTone, string> = { ok: palette.ok, warn: palette.warn, dan
 
 /**
  * One tile of a summary: what it is, the number or short value, and one line under it. The tile
- * stays white; `tone` colours only the line under the value (something is due, owed, done).
+ * stays white; `kind` colours its small icon by what it is about, the number is in the theme's
+ * ink, and `tone` colours only the line under the value (something is due, owed, done).
  */
-export function Tile({ title, value, line, icon, onPress, tone }: { title: string; value?: string; line?: string; icon?: IconName; onPress?: () => void; tone?: TileTone }) {
+export function Tile({ title, value, line, icon, kind = "primary", onPress, tone }: { title: string; value?: string; line?: string; icon?: IconName; kind?: IconKind; onPress?: () => void; tone?: TileTone }) {
   const body = (
     <>
       <View style={styles.tileHead}>
-        {icon ? <Icon name={icon} size={18} color={palette.inkSoft} /> : null}
-        <Text variant="smallStrong" color={palette.inkSoft} numberOfLines={1} style={styles.flex}>
+        {icon ? (
+          <View style={[styles.tileIcon, { backgroundColor: kinds[kind].bg }]}>
+            <Icon name={icon} size={16} color={kinds[kind].ink} />
+          </View>
+        ) : null}
+        <Text variant="smallStrong" color={palette.ink} numberOfLines={1} style={styles.flex}>
           {plain(title)}
         </Text>
       </View>
       {value !== undefined ? (
-        <Text variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        <Text variant="title" color={palette.primaryInk} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
           {plain(value)}
         </Text>
       ) : null}
@@ -92,15 +97,19 @@ export function TileGrid({ children }: { children: ReactNode }) {
 }
 
 /**
- * A row that opens one topic: icon, title, the current value under it, a chevron. Inside a
+ * A row that opens one topic: icon (in a soft square coloured by `kind`), title, the current value under it, a chevron. Inside a
  * `RowGroup`. `danger` is for the last row of an info page (leave, delete), behind `confirm`.
  * `first` leaves out the hairline above; `RowGroup` sets it on its first row by itself.
  */
-export function NavRow({ icon, title, value, onPress, danger, first }: { icon?: IconName; title: string; value?: string; onPress?: () => void; danger?: boolean; first?: boolean }) {
+export function NavRow({ icon, kind = "primary", title, value, onPress, danger, first }: { icon?: IconName; kind?: IconKind; title: string; value?: string; onPress?: () => void; danger?: boolean; first?: boolean }) {
   const ink = danger ? palette.danger : palette.ink;
   const body = (
     <>
-      {icon ? <Icon name={icon} size={22} color={danger ? palette.danger : palette.inkSoft} /> : null}
+      {icon ? (
+        <View style={[styles.rowIcon, { backgroundColor: danger ? palette.dangerSoft : kinds[kind].bg }]}>
+          <Icon name={icon} size={19} color={danger ? palette.danger : kinds[kind].ink} />
+        </View>
+      ) : null}
       <View style={[styles.rowBody, !first && styles.hairline]}>
         <View style={styles.flex}>
           <Text variant="body" color={ink} numberOfLines={1} style={styles.rowTitle}>
@@ -177,6 +186,8 @@ const styles = StyleSheet.create({
   gridRow: { flexDirection: "row", gap: space.md },
   cell: { flex: 1, minWidth: 0 },
   tile: { ...glass, flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.xxs, minHeight: 104 },
+  tileIcon: { width: 28, height: 28, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  rowIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   tileHead: { flexDirection: "row", alignItems: "center", gap: space.xs + 2, marginBottom: space.xs },
 
   group: { gap: space.sm },
@@ -186,7 +197,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, minHeight: 56 },
   rowPressed: { backgroundColor: palette.wash },
   rowBody: { flex: 1, minWidth: 0, minHeight: 56, flexDirection: "row", alignItems: "center", gap: space.sm, paddingVertical: space.sm },
-  rowTitle: { fontFamily: "IBMPlexSansArabic_500Medium" },
+  rowTitle: { fontFamily: fonts.bodyMedium },
   hairline: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineStrong },
 
   intro: { alignItems: "center", gap: space.sm, paddingVertical: space.xxxl, paddingHorizontal: space.xl },

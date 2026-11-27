@@ -21,6 +21,7 @@ import {
 import { HttpError } from "@/sync/queue";
 import { PLACE_ICON, preview, sortLists } from "@/lists/logic";
 import {
+  HeaderPlus,
   Badge,
   Button,
   Card,
@@ -40,15 +41,15 @@ import {
 
 /**
  * Every household list the user sees: their circles' and their own. A new list is made right
- * here (name, which shop, who with). `?circle=<id>` (from a circle's screen) opens the form set
- * to that circle.
+ * here from the header "+" (name, which shop, who with). `?circle=<id>` (from a circle's screen)
+ * shows that circle's lists, and the form starts set to that circle.
  */
 export default function ListsScreen() {
   const params = useLocalSearchParams<{ circle?: string }>();
   const [lists, setLists] = useState<HouseList[]>(() => peekLists() ?? []);
   const [loaded, setLoaded] = useState(() => peekLists() !== null);
   const [circles, setCircles] = useState<Circle[]>(() => peekCircles() ?? []);
-  const [making, setMaking] = useState(Boolean(params.circle));
+  const [making, setMaking] = useState(false);
   const [name, setName] = useState("");
   const [place, setPlace] = useState<ListPlace>("grocery");
   const [circleId, setCircleId] = useState<string | null>(
@@ -106,10 +107,10 @@ export default function ListsScreen() {
     }
   };
 
-  const shown = sortLists(lists);
+  const shown = sortLists(params.circle ? lists.filter((l) => l.circle_id === params.circle) : lists);
   return (
     <Screen onRefresh={load} keyboard contentStyle={styles.content}>
-      <Stack.Screen options={{ title: t.lists.title }} />
+      <Stack.Screen options={{ title: t.lists.title, headerRight: () => <HeaderPlus label={plain(t.lists.new)} onPress={() => setMaking(true)} /> }} />
       {!loaded ? <LoadingCards /> : null}
       {loaded && shown.length === 0 && !making ? (
         <EmptyState
@@ -165,14 +166,6 @@ export default function ListsScreen() {
         </Card>
       ))}
 
-      {shown.length > 0 && !making ? (
-        <Button
-          label={plain(t.lists.new)}
-          kind="tonal"
-          icon="add"
-          onPress={() => setMaking(true)}
-        />
-      ) : null}
       {making ? (
         <Card>
           <SectionHeader title={plain(t.lists.new)} />

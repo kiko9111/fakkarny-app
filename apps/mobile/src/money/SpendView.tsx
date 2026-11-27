@@ -7,11 +7,13 @@ import { fill } from "@/circles/logic";
 import { formatMoney } from "@/daftar/logic";
 import { dateLocale, t } from "@/i18n";
 import { getMoney, getMonthGift, peekMoney } from "@/lib/api";
-import { photosAvailable } from "@/lib/photos";
-import { Badge, Button, Card, EmptyState, Icon, IconTile, LoadingCards, Note, palette, ProgressBar, radius, SectionHeader, space, Text, ZakiAvatar } from "@/ui";
+import { Badge, Card, IconTile, IntroPanel, LoadingCards, Note, palette, ProgressBar, SectionHeader, space, Text, Tile, TileGrid, ZakiAvatar } from "@/ui";
 import { budgetState, groupSections, monthLabel } from "./logic";
 
-/** Spending and income: this month's totals, Zaki's month gift early in the month, and the sections. */
+/**
+ * The Daftar's Spending part: this month's two totals, Zaki's month gift early in the month, her
+ * sections, then the shared books. Adding starts from the tab's "+" (money.tsx).
+ */
 export function SpendView({ reloadKey }: { reloadKey: number }) {
   const [data, setData] = useState<MoneyOverview | null>(() => peekMoney());
   const [gift, setGift] = useState<string[]>([]);
@@ -46,30 +48,10 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
       <Text variant="smallStrong" color={palette.inkSoft}>
         {monthLabel(data.month, dateLocale)}
       </Text>
-      <View style={styles.totals}>
-        <View style={[styles.total, { backgroundColor: palette.friendsSoft }]}>
-          <View style={styles.totalHead}>
-            <Icon name="arrow-up-circle" size={18} color={palette.friends} />
-            <Text variant="smallStrong" color={palette.friends}>
-              {t.book.spent}
-            </Text>
-          </View>
-          <Text variant="number" color={palette.friends}>
-            {formatMoney(data.totals.expense)}
-          </Text>
-        </View>
-        <View style={[styles.total, { backgroundColor: palette.okSoft }]}>
-          <View style={styles.totalHead}>
-            <Icon name="arrow-down-circle" size={18} color={palette.ok} />
-            <Text variant="smallStrong" color={palette.ok}>
-              {t.book.income}
-            </Text>
-          </View>
-          <Text variant="number" color={palette.ok}>
-            {formatMoney(data.totals.income)}
-          </Text>
-        </View>
-      </View>
+      <TileGrid>
+        <Tile title={t.book.spent} icon="arrow-up-circle-outline" value={formatMoney(data.totals.expense)} />
+        <Tile title={t.book.income} icon="arrow-down-circle-outline" value={formatMoney(data.totals.income)} />
+      </TileGrid>
 
       {gift.length ? (
         <Card>
@@ -85,21 +67,8 @@ export function SpendView({ reloadKey }: { reloadKey: number }) {
         </Card>
       ) : null}
 
-      <Button label={t.book.newSection} icon="add" block onPress={() => router.push("/money/new")} />
-      {photosAvailable ? <Button label={t.receipt.open} icon="camera-outline" kind="tonal" block onPress={() => router.push("/receipt")} /> : null}
-      <Text variant="small" color={palette.inkSoft}>
-        {t.book.chatHint}
-      </Text>
-
       {offline ? <Note icon="cloud-offline-outline">{t.book.stale}</Note> : null}
-      {own.length === 0 ? (
-        <>
-          <SectionHeader title={t.book.sections} />
-          <Card>
-            <EmptyState title={t.book.empty} />
-          </Card>
-        </>
-      ) : null}
+      {data.sections.length === 0 ? <IntroPanel title={t.lay.daftar.spendEmpty} action={t.lay.daftar.addSection} onAction={() => router.push("/money/new")} say={t.lay.daftar.spendSay} /> : null}
       {spending.length ? <SectionHeader title={t.book.spendHeader} /> : null}
       {spending.map((s) => (
         <SectionRow key={s.id} s={s} />
@@ -138,9 +107,6 @@ function SectionRow({ s }: { s: MoneySection }) {
 }
 
 const styles = StyleSheet.create({
-  totals: { flexDirection: "row", gap: space.md },
-  total: { flex: 1, borderRadius: radius.lg, padding: space.lg, gap: 2 },
-  totalHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   giftHead: { flexDirection: "row", alignItems: "center", gap: space.sm },
   head: { flexDirection: "row", alignItems: "center", gap: space.md },
   flex: { flex: 1, minWidth: 0 },

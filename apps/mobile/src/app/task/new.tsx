@@ -14,7 +14,8 @@ import { Button, Chip, DateTimePicker, EmptyState, formatPick, Note, notify, pal
  * nothing is added to their list, and the circle sees nothing, until they say yes.
  */
 export default function NewTaskScreen() {
-  const { circle } = useLocalSearchParams<{ circle: string }>();
+  // `homework=1`: opened from a circle's Homework screen, so the form starts as homework.
+  const { circle, homework: asHomework } = useLocalSearchParams<{ circle: string; homework?: string }>();
   const [members, setMembers] = useState<CircleMember[] | null>(null);
   const [who, setWho] = useState<string | null>(null);
   const [familyType, setFamilyType] = useState<FamilyType | null>(null);
@@ -25,7 +26,7 @@ export default function NewTaskScreen() {
   const [customDue, setCustomDue] = useState<Date | null>(null);
   const [customRemind, setCustomRemind] = useState<Date | null>(null);
   const [picking, setPicking] = useState<"due" | "remind" | null>(null);
-  const [homework, setHomework] = useState(false);
+  const [homework, setHomework] = useState(asHomework === "1");
   const [note, setNote] = useState("");
   // Homework extras (2026-11-26): the subject, and pocket money earned on Well done.
   const [subject, setSubject] = useState<string | null>(null);

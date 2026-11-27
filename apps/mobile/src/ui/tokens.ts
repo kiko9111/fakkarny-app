@@ -4,16 +4,22 @@ import { prefs } from "@/lib/prefs";
 import { THEMES, themeOf, type ThemeId } from "./themes";
 
 /**
- * Zaki's design tokens: a near-white page with a barely-there glow of the theme in one corner
- * (src/ui/glass.tsx), clean white surfaces with a hairline edge and a soft neutral shadow,
- * rounded geometry. Colour is for the main button, the active tab, small icons and status. The accent family comes from the theme the user picked
- * (src/ui/themes.ts); it is read once at start-up, and changing it reloads the app.
+ * Zaki's design tokens: a light mesh of the theme behind every screen (src/ui/glass.tsx),
+ * translucent white cards with a bright edge and a soft shadow tinted by the theme, rounded
+ * geometry. Small icons sit in soft squares coloured by what they are (`kind`). The accent family
+ * comes from the theme the user picked (src/ui/themes.ts); it is read once at start-up, and
+ * changing it reloads the app.
  */
 export const themeId: ThemeId = themeOf(prefs.get("theme"));
 const th = THEMES[themeId];
 
-const SURFACE = "rgba(255,255,255,0.9)";
-const EDGE = "rgba(24,22,32,0.07)";
+/** The theme's colour at an alpha: shadows, the main button's glow and the focus ring. */
+const tint = (alpha: number) => {
+  const h = th.primary.replace("#", "");
+  return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${alpha})`;
+};
+const SURFACE = "rgba(255,255,255,0.86)";
+const EDGE = "rgba(255,255,255,0.95)";
 
 export const palette = {
   ...th,
@@ -21,14 +27,14 @@ export const palette = {
   ground: th.bg,
   /** Screens are see-through so the colour mesh behind the app shows. */
   bg: "transparent",
-  /** Cards: white, a touch see-through so the ground's tint carries, with a hairline edge (`glassEdge`). */
+  /** Cards: white, see-through enough for the ground's colour to carry, with a bright edge (`glassEdge`). */
   surface: SURFACE,
   surfaceStrong: "rgba(255,255,255,0.96)",
   surfaceSolid: "#FFFFFF",
-  /** The hairline around a surface and under a header: neutral, so it reads on white and on the ground. */
+  /** The bright edge around a surface and under a header. */
   glassEdge: EDGE,
-  /** A quiet fill inside a white card (a progress track, a note, a day pill). */
-  wash: "rgba(24,22,32,0.045)",
+  /** A quiet fill inside a white card (a progress track, a note, a day pill): a breath of the theme. */
+  wash: tint(0.07),
   /** Session's ground before its image draws. */
   calmGround: "#FAFAFD",
   primarySoftGlass: th.primarySoft + "CC",
@@ -49,16 +55,29 @@ export const palette = {
   scrim: "rgba(20,16,30,0.40)",
 } as const;
 
+/**
+ * What an icon is about, as a soft square and an ink that reads on it (AA): money yellow, people
+ * and done green, places and splits blue, alarms and memory violet; anything else the theme's own.
+ */
+export const kind = {
+  primary: { bg: th.primarySoft, ink: th.primaryInk },
+  money: { bg: "#FFF0C7", ink: "#855600" },
+  people: { bg: "#DCF3E5", ink: "#1E7446" },
+  place: { bg: "#DEEAFF", ink: "#2A5BBD" },
+  alarm: { bg: "#EBE5FD", ink: "#5E44C4" },
+} as const;
+export type IconKind = keyof typeof kind;
+
 export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28, xxxl: 40 } as const;
 export const radius = { sm: 12, md: 14, lg: 22, xl: 28, pill: 999 } as const;
 
 export const fonts = {
-  display: "IBMPlexSansArabic_700Bold",
-  displaySemi: "IBMPlexSansArabic_600SemiBold",
-  body: "IBMPlexSansArabic_400Regular",
-  bodyMedium: "IBMPlexSansArabic_500Medium",
-  bodySemi: "IBMPlexSansArabic_600SemiBold",
-  bodyBold: "IBMPlexSansArabic_700Bold",
+  display: "Rubik_700Bold",
+  displaySemi: "Rubik_600SemiBold",
+  body: "Rubik_400Regular",
+  bodyMedium: "Rubik_500Medium",
+  bodySemi: "Rubik_600SemiBold",
+  bodyBold: "Rubik_700Bold",
 } as const;
 
 /** Type roles in the Apple manner (large title, title, headline, body), sized for Arabic. */
@@ -76,24 +95,16 @@ export const type = {
 } as const;
 export type TypeRole = keyof typeof type;
 
-/** The theme's colour at an alpha: only for the main button's glow and the focus ring. */
-const tint = (alpha: number) => {
-  const h = th.primary.replace("#", "");
-  return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${alpha})`;
-};
-/** Depth is neutral and soft: a card lifts off the page by a hair, never by a coloured glow. */
+/** Depth is soft and carries a little of the theme, never grey. */
 export const shadow = {
-  card: { boxShadow: "0px 1px 2px rgba(24, 22, 32, 0.04), 0px 4px 14px rgba(24, 22, 32, 0.035)" },
-  raised: { boxShadow: "0px 2px 6px rgba(24, 22, 32, 0.05), 0px 14px 34px rgba(24, 22, 32, 0.10)" },
+  card: { boxShadow: `0px 1px 2px ${tint(0.05)}, 0px 6px 18px ${tint(0.08)}` },
+  raised: { boxShadow: `0px 2px 6px ${tint(0.08)}, 0px 14px 34px rgba(24, 22, 32, 0.12)` },
   button: { boxShadow: `0px 4px 12px ${tint(0.2)}` },
   /** A soft ring in the theme's colour around the box being typed in. */
   focus: { boxShadow: `0px 0px 0px 3px ${tint(0.16)}` },
 } as const;
 
-/**
- * A surface: white with a hairline edge and a soft neutral shadow. (The name stays from the
- * frosted look it replaced; every card, row and bar spreads it.)
- */
+/** A surface: translucent white with a bright edge and a soft tinted shadow. Every card, row and bar spreads it. */
 export const glass = {
   backgroundColor: SURFACE,
   borderWidth: 1,

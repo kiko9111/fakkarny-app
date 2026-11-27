@@ -1,168 +1,74 @@
-import { useCallback, useState } from "react";
-import { useLive } from "@/lib/live";
-import { StyleSheet, View } from "react-native";
-import { router } from "expo-router";
-import { daftarTotals, type DaftarEntry, type Item } from "@fakkarni/shared";
-import { fill } from "@/circles/logic";
-import { DaftarCard } from "@/daftar/DaftarCard";
-import { formatMoney } from "@/daftar/logic";
-import { listDebts } from "@/db/items";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { router, useNavigation } from "expo-router";
+import type { MoneySection } from "@fakkarni/shared";
+import { spendTarget, type DaftarPart } from "@/daftar/layout";
+import { PeopleView } from "@/daftar/PeopleView";
 import { t } from "@/i18n";
-import { failText } from "@/lib/errors";
-import { listDaftar, peekDaftar } from "@/lib/api";
-import { summarizeDebts } from "@/lib/group";
-import { useItems } from "@/lib/useItems";
+import { peekMoney } from "@/lib/api";
+import { photosAvailable } from "@/lib/photos";
 import { SpendView } from "@/money/SpendView";
 import { SplitsView } from "@/split/SplitsView";
-import { Button, Card, Chip, EmptyState, Icon, Note, palette, PersonAvatar, radius, Screen, SectionHeader, space, Text } from "@/ui";
+import { AddSheet, Screen, Segmented, useAddSheet, type AddAction } from "@/ui";
+
+// The part she left the Daftar on, kept while the app runs.
+let lastPart: DaftarPart = "spend";
 
 /**
- * The Daftar: what both sides agreed on (shared, confirmed by link) with the balance on top,
- * then the user's private notes of who owes what (FR-12), which can be sent to confirm.
+ * The Daftar, "where is my money?": one switch (Spending / People / Splits) and one "+" whose
+ * sheet is the same in every part. Each part loads and draws itself.
  */
 export default function MoneyScreen() {
-  const [view, setView] = useState<"spend" | "debts" | "split">("spend");
+  const [part, setPartState] = useState<DaftarPart>(lastPart);
   const [reloadKey, setReloadKey] = useState(0);
-  const { items, refresh, complete } = useItems(listDebts);
-  const { owedToMe, iOwe } = summarizeDebts(items);
-  const [shared, setShared] = useState<DaftarEntry[] | null>(() => peekDaftar());
-  const [offline, setOffline] = useState<string | null>(null);
+  // "Money in or out" with a few sections: a short sheet asks which one.
+  const [pick, setPick] = useState<MoneySection[] | null>(null);
+  const setPart = (p: DaftarPart) => {
+    lastPart = p;
+    setPartState(p);
+  };
 
-  const loadShared = useCallback(async () => {
-    const held = peekDaftar();
-    if (held) setShared(held);
-    try {
-      setShared(await listDaftar());
-      setOffline(null);
-    } catch (err) {
-      setOffline(failText(err, t.daftar.offline));
-    }
-  }, []);
-  useLive(loadShared);
+  const openSection = (id: string) => router.push({ pathname: "/money/[id]", params: { id } });
+  // An amount is typed on a section's own screen, so this row leads to one (see `spendTarget`).
+  const addMoney = () => {
+    const to = spendTarget(peekMoney()?.sections);
+    if (to.go === "new") router.push("/money/new");
+    else if (to.go === "open") openSection(to.id);
+    else if (to.go === "pick") setPick(to.sections);
+    else setPart("spend");
+  };
 
-  const share = (i: Item) =>
-    router.push({ pathname: "/daftar/new", params: { name: i.debt_person ?? "", amount: String(i.debt_amount ?? ""), direction: i.debt_direction ?? "owed_to_me", itemId: i.id } });
+  const actions: AddAction[] = [
+    { key: "money", icon: "wallet-outline", kind: "money", label: t.lay.daftar.addMoney, onPress: addMoney },
+    { key: "debt", icon: "swap-horizontal-outline", kind: "people", label: t.lay.daftar.addDebt, onPress: () => router.push("/daftar/new") },
+    { key: "split", icon: "pie-chart-outline", kind: "place", label: t.lay.daftar.addSplit, onPress: () => router.push("/split/new") },
+    // From Splits the receipt fills a new split; elsewhere its total goes into a section.
+    ...(photosAvailable ? [{ key: "receipt", icon: "camera-outline" as const, label: t.lay.daftar.addReceipt, onPress: () => (part === "split" ? router.push({ pathname: "/receipt", params: { for: "split" } }) : router.push("/receipt")) }] : []),
+    { key: "section", icon: "folder-open-outline", label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") },
+  ];
+  const add = useAddSheet(actions);
+  const navigation = useNavigation();
+  useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
 
-  const open = (shared ?? []).filter((e) => e.status !== "settled");
-  const settled = (shared ?? []).filter((e) => e.status === "settled").slice(0, 5);
-  const totals = daftarTotals(shared ?? []);
-  const privateNotes = [...owedToMe.map((p) => ({ p, mine: true })), ...iOwe.map((p) => ({ p, mine: false }))];
-
-  return (
-    <Screen
-      onRefresh={() => {
-        setReloadKey((k) => k + 1);
-        return Promise.all([refresh(), loadShared()]);
-      }}
-    >
-      <View style={styles.switch}>
-        <Chip icon="receipt-outline" label={t.book.tabSpend} selected={view === "spend"} onPress={() => setView("spend")} />
-        <Chip icon="swap-horizontal-outline" label={t.book.tabDebts} selected={view === "debts"} onPress={() => setView("debts")} />
-        <Chip icon="pie-chart-outline" label={t.split.tab} selected={view === "split"} onPress={() => setView("split")} />
-      </View>
-      {view === "spend" ? <SpendView reloadKey={reloadKey} /> : view === "split" ? <SplitsView reloadKey={reloadKey} /> : debts()}
-    </Screen>
+  const parts = useMemo(
+    () => [
+      { key: "spend" as const, label: t.lay.daftar.spending },
+      { key: "people" as const, label: t.lay.daftar.people },
+      { key: "split" as const, label: t.lay.daftar.splits },
+    ],
+    [],
   );
 
-  // A plain render helper (not a component), so the cards keep their state across renders.
-  function debts() {
-    return (
-      <>
-      <Text variant="small" color={palette.inkSoft}>
-        {t.ui.moneyLine}
-      </Text>
-      <View style={styles.totals}>
-        <View style={[styles.total, { backgroundColor: palette.okSoft }]}>
-          <View style={styles.totalHead}>
-            <Icon name="arrow-down-circle" size={18} color={palette.ok} />
-            <Text variant="smallStrong" color={palette.ok}>
-              {t.ui.owedToYou}
-            </Text>
-          </View>
-          <Text variant="number" color={palette.ok}>
-            {formatMoney(totals.owedToMe)}
-          </Text>
-          <Text variant="caption" color={palette.ok}>
-            {fill(t.ui.pounds, { n: "" }).trim()}
-          </Text>
-        </View>
-        <View style={[styles.total, { backgroundColor: palette.friendsSoft }]}>
-          <View style={styles.totalHead}>
-            <Icon name="arrow-up-circle" size={18} color={palette.friends} />
-            <Text variant="smallStrong" color={palette.friends}>
-              {t.ui.youOwe}
-            </Text>
-          </View>
-          <Text variant="number" color={palette.friends}>
-            {formatMoney(totals.iOwe)}
-          </Text>
-          <Text variant="caption" color={palette.friends}>
-            {fill(t.ui.pounds, { n: "" }).trim()}
-          </Text>
-        </View>
-      </View>
-      <Button label={t.daftar.add.replace(/^\+\s*/, "")} icon="add" block onPress={() => router.push("/daftar/new")} />
-
-      <SectionHeader title={t.ui.shared} />
-      {offline && shared === null ? <Note icon="cloud-offline-outline">{offline}</Note> : null}
-      {shared !== null && shared.length === 0 ? (
-        <Card>
-          <EmptyState title={t.daftar.empty} body={t.daftar.intro} />
-        </Card>
-      ) : null}
-      {open.map((e) => (
-        <DaftarCard key={e.id} entry={e} onChanged={() => void loadShared()} />
-      ))}
-      {settled.length ? <SectionHeader title={t.ui.settled} /> : null}
-      {settled.map((e) => (
-        <DaftarCard key={e.id} entry={e} onChanged={() => void loadShared()} />
-      ))}
-
-      {privateNotes.length ? (
-        <>
-          <SectionHeader title={t.ui.private} />
-          <Text variant="small" color={palette.inkSoft}>
-            {t.ui.privateHint}
-          </Text>
-        </>
-      ) : null}
-      {/* Laid out like the shared entries above: who and how much on one line, the actions under it. */}
-      {privateNotes.flatMap(({ p, mine }) =>
-        p.items.map((i) => (
-          <Card key={i.id}>
-            <View style={styles.noteHead}>
-              <PersonAvatar name={p.person} color={mine ? palette.ok : palette.primaryInk} bg={mine ? palette.okSoft : palette.primarySoft} />
-              <View style={styles.flex}>
-                <Text variant="bodyStrong" numberOfLines={1}>
-                  {p.person}
-                </Text>
-                <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
-                  {mine ? t.ui.owedToYou : t.ui.youOwe}
-                </Text>
-              </View>
-              <Text variant="headline" color={mine ? palette.ok : palette.primaryInk}>
-                {mine ? "+" : "−"}
-                {fill(t.ui.pounds, { n: formatMoney(i.debt_amount ?? 0) })}
-              </Text>
-            </View>
-            <View style={styles.noteActions}>
-              <Button label={t.money.sendToConfirm} size="sm" kind="tonal" icon="logo-whatsapp" onPress={() => share(i)} />
-              <Button label={t.money.paid} size="sm" kind="outline" icon="checkmark-done" onPress={() => void complete(i.id).catch(() => {})} />
-            </View>
-          </Card>
-        )),
-      )}
-      </>
-    );
-  }
+  return (
+    <Screen onRefresh={() => setReloadKey((k) => k + 1)}>
+      <Segmented options={parts} value={part} onChange={setPart} />
+      {part === "spend" ? <SpendView reloadKey={reloadKey} /> : part === "split" ? <SplitsView reloadKey={reloadKey} /> : <PeopleView reloadKey={reloadKey} />}
+      {add.sheet}
+      <AddSheet
+        visible={pick !== null}
+        onClose={() => setPick(null)}
+        title={t.lay.daftar.pickSection}
+        actions={(pick ?? []).map((s) => ({ key: s.id, icon: s.circle_id ? "people-outline" : s.kind === "income" ? "cash-outline" : "wallet-outline", kind: "money", label: s.name, onPress: () => openSection(s.id) }))}
+      />
+    </Screen>
+  );
 }
-
-const styles = StyleSheet.create({
-  switch: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  totals: { flexDirection: "row", gap: space.md },
-  total: { flex: 1, borderRadius: radius.lg, padding: space.lg, gap: 2 },
-  totalHead: { flexDirection: "row", alignItems: "center", gap: 6 },
-  flex: { flex: 1, minWidth: 0 },
-  noteHead: { flexDirection: "row", alignItems: "center", gap: space.md },
-  noteActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
-});
