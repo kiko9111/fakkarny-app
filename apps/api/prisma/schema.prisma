@@ -146,6 +146,9 @@ model User {
   alwaysDirect       Boolean         @default(false) @map("always_direct")
   /// "female" | "male" | null (not told yet). Arabic needs it for "you" (owner ask 2026-11-23).
   gender             String?
+  /// A city id from packages/shared/src/local.ts (never an exact spot); null until picked.
+  /// Sets currency, prayer times, holidays and the helpline country.
+  city               String?
   // Proactive-message bookkeeping (M4).
   lastMorningAt      DateTime?       @map("last_morning_at")
   lastNightAt        DateTime?       @map("last_night_at")

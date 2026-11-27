@@ -29,7 +29,7 @@ export interface UnlockStep {
 /** Days with a message before Today (plans, trackers, A space to reflect) is introduced. */
 export const TODAY_AFTER_DAYS = 3;
 
-const MONEY = /سلف|سلّف|فلوس|جنيه|ج\.م|دين|ديون|عليا\s*\d|ليا\s*عند|ليا\s*\d|حساب\b|اتحاسب|احسبلي|owe|owes|owed|lent|lend|borrow|money|debt|\begp\b|pounds?\b|paid me|pay (me|back)|دفعت\s*\d|صرفت\s*\d|قبضت|مرتب|مصاريف|ميزانية|\bspent\b|\bpaid \d|budget|expenses?|salary|split/i;
+const MONEY = /سلف|سلّف|فلوس|جنيه|ريال|درهم|ج\.م|دين|ديون|عليا\s*\d|ليا\s*عند|ليا\s*\d|حساب\b|اتحاسب|احسبلي|owe|owes|owed|lent|lend|borrow|money|debt|\begp\b|pounds?\b|paid me|pay (me|back)|دفعت\s*\d|صرفت\s*\d|قبضت|مرتب|مصاريف|ميزانية|\bspent\b|\bpaid \d|budget|expenses?|salary|split/i;
 const PEOPLE = /ماما|بابا|أمي|امي|ابويا|أبويا|اخويا|أخويا|اختي|أختي|مراتي|جوزي|ابني|بنتي|ولادي|العيال|تيتة|جدو|جدتي|صاحبي|صاحبتي|صحابي|العيلة|العيله|الشلة|\bmom\b|\bmum\b|\bdad\b|mother|father|sister|brother|\bwife\b|husband|\bson\b|daughter|\bkids\b|grandma|grandpa|family|friends?\b/i;
 
 // Asking for a place by name: an "open / show / where" word near the place's name.

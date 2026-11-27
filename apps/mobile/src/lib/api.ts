@@ -431,7 +431,17 @@ export async function listItems(status?: "open" | "done" | "cancelled") {
   return ListItemsResponse.parse(await request(`/items${status ? `?status=${status}` : ""}`)).items;
 }
 
-const parseMe = (raw: unknown) => MeResponse.parse(raw).user;
+// A server from before cities omits `city` (zod fills null): the City row and Zaki's question wait
+// for a profile that carries the key, so an update that reaches phones first offers nothing it
+// can't save.
+let cityKnown = false;
+export const serverKnowsCity = () => cityKnown;
+const parseMe = (raw: unknown) => {
+  const user = MeResponse.parse(raw).user;
+  const sent = (raw as { user?: Record<string, unknown> } | null)?.user;
+  if (sent && "city" in sent) cityKnown = true;
+  return user;
+};
 export async function getMe(): Promise<User> {
   return cachedGet("/me", parseMe);
 }

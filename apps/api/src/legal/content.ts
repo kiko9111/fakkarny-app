@@ -104,7 +104,7 @@ const privacyEn: LegalPage = {
       body: [
         "- What you write: your messages, and the reminders, tasks, shopping items, notes, money owed and memories Zaki saves from them. These can include details about other people you mention.",
         "- Account details: your email address or phone number, or your Apple or Google account identifier, if you sign in. Without sign-in, a random identifier created on your phone.",
-        "- Settings: your name if you give it, language, time zone, wake and sleep times, tone preference, and whether Zaki should address you as female or male in Arabic, if you choose.",
+        "- Settings: your name if you give it, language, time zone, wake and sleep times, tone preference, and whether Zaki should address you as female or male in Arabic, if you choose; and the city you pick (a city from a list, never your location), which sets prayer times, holidays and the currency.",
         "- Circles: the circles you create or join, their names and members. Other members of a circle see your name. Anyone who has an invite link sees the name of the person who sent it, the name of the circle, the first names of its members and how many tasks are open in it.",
         "- Shared Daftar: the name, amount and note you enter for a debt, your InstaPay payment link if you add one, and the other person's answer. Anyone who has the link you send sees your name, the amount and the note. Zaki only keeps the record: it never holds or moves money, and payments happen in InstaPay.",
         "- Gam'eya: the name, monthly amount, pay day, the members' names in turn order, who paid each month and who received the pot. Members who use Zaki see the book in the app; anyone with the gam'eya's link sees the names, turns and who paid, and can say they paid. Zaki only keeps the record: it never holds or moves money.",
@@ -266,7 +266,7 @@ const privacyAr: LegalPage = {
       body: [
         "- اللي بتكتبه: رسائلك، والتذكيرات والمهام وحاجات التسوق والملاحظات والفلوس والذكريات اللي زكي بيحفظها منها. ده ممكن يشمل تفاصيل عن ناس تانية بتذكرهم.",
         "- بيانات الحساب: إيميلك أو رقم موبايلك، أو معرّف حسابك في Apple أو Google، لو دخلت بحساب. من غير حساب، بنستخدم معرّف عشوائي بيتعمل على موبايلك.",
-        "- الإعدادات: اسمك لو قلته، اللغة، المنطقة الزمنية، مواعيد الصحيان والنوم، وطريقة الكلام اللي بتفضّلها، وزكي يكلمك بالمؤنث ولا بالمذكر لو اخترت.",
+        "- الإعدادات: اسمك لو قلته، اللغة، المنطقة الزمنية، مواعيد الصحيان والنوم، وطريقة الكلام اللي بتفضّلها، وزكي يكلمك بالمؤنث ولا بالمذكر لو اخترت، والمدينة اللي بتختارها من القايمة (مش مكانك)، وبيها بنظبط مواعيد الصلاة والإجازات والعملة.",
         "- الدواير: الدواير اللي بتعملها أو بتدخلها، وأساميها وأفرادها. باقي أفراد الدايرة بيشوفوا اسمك. وأي حد معاه لينك الدعوة بيشوف اسم اللي بعته واسم الدايرة والاسم الأول لأفرادها وعدد المهام الشغالة فيها.",
         "- الدفتر المشترك: الاسم والمبلغ والملاحظة اللي بتكتبهم، ولينك إنستاباي بتاعك لو ضفته، ورد الشخص التاني. أي حد معاه اللينك اللي بتبعته بيشوف اسمك والمبلغ والملاحظة. زكي بيسجّل بس: مش بيمسك فلوس ولا بيحوّلها، والدفع بيتم في إنستاباي.",
         "- الجمعية: اسمها والقسط ويوم الدفع وأسماء الناس بترتيب الأدوار، ومين دفع كل شهر ومين قبض. اللي على زكي بيشوفوها في التطبيق، وأي حد معاه لينك الجمعية بيشوف الأسماء والأدوار ومين دفع، ويقدر يقول إنه دفع. زكي بيسجّل بس: مش بيمسك فلوس ولا بيحوّلها.",

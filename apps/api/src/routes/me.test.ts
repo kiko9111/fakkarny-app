@@ -88,6 +88,21 @@ describe.skipIf(!hasTestDb)("auth, settings, export, deletion (M5)", () => {
     expect((await app.inject({ method: "PATCH", url: "/me", headers, payload: { timezone: "Mars/Base" } })).statusCode).toBe(400);
   });
 
+  it("keeps the picked city, which sets the money of new Daftar entries and splits", async () => {
+    const headers = { [INSTALL_ID_HEADER]: randomUUID() };
+    const before = await app.inject({ method: "GET", url: "/me", headers });
+    expect(MeResponse.parse(before.json()).user.city).toBeNull();
+    const res = await app.inject({ method: "PATCH", url: "/me", headers, payload: { city: "jeddah" } });
+    expect(MeResponse.parse(res.json()).user.city).toBe("jeddah");
+    expect((await app.inject({ method: "PATCH", url: "/me", headers, payload: { city: "atlantis" } })).statusCode).toBe(400);
+    const entry = await app.inject({ method: "POST", url: "/daftar", headers, payload: { other_name: "Sara", direction: "owed_to_me", amount: 50 } });
+    expect(entry.statusCode).toBe(201);
+    expect(entry.json().entry.currency).toBe("SAR");
+    expect(entry.json().share_text).toContain("ريال");
+    const forgot = await app.inject({ method: "PATCH", url: "/me", headers, payload: { city: null } });
+    expect(MeResponse.parse(forgot.json()).user.city).toBeNull();
+  });
+
   it("exports everything, then deletes everything (FR-13)", async () => {
     const sub = randomUUID();
     const headers = { authorization: `Bearer ${await token(sub)}` };

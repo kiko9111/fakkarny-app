@@ -248,6 +248,7 @@ function seed(): State {
       pro: false,
       always_direct: false,
       instapay_link: null,
+      city: null,
       gender: null,
       created_at: inHours(-24 * 3),
       last_active_at: iso(now()),

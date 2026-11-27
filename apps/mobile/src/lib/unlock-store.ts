@@ -5,6 +5,8 @@ import { t } from "@/i18n";
 import { track } from "@/lib/analytics";
 import { messagesChanged } from "@/sync";
 import { prefs } from "./prefs";
+import { peekMe, serverKnowsCity } from "./api";
+import { cityAskStep } from "./city-ask";
 import { streak } from "./streak-store";
 import { afterMessage, ALL_FEATURES, FEATURE_ROUTE, localDayOf, open, parseUnlock, type Feature, type UnlockState } from "./unlock";
 
@@ -33,6 +35,16 @@ async function write(clientId: string, text: string, actions: ChatAction[]) {
   messagesChanged.emit();
 }
 
+/** Zaki asks for the city once (lib/city-ask.ts), with a card that opens the picker. */
+async function maybeAskCity(stamp: number) {
+  const city = prefs.get("city") ?? peekMe()?.city ?? null;
+  const step = cityAskStep(prefs.get("city_ask"), { city: Boolean(city), server: serverKnowsCity() });
+  prefs.set("city_ask", step.next);
+  if (!step.ask) return;
+  track("city_asked");
+  await write(`local:city:${stamp}`, t.lay.me.cityAsk, [{ id: `city:${stamp}`, kind: "open_place", status: "done", label: t.lay.me.cityPick, route: "/me/city" }]);
+}
+
 export const unlock = {
   /** New users start with only the chat. */
   startFresh() {
@@ -51,7 +63,10 @@ export const unlock = {
     };
     if (!state) {
       const stamp = Date.now();
-      return () => celebrate(stamp);
+      return async () => {
+        await celebrate(stamp);
+        await maybeAskCity(stamp);
+      };
     }
     const step = afterMessage(state, text, localDayOf(new Date()));
     save(step.state);
@@ -67,6 +82,7 @@ export const unlock = {
         await write(`local:split:${stamp}`, t.split.chatOffer, [{ id: `split:${stamp}`, kind: "open_place", status: "done", label: t.split.chatButton, route }]);
       }
       await celebrate(stamp);
+      await maybeAskCity(stamp);
       if (step.overview) {
         track("place_overview");
         await write(`local:overview:${stamp}`, t.ui.introAll, ALL_FEATURES.map(card));

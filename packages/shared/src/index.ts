@@ -22,3 +22,4 @@ export * from "./understand/clarify";
 export * from "./places";
 export * from "./links";
 export * from "./forward";
+export * from "./local";
