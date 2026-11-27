@@ -19,7 +19,10 @@ import {
   savedList,
   setListItemDone,
   setListTrip,
+  shareListLink,
+  stopListLink,
 } from "@/lib/api";
+import { sendOnWhatsApp } from "@/tasks/LinkTaskCard";
 import { QueuedOffline } from "@/sync/writes";
 import {
   alreadyOn,
@@ -69,6 +72,7 @@ export default function ListScreen() {
   const [missing, setMissing] = useState(false);
   const [text, setText] = useState("");
   const [tripBusy, setTripBusy] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
   const me = peekMe()?.name ?? null;
 
   const load = useCallback(async () => {
@@ -97,6 +101,7 @@ export default function ListScreen() {
       open_count: 0,
       trip: null,
       items: [],
+      has_link: false,
       updated_at: new Date(0).toISOString(),
     }),
     [id],
@@ -161,6 +166,31 @@ export default function ListScreen() {
       setTripBusy(false);
     }
   };
+
+  const shareLink = async () => {
+    if (linkBusy) return;
+    setLinkBusy(true);
+    try {
+      const { share_text } = await shareListLink(id);
+      setFromServer((l) => (l ? { ...l, has_link: true } : l));
+      track("list_link_sent");
+      await sendOnWhatsApp(share_text);
+    } catch {
+      notify(t.tasks.failed, "error");
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const stopLink = () =>
+    confirm(t.lists.stopLinkAsk, t.lists.stopLink, () => {
+      void stopListLink(id)
+        .then((l) => {
+          setFromServer(l);
+          notify(t.lists.linkStopped);
+        })
+        .catch(() => notify(t.tasks.failed, "error"));
+    });
 
   const remove = () =>
     confirm(
@@ -356,8 +386,8 @@ export default function ListScreen() {
         </>
       ) : null}
 
-      {!list.trip ? (
-        <Card>
+      <Card>
+        {!list.trip ? (
           <Button
             label={t.lists.tripStart}
             kind="tonal"
@@ -365,7 +395,25 @@ export default function ListScreen() {
             busy={tripBusy}
             onPress={() => void trip(true)}
           />
-        </Card>
+        ) : null}
+        {/* Someone not on Zaki opens it in a browser, ticks and adds. */}
+        <Button
+          label={t.lists.shareLink}
+          kind="tonal"
+          icon="logo-whatsapp"
+          busy={linkBusy}
+          onPress={() => void shareLink()}
+        />
+      </Card>
+
+      {list.has_link ? (
+        <Button
+          label={t.lists.stopLink}
+          kind="text"
+          size="sm"
+          icon="link-outline"
+          onPress={stopLink}
+        />
       ) : null}
 
       {list.is_owner ? (

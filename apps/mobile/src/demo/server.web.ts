@@ -672,7 +672,27 @@ on("GET", "/circles/([^/]+)/summary", (m) => {
 });
 on("GET", "/circles/([^/]+)/feed", (m) => {
   const c = findCircle(m[1]!);
-  return { posts: c.posts, tasks: state.tasks.filter((t) => t.circle_id === c.id) };
+  return { posts: c.posts, tasks: state.tasks.filter((t) => t.circle_id === c.id), link_tasks: demoLinkTasks.filter((t) => t.circle_id === c.id && t.status !== "cancelled") };
+});
+// Tasks by link (2026-11-27): one sample waiting on someone not on Zaki.
+type DemoLinkTask = { id: string; code: string; url: string; circle_id: string | null; other_name: string; title: string; note: string | null; due_at: string | null; status: string; responded_at: string | null; done_at: string | null; seen: boolean; created_at: string };
+const demoLinkTasks: DemoLinkTask[] = [
+  { id: id(), code: "DEMO1234", url: "https://zaki.preview/t/DEMO1234", circle_id: "c-family", other_name: L("أم محمد", "Om Mohamed"), title: L("تنضيف المطبخ", "Clean the kitchen"), note: null, due_at: inHours(26), status: "pending", responded_at: null, done_at: null, seen: true, created_at: inHours(-3) },
+];
+const linkText = (t: DemoLinkTask) => L(`أهلاً يا ${t.other_name} 👋 ممكن تخلّص دي: ${t.title}؟ ${t.url}`, `Hi ${t.other_name} 👋 Could you take care of this: ${t.title}? ${t.url}`);
+on("POST", "/link-tasks", (_m, b) => {
+  const t: DemoLinkTask = { id: String(b.id ?? id()), code: "DEMO5678", url: "https://zaki.preview/t/DEMO5678", circle_id: (b.circle_id as string | null) ?? null, other_name: String(b.other_name ?? ""), title: String(b.title ?? ""), note: null, due_at: (b.due_at as string | null) ?? null, status: "pending", responded_at: null, done_at: null, seen: false, created_at: iso(now()) };
+  demoLinkTasks.unshift(t);
+  return { task: t, share_text: linkText(t) };
+});
+on("POST", "/link-tasks/([^/]+)/share", (m) => {
+  const t = demoLinkTasks.find((x) => x.id === m[1]) ?? demoLinkTasks[0]!;
+  return { task: t, share_text: linkText(t) };
+});
+on("POST", "/link-tasks/([^/]+)/cancel", (m) => {
+  const t = demoLinkTasks.find((x) => x.id === m[1]);
+  if (t) t.status = "cancelled";
+  return null;
 });
 const findPost = (cid: string, pid: string) => {
   const p = findCircle(cid).posts.find((x) => x.id === pid);
@@ -912,7 +932,7 @@ const pocket = () => {
 
 // Household lists (2026-11-26): one family grocery list with a few things, one ticked off.
 type DemoItem = { id: string; title: string; qty: string | null; added_by_name: string | null; is_mine: boolean; done: boolean; done_by_name: string | null; done_at: string | null; created_at: string };
-type DemoList = { id: string; name: string; place: string; circle_id: string | null; circle_name: string | null; is_owner: boolean; trip: { user_id: string; name: string | null; is_me: boolean; at: string } | null; items: DemoItem[]; updated_at: string };
+type DemoList = { id: string; name: string; place: string; circle_id: string | null; circle_name: string | null; is_owner: boolean; trip: { user_id: string; name: string | null; is_me: boolean; at: string } | null; items: DemoItem[]; has_link?: boolean; updated_at: string };
 const demoItem = (title: string, by: string | null, mine: boolean, hoursAgo: number, done = false): DemoItem => ({ id: id(), title, qty: null, added_by_name: by, is_mine: mine, done, done_by_name: done ? by : null, done_at: done ? inHours(-1) : null, created_at: inHours(-hoursAgo) });
 const demoLists: DemoList[] = [
   {
@@ -959,6 +979,16 @@ on("POST", "/lists/([^/]+)/clear", (m) => {
 on("POST", "/lists/([^/]+)/trip", (m, b) => {
   const l = findList(m[1]!);
   l.trip = b.going ? { user_id: "me", name: null, is_me: true, at: iso(now()) } : null;
+  return touched(l);
+});
+on("POST", "/lists/([^/]+)/link", (m) => {
+  const l = findList(m[1]!);
+  l.has_link = true;
+  return { url: "https://zaki.preview/l/DEMOLIST", share_text: L(`🛒 قايمة «${l.name}». علّم على اللي جبته وضيف اللي ناقص: https://zaki.preview/l/DEMOLIST`, `🛒 The list «${l.name}». Tick what you got and add what's missing: https://zaki.preview/l/DEMOLIST`) };
+});
+on("DELETE", "/lists/([^/]+)/link", (m) => {
+  const l = findList(m[1]!);
+  l.has_link = false;
   return touched(l);
 });
 on("DELETE", "/lists/([^/]+)", (m) => {

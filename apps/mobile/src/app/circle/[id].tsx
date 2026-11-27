@@ -24,7 +24,7 @@ const amount = (n: number) => Math.round(n).toLocaleString(dateLocale);
 export default function CircleScreen() {
   const { id, invite: inviteNow } = useLocalSearchParams<{ id: string; invite?: string }>();
   const { circle, setCircle, guessCircle, failed, showHeld, loadCircle } = useCircle(id);
-  const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [] });
+  const [feed, setFeed] = useState<CircleFeedResponse>(() => peekCircleFeed(id) ?? { posts: [], tasks: [], link_tasks: [] });
   const [trackers, setTrackers] = useState<SharedTracker[]>(() => peekCircleTrackers(id) ?? []);
   // A server from before lists answers 404: the tile shows only once lists have loaded here.
   const [lists, setLists] = useState<HouseList[] | null>(() => peekLists());

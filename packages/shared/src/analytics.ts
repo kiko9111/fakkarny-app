@@ -9,6 +9,8 @@ export const APP_EVENTS = [
   "screen", // props.route: the route pattern, ids replaced ("/circle/[id]")
   "place_introduced", // Zaki introduced a place (props.place)
   "place_opened", // props.place, props.via: "tap" | "ask"
+  "link_task_sent", // a task sent by link to someone not on Zaki
+  "list_link_sent", // a household list's no-app link sent
   "place_overview", // "what can you do?"
   "starter_tapped", // a starter chip on the first chat (props.index)
   "quick_reply", // a quick reply chip (props.index)

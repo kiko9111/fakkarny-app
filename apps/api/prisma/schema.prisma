@@ -175,6 +175,7 @@ model User {
   listTrips       HouseList[]        @relation("ListTrip")
   listItemsAdded  HouseListItem[]    @relation("ListItemAdder")
   listItemsDone   HouseListItem[]    @relation("ListItemDoer")
+  linkTasks       LinkTask[]
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
@@ -334,6 +335,7 @@ model Circle {
   tasks         CircleTask[]
   pocketMoney   PocketMoneyEntry[]
   lists         HouseList[]
+  linkTasks     LinkTask[]
   posts         CirclePost[]
   trackers      Tracker[]
   moneySections MoneySection[]
@@ -729,6 +731,8 @@ model HouseList {
   // "I'm going to the market": who is out shopping for this list, since when.
   tripUserId String?   @map("trip_user_id") @db.Uuid
   tripAt     DateTime? @map("trip_at")
+  // The no-app link (https://…/l/CODE): anyone holding it can see, tick and add. Null = no link.
+  shareCode  String?   @unique @map("share_code")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
 
@@ -750,6 +754,9 @@ model HouseListItem {
   addedById String?   @map("added_by_id") @db.Uuid
   doneAt    DateTime? @map("done_at")
   doneById  String?   @map("done_by_id") @db.Uuid
+  // Someone without Zaki, on the list's web page: the name they typed (if any).
+  addedByName String?   @map("added_by_name")
+  doneByName  String?   @map("done_by_name")
   createdAt DateTime  @default(now()) @map("created_at")
 
   list    HouseList @relation(fields: [listId], references: [id], onDelete: Cascade)
@@ -758,4 +765,31 @@ model HouseListItem {
 
   @@index([listId, doneAt])
   @@map("house_list_items")
+}
+
+/// A task for someone who is not on Zaki. The creator sends the link from their own WhatsApp;
+/// the other person accepts, declines and marks it done on the web page (GET /t/:code).
+model LinkTask {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  creatorId   String    @map("creator_id") @db.Uuid
+  circleId    String?   @map("circle_id") @db.Uuid
+  otherName   String    @map("other_name")
+  title       String
+  note        String?
+  dueAt       DateTime? @map("due_at")
+  // pending | accepted | declined | done | cancelled (shared LinkTaskStatus)
+  status      String    @default("pending")
+  respondedAt DateTime? @map("responded_at")
+  doneAt      DateTime? @map("done_at")
+  webViews    Int       @default(0) @map("web_views")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  creator User    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  circle  Circle? @relation(fields: [circleId], references: [id], onDelete: SetNull)
+
+  @@index([creatorId, status])
+  @@index([circleId])
+  @@map("link_tasks")
 }

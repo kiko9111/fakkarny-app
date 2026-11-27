@@ -33,6 +33,7 @@ const list = (over: Partial<HouseList> = {}): HouseList => ({
   open_count: 2,
   trip: null,
   items: [item("1", "بيض"), item("2", "لبن"), item("3", "عيش", true)],
+  has_link: false,
   updated_at: "2026-11-26T18:00:00.000Z",
   ...over,
 });
