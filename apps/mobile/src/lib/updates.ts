@@ -44,3 +44,34 @@ export function startUpdates() {
     else if (state === "background") void apply();
   });
 }
+
+/** What is running, for Me > Advanced: the update's short id and date, or "built in". */
+export function runningUpdate(): { id: string | null; at: Date | null; channel: string | null } {
+  if (__DEV__ || !Updates.isEnabled) return { id: null, at: null, channel: null };
+  return {
+    id: Updates.isEmbeddedLaunch ? null : (Updates.updateId ?? null),
+    at: Updates.createdAt ?? null,
+    channel: Updates.channel ?? null,
+  };
+}
+
+/**
+ * "Update now": asks, downloads and switches at once, and says what happened instead of hiding
+ * it ("none" = nothing newer; "off" = this build takes no updates; else the error's words).
+ */
+export async function updateNow(): Promise<"reloading" | "none" | "off" | { error: string }> {
+  if (__DEV__ || !Updates.isEnabled) return "off";
+  try {
+    const found = await Updates.checkForUpdateAsync();
+    if (!found.isAvailable) {
+      // Any other reason is worth reading on the screen (e.g. an update that failed to start).
+      const why = found.reason ? String(found.reason) : "";
+      return !why || why === "noUpdateAvailableOnServer" ? "none" : { error: why };
+    }
+    await Updates.fetchUpdateAsync();
+    await Updates.reloadAsync();
+    return "reloading";
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}

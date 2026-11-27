@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { authAvailable } from "@/auth";
-import { showBrainSettings } from "@/brain/BrainSettings";
 import { dateLocale, language, t } from "@/i18n";
 import { countLine, joinLine, planLine, planNow } from "@/me/lines";
 import { InviteCard } from "@/me/parts";
@@ -58,11 +57,9 @@ export default function MeScreen() {
 
       <InviteCard title={m.invite} onInvite={() => void shareInvite("settings")} codeLabel={t.ui.haveCode} onCode={() => router.push("/invite")} />
 
-      {showBrainSettings() ? (
-        <RowGroup>
-          <NavRow icon="hardware-chip-outline" kind="neutral" title={m.advanced} onPress={() => router.push("/me/advanced")} />
-        </RowGroup>
-      ) : null}
+      <RowGroup>
+        <NavRow icon="hardware-chip-outline" kind="neutral" title={m.advanced} onPress={() => router.push("/me/advanced")} />
+      </RowGroup>
 
       <Text variant="caption" color={palette.inkSoft} align="center">
         {t.settings.aiDisclosure}

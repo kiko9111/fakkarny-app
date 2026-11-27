@@ -711,7 +711,13 @@ Rules:
   (DB_POOL_MAX), pg-boss 3 (PGBOSS_POOL_MAX): Supabase's session pooler allows ~15 in all
   (what the API's pool does when that is used up: "Kept database connections").
 - OTA fixes apply without a restart: src/lib/updates.ts checks on start and on return (at most every
-  10 min), downloads in the background and reloads when the user leaves the app.
+  10 min), downloads in the background and reloads when the user leaves the app. Me > Advanced
+  (always shown since 2026-11-27) says which update is running (short id and date, or "Built-in
+  version") and has "Update now" (`updateNow`: check, fetch, reload, and the reason on the screen
+  when the phone refuses one, e.g. an update that failed to start). Added after the layout rebuild's
+  update did not show on the owner's Pixel (build 89) although branch, channel, runtime and the
+  publish were right and no start-up error was reproduced (jest-expo android render of every route;
+  never Hermes or a phone): ask for that screen's line first next time.
 - Model downloads (brain/files.ts, rules in brain/segments.ts): 32 MB HTTP Range pieces appended to
   "<id>.part", each retried with growing waits; a stopped download keeps its bytes ("paused"),
   resumes by itself when the network returns or the app comes back to the front, and the button says

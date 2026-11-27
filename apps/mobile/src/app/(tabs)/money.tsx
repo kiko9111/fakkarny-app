@@ -1,3 +1,4 @@
+import { clearParam } from "@/lib/clear-param";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import type { MoneySection } from "@fakkarni/shared";
@@ -32,7 +33,7 @@ export default function MoneyScreen() {
   useEffect(() => {
     if (!asked) return;
     setPart(asked);
-    router.setParams({ part: undefined });
+    clearParam({ part: undefined });
   }, [asked]);
 
   const openSection = (id: string) => router.push({ pathname: "/money/[id]", params: { id } });

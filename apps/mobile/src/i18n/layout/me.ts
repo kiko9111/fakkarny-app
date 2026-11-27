@@ -47,6 +47,13 @@ const ar = {
   /** Privacy and my data. */
   account: "الحساب",
   yourData: "بياناتك",
+
+  /** Advanced: which update is running. */
+  appUpdate: "تحديث التطبيق",
+  builtIn: "النسخة الأصلية",
+  updateNow: "حدّث دلوقتي",
+  upToDate: "آخر تحديث عندك",
+  updateOff: "النسخة دي مش بتاخد تحديثات",
 };
 
 const en: SameKeys<typeof ar> = {
@@ -87,6 +94,12 @@ const en: SameKeys<typeof ar> = {
 
   account: "Account",
   yourData: "Your data",
+
+  appUpdate: "App update",
+  builtIn: "Built-in version",
+  updateNow: "Update now",
+  upToDate: "You have the latest",
+  updateOff: "This build takes no updates",
 };
 
 export const strings = { "ar-EG": ar, en } as const;
