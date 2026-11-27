@@ -250,6 +250,8 @@ function seed(): State {
       instapay_link: null,
       city: null,
       gender: null,
+      brief_topics: ["football", "ai"],
+      brief_time: "08:00",
       created_at: inHours(-24 * 3),
       last_active_at: iso(now()),
     },

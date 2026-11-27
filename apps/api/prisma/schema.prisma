@@ -146,6 +146,9 @@ model User {
   alwaysDirect       Boolean         @default(false) @map("always_direct")
   /// "female" | "male" | null (not told yet). Arabic needs it for "you" (owner ask 2026-11-23).
   gender             String?
+  /// Daily news brief (shared/brief.ts): topic names ([] = off) and local "HH:MM".
+  briefTopics        String[]        @default([]) @map("brief_topics")
+  briefTime          String?         @map("brief_time")
   /// A city id from packages/shared/src/local.ts (never an exact spot); null until picked.
   /// Sets currency, prayer times, holidays and the helpline country.
   city               String?
@@ -869,6 +872,23 @@ model GameyaPayment {
   @@unique([memberId, round])
   @@index([gameyaId])
   @@map("gameya_payments")
+}
+
+/// One topic's news, summarised once per language and edition for every user who follows it (src/brief).
+/// Not user data: no user id, nothing a user wrote.
+model BriefDigest {
+  id        String   @id @default(uuid()) @db.Uuid
+  topic     String
+  lang      String // "arabic" | "english"
+  /// UTC day and 6-hour block the news was read in ("2026-11-27T06").
+  edition   String
+  /// The brief's lines for this topic (an empty list = no news worth sending).
+  lines     Json
+  sources   String[]
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([topic, lang, edition])
+  @@map("brief_digests")
 }
 
 // Care circles (2026-11-27): a family shares one person's medicine schedule (often a parent).
