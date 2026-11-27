@@ -10,6 +10,14 @@ const ar = {
   homework: "واجب من المدرسة",
   split: "قسّم حساب",
   receipt: "صوّر فاتورة",
+  /** A message from WhatsApp: the "+" row, the paste screen, and the label on a forwarded bubble. */
+  forward: "رسالة من واتساب",
+  forwardTitle: "رسالة من واتساب",
+  forwardHint: "الصق الرسالة هنا",
+  forwardSend: "ابعتها لزكي",
+  forwarded: "رسالة متحوّلة",
+  forwardEmpty: "مفيش كلام في الرسالة",
+  forwardOther: "زكي بيقرا الكلام وصور الفواتير بس",
   /** The second step, when more than one circle fits. */
   whichCircle: "أنهي دايرة؟",
   /** What "Remind me" writes in the composer; she finishes the sentence. Keep the space at the end. */
@@ -26,6 +34,13 @@ const en: SameKeys<typeof ar> = {
   homework: "Homework from school",
   split: "Split a bill",
   receipt: "Scan a receipt",
+  forward: "From WhatsApp",
+  forwardTitle: "From WhatsApp",
+  forwardHint: "Paste the message here",
+  forwardSend: "Send to Zaki",
+  forwarded: "Forwarded",
+  forwardEmpty: "There are no words in it",
+  forwardOther: "Zaki reads words and receipt photos only",
   whichCircle: "Which circle?",
   remindStarter: "Remind me to ",
   inPlus: ["Remind me of something"],

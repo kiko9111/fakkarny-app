@@ -547,6 +547,21 @@ Rules:
   creator: `payerIsCreator`) shows on the page, in the member's screen and in the WhatsApp text.
   Chat: the split tool takes `circle`; that is a pending card (`split_circle`) because it reaches
   others. DELETE /me removes the user from member_ids; /me/export includes splits they are in.
+- Gam'eya book (2026-11-27, kareem's "gam3eya" ask): tables gameyas / gameya_members /
+  gameya_payments (migration gameya), shared shape and pure math in packages/shared/src/gameya.ts
+  (round r = start_month + r-1, the receiver is the member with turn r, everyone pays every round,
+  pot = amount × members, `roundAt` on the organizer's time zone). Routes apps/api/src/routes/gameya.ts,
+  writes gameya/store.ts, wording gameya/rules.ts. The organizer ticks anyone, a member their own row,
+  the public page GET /g/:code shows the turns and takes "I paid" (POST form, anyone with the link:
+  the organizer is told and can untick). Amount, start and members lock after the first payment
+  (422 "started"). Remind = chat line + push to unpaid Zaki members (once per 12 h) and a WhatsApp
+  text for the rest. Tick (gameya/notes.ts, outside the daily Zaki budget, 10:00-22:00 local): the
+  day before pay day to each unpaid Zaki member, and on pay day from 18:00 a summary to the organizer.
+  Chat by rules (gameya/match.ts, step 1a‴, strict: "جمعية" is also the co-op shop): "دفعت الجمعية"
+  records my payment, "الدور على مين" answers, "اعمل جمعية" opens the form. Phone: one home in the
+  Daftar's People part (row group), "+" sheet row, app/gameya/new.tsx and [id].tsx, Today "Needs
+  you" (pay from 3 days before, hand over the pot). In /bootstrap, /me/export; DELETE /me hands an
+  owned gam'eya to the first other Zaki member by turn. Records only.
 - Photos (owner decision, 2026-11-23, the only exception to text-only): limits in
   packages/shared/src/photos.ts. Receipts: POST /receipts/read (apps/api/src/routes/photos.ts)
   sends the photo to `readReceipt` (src/ai/model.ts, RECEIPT_SYSTEM, non-nullable schema) once,
@@ -1325,6 +1340,44 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+- Forward from WhatsApp (2026-11-27, kareem: "add forward to whatsapp in a smart way"). A forwarded
+  message is an ordinary chat message whose text starts with `FORWARD_MARK` ("↪ ",
+  packages/shared/src/forward.ts: `markForwarded` tidies WhatsApp copies (time stamps go, the
+  newest kept as "(sent …)", "<Media omitted>" / deleted lines go), `readForwarded`, `routeShare`).
+  So it is saved in SQLite first, goes out through the outbox, needs no column, and old builds show
+  "↪ text". Server (pipeline/conversation.ts + apps/api/src/forward/read.ts): no rule shortcut acts
+  on it (money, trackers, lists, yes/no, undo, status, alarm words are someone else's), the model
+  gets `forwardNote` (someone else's words, "(sent …)" dates, one item per thing, no memories, no
+  money logged), memories are dropped and at most 6 plans kept, what it saved gets one card
+  `forward_saved` whose Undo cancels them all (undo `items_cancel`), and a school homework list
+  (`homeworkDrafts`: 2+ lines with subjects) is offered as a pending `homework_batch` card per child
+  in her family circles (members marked "teen", else everyone without a grown-up role; never when
+  she is a teen) that sends the batch on Yes. Forwarded words never decide the reply language
+  (`userTexts` skips them). `ai_call` carries `forwarded: true`; `forward_read` counts.
+  Phone: the chat's "+" has "From WhatsApp" (app/forward.tsx, paste; every build, iPhone too); on
+  Android builds from 2026-11-27 Zaki is a share target (app.json intentFilters SEND text/plain,
+  image/*; modules/zaki-share, optional, `take()` + "onShare"; a shared .txt chat export is read
+  as words, its newest 6000 characters). Words are parked in prefs `pending_forward`
+  (forward/inbox.ts) and the chat sends them when open; a photo opens /receipt?shared=<file> and
+  is read at once (receipts stay the only photos). The bubble shows "Forwarded" and folds past 10
+  lines. Evals: evals/cases/forward.jsonl (fwd-*).
+- Local defaults by city (2026-11-27, kareem; scope from the feature study: city-level only, asked
+  once). Pure data and math in packages/shared/src/local.ts: CITIES (Egypt, Saudi, UAE), COUNTRIES
+  (currency, prayer method), `prayerTimes` (astronomical, within a minute or two of the official
+  tables), holidays (`holidaysIn` / `holidaysBetween`: fixed days, Sham El Nessim from Orthodox
+  Easter, moon-based days from HIJRI_DAYS = Umm al-Qura, "expected"; add each new year there,
+  local.test.ts checks them against Node's calendar). users.city (migration user_city, wire
+  `User.city`, PATCH /me {city}); never an exact spot. The city decides: the helpline country
+  (`helplineFor(tz, city)`), Zaki's context (pipeline/local.ts: LOCAL, PRAYER TIMES today, HOLIDAYS
+  next 30 days; a city guessed from the time zone gives prayer times and holidays only), the currency
+  of new Daftar entries and splits and of the money lines (`currencyOf`: only a PICKED city changes
+  money, a guess never). Phone: Me › City (app/me/city.tsx; the one home), Zaki asks once in the chat
+  after the third message (lib/city-ask.ts, local line `local:city:*` with an Open card), Today puts a
+  holiday that runs today or starts tomorrow beside the date (today/holiday.ts). The app's money words
+  are swapped at start-up (`withCurrency`, i18n/currency.ts, prefs "city"); changing to another
+  currency reloads. City row and question appear only once the server's profile carries `city`
+  (`serverKnowsCity`), so an update that lands before the deploy offers nothing it can't save.
+  Not swapped yet: pocket money, circle book posts and homework rewards (EGP), store prices.
 - Home-screen widget (2026-11-27, Android, native; kareem's ask): modules/zaki-widget (local Expo
   module, Kotlin, RemoteViews; no JS runs in the widget). The app writes what it shows as JSON
   (`widgetData`, src/widget/data.ts, pure + tested) into SharedPreferences "zaki_widget" after every

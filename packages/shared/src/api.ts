@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Item, Memory, Message, TimeOfDay, User } from "./entities";
 import { CheckinInterval, Language, Tone } from "./enums";
+import { CITY_IDS } from "./local";
 
 /** GET /health */
 export const HealthResponse = z.object({
@@ -148,6 +149,8 @@ export const PatchMeRequest = z
     /** An https://ipn.eg/… link from the InstaPay app, or null to remove it. */
     instapay_link: z.string().trim().max(300).nullable(),
     gender: z.enum(["female", "male"]).nullable(),
+    /** A city id (CITY_IDS), or null to forget it. */
+    city: z.enum(CITY_IDS).nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
@@ -181,5 +184,19 @@ export const ExportResponse = z.object({
   pocket_money: z.array(z.object({ role: z.enum(["child", "parent"]), kind: z.string(), amount: z.number(), title: z.string().nullable(), at: z.string() })).default([]),
   /** Household list things the user added or ticked off, with their list's name. */
   list_items: z.array(z.object({ list: z.string(), title: z.string(), qty: z.string().nullable(), added: z.boolean(), done_at: z.string().nullable(), created_at: z.string() })).default([]),
+  gameyas: z
+    .array(
+      z.object({
+        name: z.string(),
+        role: z.enum(["organizer", "member"]),
+        amount: z.number(),
+        currency: z.string(),
+        pay_day: z.number(),
+        start_month: z.string(),
+        members: z.array(z.object({ name: z.string(), turn: z.number(), is_me: z.boolean(), received: z.boolean(), paid_rounds: z.array(z.number()) })),
+        created_at: z.string(),
+      }),
+    )
+    .default([]),
 });
 export type ExportResponse = z.infer<typeof ExportResponse>;

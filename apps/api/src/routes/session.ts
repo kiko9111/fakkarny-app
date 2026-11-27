@@ -75,7 +75,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesOptions> = async (ap
       next_free_at: free.nextAt?.toISOString() ?? null,
       open: open ? toWireSession(open) : null,
       moods: moods.reverse().map((m) => ({ at: m.startedAt.toISOString(), mood: Math.min(5, Math.max(1, m.mood)) })),
-      helpline: helplineFor(req.user.timezone),
+      helpline: helplineFor(req.user.timezone, req.user.city),
     };
     return res;
   });

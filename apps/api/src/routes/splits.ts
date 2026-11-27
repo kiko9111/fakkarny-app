@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from "fastify";
 import { z } from "zod";
-import { MarkSplitPaidRequest, MAX_SPLIT_ITEMS, MAX_SPLIT_PEOPLE, normalizeInviteCode, SplitInput, UpdateSplitRequest, type ListSplitsResponse, type Split, type SplitResponse } from "@fakkarni/shared";
+import { currencyOf, MarkSplitPaidRequest, MAX_SPLIT_ITEMS, MAX_SPLIT_PEOPLE, normalizeInviteCode, SplitInput, UpdateSplitRequest, type ListSplitsResponse, type Split, type SplitResponse } from "@fakkarni/shared";
 import { Prisma, type PrismaClient, type Split as SplitRow } from "../generated/prisma/client";
 import { newInviteCode } from "../circles/rules";
 import { formatAmount, type Lang } from "../daftar/rules";
@@ -70,7 +70,7 @@ export const splitRoutes: FastifyPluginAsync<SplitRoutesOptions> = async (app, o
     const data = computeSplit(group.input);
     for (let attempt = 0; ; attempt++) {
       try {
-        const row = await prisma.split.create({ data: { ...data, code: newInviteCode(), userId: req.user.id, circleId: group.circleId, memberIds: group.memberIds } });
+        const row = await prisma.split.create({ data: { ...data, currency: currencyOf(req.user.city).code, code: newInviteCode(), userId: req.user.id, circleId: group.circleId, memberIds: group.memberIds } });
         tell(await tellMembers(prisma, row, req.user, now()));
         return reply.code(201).send(await respond(req, row));
       } catch (err) {

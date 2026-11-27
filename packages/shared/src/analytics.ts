@@ -9,6 +9,8 @@ export const APP_EVENTS = [
   "screen", // props.route: the route pattern, ids replaced ("/circle/[id]")
   "place_introduced", // Zaki introduced a place (props.place)
   "place_opened", // props.place, props.via: "tap" | "ask"
+  "city_asked", // Zaki asked for the user's city in the chat (once)
+  "city_picked", // props.changed: a city was already set
   "place_overview", // "what can you do?"
   "starter_tapped", // a starter chip on the first chat (props.index)
   "quick_reply", // a quick reply chip (props.index)
@@ -36,7 +38,11 @@ export const APP_EVENTS = [
   "list_item_added", // a thing added to a household list from its screen
   "list_item_done", // a thing ticked off on a household list
   "list_trip", // "I'm going shopping" tapped
+  "gameya_created", // a gam'eya book made on its screen
+  "gameya_paid", // a payment ticked on a gam'eya screen
   "chat_reply", // a chat reply arrived: props.total / props.think (ms), props.brain, props.ok, props.first (ms to its first words, when they came ahead)
+  "forward_in", // something shared or pasted for Zaki: props.kind "chat" | "receipt" | "none", props.source "share" | "paste"
+  "forward_sent", // the chat sent a forwarded message (props.chars: its length, rounded to 100)
 ] as const;
 export const AppEventName = z.enum(APP_EVENTS);
 export type AppEventName = z.infer<typeof AppEventName>;

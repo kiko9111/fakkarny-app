@@ -75,7 +75,7 @@ export const homeworkRoutes: FastifyPluginAsync<HomeworkRoutesOptions> = async (
   });
 
   /** Words that look like someone in danger get the helpline, never a homework answer. */
-  const crisisCheck = (user: User, text: string): string | null => (text && looksLikeCrisis(text) ? helplineMessage(user.language === "en" ? "english" : "arabic", helplineFor(user.timezone)) : null);
+  const crisisCheck = (user: User, text: string): string | null => (text && looksLikeCrisis(text) ? helplineMessage(user.language === "en" ? "english" : "arabic", helplineFor(user.timezone, user.city)) : null);
 
   const logCall = (user: User, feature: "homework_help" | "homework_check", usage: Usage, photos: number, ok: boolean, extra: Record<string, string> = {}) =>
     prisma.event.createMany({
