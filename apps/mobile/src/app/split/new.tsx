@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Pressable, Share, StyleSheet, Switch, View } from "react-native";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { DEFAULT_SERVICE_PCT, DEFAULT_VAT_PCT, type Circle } from "@fakkarni/shared";
@@ -20,7 +20,7 @@ import { Button, Card, Chip, Icon, IconButton, notify, palette, radius, Screen, 
  * Daftar or the chat ("احسبلي 1850 على 5" fills the bill and the number of people).
  */
 export default function NewSplitScreen() {
-  const params = useLocalSearchParams<{ subtotal?: string; people?: string }>();
+  const params = useLocalSearchParams<{ subtotal?: string; people?: string; circle?: string }>();
   const [d, setD] = useState<Draft>(() => takeDraft() ?? {
     title: "",
     subtotal: params.subtotal ?? "",
@@ -47,6 +47,15 @@ export default function NewSplitScreen() {
       notify(t.split.offline, "error");
     }
   };
+  // Opened from a circle's Money screen: that circle's people are already in.
+  const fromCircle = useRef(params.circle);
+  useEffect(() => {
+    const id = fromCircle.current;
+    fromCircle.current = undefined;
+    if (id && !d.circleId) void pickCircle(id);
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Back from a receipt photo: take its items, keep the names already typed.
   useFocusEffect(
     useCallback(() => {
@@ -107,19 +116,13 @@ export default function NewSplitScreen() {
   return (
     <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.split.title }} />
-      <Text variant="small" color={palette.inkSoft}>
-        {t.split.intro}
-      </Text>
       {photosAvailable ? <Button label={t.receipt.fromReceipt} icon="camera-outline" kind="tonal" onPress={() => router.push({ pathname: "/receipt", params: { for: "split" } })} /> : null}
-      <TextField label={t.split.subtotal} hint={t.split.subtotalHint} value={d.subtotal} onChangeText={(v) => set({ subtotal: v })} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
+      <TextField label={t.split.subtotal} value={d.subtotal} onChangeText={(v) => set({ subtotal: v })} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
       <TextField label={t.split.what} value={d.title} onChangeText={(v) => set({ title: v })} maxLength={60} placeholder={t.split.whatHint} />
 
       {circles.length ? (
         <>
           <Text variant="headline">{t.split.withCircle}</Text>
-          <Text variant="small" color={palette.inkSoft}>
-            {t.split.circleHint}
-          </Text>
           <View style={styles.wrap}>
             {circles.map((c) => (
               <Chip key={c.id} label={c.name} selected={d.circleId === c.id} onPress={() => void pickCircle(c.id)} />
@@ -162,9 +165,6 @@ export default function NewSplitScreen() {
       </View>
 
       <Text variant="headline">{t.split.items}</Text>
-      <Text variant="small" color={palette.inkSoft}>
-        {t.split.itemsHint}
-      </Text>
       {d.items.map((it, i) => (
         <Card key={i} style={styles.item}>
           <View style={styles.row}>
@@ -199,9 +199,6 @@ export default function NewSplitScreen() {
         </Card>
       ) : null}
       <Button label={t.split.send} kind="whatsapp" icon="logo-whatsapp" size="lg" block busy={busy} disabled={!preview} onPress={() => void send()} />
-      <Text variant="small" color={palette.inkSoft} align="center">
-        {t.split.sendHint}
-      </Text>
     </Screen>
   );
 }

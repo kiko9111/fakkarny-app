@@ -77,7 +77,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
-          <Stack.Screen name="memories" options={{ title: t.memories.title }} />
+          <Stack.Screen name="memories" options={{ title: t.lay.me.memory }} />
           <Stack.Screen name="places" options={{ title: t.places.title }} />
           <Stack.Screen
             name="paywall"
@@ -89,6 +89,29 @@ export default function RootLayout() {
           />
           <Stack.Screen name="circle/new" options={{ presentation: "modal" }} />
           <Stack.Screen name="circle/[id]" options={{ title: "" }} />
+          {/* The circle's own screens and the Me pages: the title is known before they draw. */}
+          <Stack.Screen name="circle/feed" options={{ title: t.lay.circle.latest }} />
+          <Stack.Screen name="circle/info" options={{ title: t.lay.circle.infoTitle }} />
+          <Stack.Screen name="circle/tasks" options={{ title: t.lay.circlejobs.tasksTitle }} />
+          <Stack.Screen name="circle/homework" options={{ title: t.lay.circlejobs.homeworkTitle }} />
+          <Stack.Screen name="circle/money" options={{ title: t.lay.circlejobs.moneyTitle }} />
+          <Stack.Screen name="circle/trackers" options={{ title: t.lay.circle.trackers }} />
+          <Stack.Screen name="me/zaki" options={{ title: t.lay.me.zaki }} />
+          <Stack.Screen name="me/look" options={{ title: t.lay.me.look }} />
+          <Stack.Screen name="me/reminders" options={{ title: t.lay.me.reminders }} />
+          <Stack.Screen name="me/payments" options={{ title: t.lay.me.payments }} />
+          <Stack.Screen name="me/memory" options={{ title: t.lay.me.memory }} />
+          <Stack.Screen name="me/privacy" options={{ title: t.lay.me.privacy }} />
+          <Stack.Screen name="me/advanced" options={{ title: t.lay.me.advanced }} />
+          {/* Pushed from Today (they were hidden tabs, which a push could not open). */}
+          <Stack.Screen name="upcoming" options={{ title: t.lay.common.plans }} />
+          <Stack.Screen name="trackers" options={{ title: t.tabs.trackers }} />
+          <Stack.Screen name="pocket" options={{ title: t.homework.pocketTitle }} />
+          <Stack.Screen name="list/index" options={{ title: t.lists.title }} />
+          <Stack.Screen name="list/[id]" options={{ title: "" }} />
+          <Stack.Screen name="homework/plan" options={{ title: t.homework.planTitle }} />
+          <Stack.Screen name="homework/help" options={{ title: t.homework.helpTitle }} />
+          <Stack.Screen name="homework/check" options={{ title: t.homework.checkTitle }} />
           <Stack.Screen
             name="invite/index"
             options={{ presentation: "modal", title: t.circles.codeTitle }}

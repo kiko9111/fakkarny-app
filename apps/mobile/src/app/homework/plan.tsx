@@ -115,11 +115,6 @@ export default function HomeworkPlanScreen() {
               <Chip key={n} icon="wallet-outline" label={fill(t.homework.rewardBadge, { n })} selected={reward === n} onPress={() => setReward(n)} />
             ))}
           </View>
-          {reward ? (
-            <Text variant="caption" color={palette.inkSoft}>
-              {t.homework.rewardHint}
-            </Text>
-          ) : null}
           <Button label={fill(t.homework.planSend, { n: kept })} icon="send" size="lg" block busy={busy} disabled={!who || kept === 0} onPress={() => void send()} />
         </>
       ) : null}

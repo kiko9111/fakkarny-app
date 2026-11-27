@@ -268,7 +268,7 @@ export default function ListScreen() {
         </Card>
       ) : null}
       {open.length === 0 && got.length > 0 ? (
-        <Note icon="sparkles-outline">{t.lists.allDone}</Note>
+        <Note icon="thumbs-up-outline">{t.lists.allDone}</Note>
       ) : null}
       {open.length ? (
         <Card style={styles.items}>
@@ -365,11 +365,6 @@ export default function ListScreen() {
             busy={tripBusy}
             onPress={() => void trip(true)}
           />
-          {list.circle_id ? (
-            <Text variant="small" color={palette.inkSoft}>
-              {t.lists.tripHint}
-            </Text>
-          ) : null}
         </Card>
       ) : null}
 

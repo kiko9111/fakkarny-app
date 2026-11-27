@@ -187,12 +187,12 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 4, minWidth: 0 },
   flex: { flex: 1 },
   reactions: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
-  reaction: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 9, minHeight: 28, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.6)" },
+  reaction: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 9, minHeight: 28, borderRadius: radius.pill, backgroundColor: palette.wash },
   reactionMine: { backgroundColor: palette.primarySoft },
   comment: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2 },
-  zakiComment: { backgroundColor: "rgba(255,255,255,0.55)", borderRadius: radius.md, padding: space.xs },
+  zakiComment: { backgroundColor: palette.wash, borderRadius: radius.md, padding: space.xs },
   composer: { flexDirection: "row", alignItems: "center", gap: space.xs },
   // minWidth 0: in the browser a text box will not shrink below its natural width by itself, and pushed Send off the card.
-  input: { flex: 1, minWidth: 0, minHeight: 40, backgroundColor: "rgba(255,255,255,0.75)", borderRadius: radius.pill, paddingHorizontal: space.lg, fontSize: 15, fontFamily: fonts.body, color: palette.ink },
+  input: { flex: 1, minWidth: 0, minHeight: 40, backgroundColor: palette.wash, borderRadius: radius.pill, paddingHorizontal: space.lg, fontSize: 15, fontFamily: fonts.body, color: palette.ink },
   ask: { gap: space.sm },
 });

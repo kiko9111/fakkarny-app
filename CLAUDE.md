@@ -399,32 +399,37 @@ Rules:
   changes are appended to apps/mobile/src/db/schema.ts (never edit a shipped migration).
 - Design system (2026-11-22): apps/mobile/src/ui (tokens, Text, Button, Icon, ZakiAvatar,
   parts, TextField, feedback, ThemePicker, glass). Screens use it, not src/lib/theme (kept only as
-  an alias). Look = the liquid-glass logo (owner pick): a soft colour mesh behind every screen
+  an alias). Look (revised 2026-11-27, see "Layout map"): a soft colour mesh behind every screen
   (assets/bg/mesh-*.jpg via `Backdrop`; navigators use `screenLayout={withGround}` so each screen
   carries its own mesh and mounted screens underneath never show through; headers use
-  `GlassHeader`), frosted translucent surfaces (`glass` token: white 68% + bright edge + tinted
+  `GlassHeader`), translucent white cards (`glass` token: white 86% + bright edge + soft theme-tinted
   shadow; real backdrop blur on web only), large radii, glossy pill buttons. No blur or gradient
   native module: the mesh and Zaki art are images. Themes the user picks: Sunrise (default), Mint
   or Cloud (src/ui/themes.ts, prefs "theme", read at start-up; changing it reloads). Session has
   its own calm mesh. Family, friends and Session keep fixed colours in every theme. One font
-  family, IBM Plex Sans Arabic; Ionicons; no emoji on buttons/chips (`plain()`). Use
+  family, Rubik (Arabic and Latin in the same files, owner pick 2026-11-27; src/ui/fonts.ts loads it at
+  run time from @expo-google-fonts/rubik, so it reaches builds over the air); Ionicons; no emoji on buttons/chips (`plain()`). Use
   `notify`/`confirm`/`ask` from src/ui/feedback instead of Alert. Dates use `dateLocale`.
-- Logo and icons: the liquid-glass spark smile. The app icon, Android adaptive layers, splash,
+- Logo and icons: the spark smile on a rounded tile in the theme's colours. The app icon, Android adaptive layers, splash,
   favicon and the in-app Zaki art (assets/zaki/zaki-<theme>-<happy|calm>.png) are rendered from one
-  SVG; keep them in step if the mark changes. The splash is configured through the
+  SVG (assets/logo/zaki-mark.svg, `node scripts/make-logo.mjs` in apps/mobile, needs Playwright; the
+  tile colours are THEMES at the top of the script); keep them in step if the mark changes. The splash is configured through the
   expo-splash-screen plugin in app.json.
-- Chat first (owner decision, 2026-11-22; tab bar always shown since 2026-11-23): a new user
-  sees Zaki's chat and the Me tab. The first version hid the bar and put Settings in the header:
-  the owner read the missing bar as a broken build, and `router.push` to a tab with `href: null`
-  does nothing. The bar and `Screen` pad by the bottom safe-area inset (Android is edge-to-edge;
-  3-button navigation is 48dp and covered the composer). Since 2026-11-23 (owner decision) a tab
-  never appears silently: Zaki introduces it in the chat (money talk: Daftar; family/friends
-  words: People; third active day: Today) with an Open card, written on the phone by
-  `addLocalFriendMessage` (never synced, client_id `local:intro:*`); the tab opens on the tap.
-  "Open the Daftar" opens at once; "what can you do?" gets the overview with every card
-  (src/lib/unlock.ts, pure + tested; state in prefs "unlocked" via src/lib/unlock-store.ts).
-  An accepted invite or Daftar link opens its tab directly. No saved state = a user from before
-  chat-first: everything stays open. Story: "Zaki remembers so you don't have to".
+- Five fixed tabs (owner decision, 2026-11-27; replaces chat-first tab unlocking): Today, People,
+  Zaki (centre), Daftar, Me always show, in that order, with no back-to-chat arrow (the centre
+  button and Android back go home). A place the user has not opened yet (`useUnlocked`,
+  src/lib/unlock.ts) shows Zaki's one sentence and an Open button instead of its screen (`Place`,
+  the tabs' `screenLayout` in app/(tabs)/_layout.tsx; the navigator calls `screenLayout` as a plain
+  function, so hooks must sit in a component it returns). The screen is not mounted until then.
+  Zaki still introduces a place in the chat (money talk: Daftar; family/friends words: People;
+  third active day: Today) with an Open card, written on the phone by `addLocalFriendMessage`
+  (never synced, client_id `local:intro:*`); "Open the Daftar" opens at once; "what can you do?"
+  gets the overview with every card (unlock.ts pure + tested; prefs "unlocked" via
+  unlock-store.ts). An accepted invite or Daftar link opens its place. No saved state = a user from
+  before: everything is open. The bar and `Screen` pad by the bottom safe-area inset (Android is
+  edge-to-edge). A tab with `href: null` cannot be opened by `router.push`: /upcoming (Plans) and
+  /trackers are stack screens now. The Today tab's badge is `useNeedsYouCount` (saved copies only,
+  no request). Story: "Zaki remembers so you don't have to".
 - Sign-in is required at onboarding (owner decision, 2026-11-23); only a build without sign-in
   configured shows "Start" without it.
 - Growth plan (2026-11-23, doc https://claude.ai/artifact/G2Z59tkVagTUrDvsschK1R): beachhead user
@@ -1250,6 +1255,69 @@ Rules:
   (`peekShopLists`, list `place` = place kind). Free; in /bootstrap, /me/export (list_items) and
   DELETE /me (private lists go). The phone shows list entry points only once GET /lists answered,
   so an over-the-air update before the server deploy shows nothing new.
+
+- Layout map (2026-11-27, owner-approved rebuild; kareem: "so much scrolling", "reduce texts way
+  more", "the playful first look, merged"). The one rule: a thing lives in ONE home and shows up
+  in Today when it is due.
+  - Places: Zaki (chat; the "+" beside the composer starts any job, chat/plus.ts + PlusMenu.tsx;
+    `/?compose=remind` puts "Remind me to " in the composer). Today (today/needs.ts pure: "Needs
+    you" = task requests, homework to review, Daftar entries to confirm, unpaid group-split shares;
+    then Plans, Lists with open items, Tracking, the door to A space for you; no greeting). People
+    (circles; a circle is a one-phone summary: check-in card, tiles, the newest 2 news lines).
+    Daftar (one `Segmented`: Spending / People / Splits, one "+"). Me (rows that each open one page).
+  - Routes added: /circle/feed, /circle/info, /circle/tasks, /circle/homework (This week / Pocket
+    money), /circle/money, /circle/trackers (all `?id=`), /me/zaki, look, reminders, payments,
+    memory, privacy, advanced. /list?circle= shows that circle's lists; /task/new takes
+    `homework=1`, /split/new takes `circle`. Every older route still works.
+  - Screen rules: one home, shown where due; one screen one job (more than ~4 section titles
+    becomes a summary with tiles); the first phone-height answers the place's question, no greeting
+    or explainer text; one "+" in the header's trailing corner opens a sheet, no add buttons inside
+    content (an empty state may carry one); making starts from a sheet, looking is a push; one
+    filled button per screen, and cards in a list use tonal / outline; dangerous actions last on an
+    info page, red, behind `confirm`; a switch (`Segmented`, 2-3 one-word parts) is for views and
+    chips are for answers; a button is at most three words; one name per thing (Daftar / الدفتر,
+    People / الناس, circle / دايرة, A space for you / مساحة ليك, Plans / مواعيدك, Today /
+    النهارده); an empty screen is Zaki's one sentence and one button (`IntroPanel`). Far fewer
+    words: no helper sentence under a title, row, button or field; legal and safety text stays.
+    Applied to every screen on 2026-11-27 (strings.ts lost about 230 lines). What stays, short:
+    Session's "not a doctor" line, consent ticks and helpline, "Zaki is an AI, not a person.",
+    the location disclosure on My places, the paywall's terms, "A record only" on pocket money,
+    one line where a photo goes (receipt, homework pages), and "Tap the wallet for who paid" on
+    a new split (the only hint left, because the control has no label). A new string follows the
+    same budget: a button 1-3 words, a row's value line one line, an empty state one sentence.
+  - Building blocks (src/ui): `Segmented`, `Tile` / `TileGrid`, `NavRow` / `RowGroup`,
+    `IntroPanel` (layout.tsx), `useAddSheet` / `AddSheet` / `HeaderPlus` (AddSheet.tsx, usage at
+    the top of the file; plain `Modal`). Words: src/i18n/layout/<area>.ts (common, tabs, today,
+    circle, circlejobs, daftar, chat, me), read as `t.lay.<area>.<key>`; `SameKeys` fails the build
+    on a key missing in English.
+  - Colour (replaces the liquid-glass and near-white notes): a light mesh of the theme behind every
+    screen (assets/bg/mesh-*.jpg, `node scripts/make-meshes.mjs` in apps/mobile, needs Playwright),
+    cards of 86% white with a bright edge (`glass`) and a soft theme-tinted shadow, near-black ink.
+    The bright edge does not show on white: a line inside a card is `palette.lineStrong`, a quiet
+    fill `palette.wash`. Icons identify: one Ionicon per meaning across the app (tasks
+    checkmark-circle, homework school, lists cart, money wallet, split pie-chart, receipt camera,
+    reminder notifications, alarm alarm, place location, tracker stats-chart, memory bulb, privacy
+    shield, invite heart, plan sparkles, Zaki chat bubble, "Zaki does it for you" color-wand), in
+    a soft square coloured by `kind` (tokens.ts: money yellow, people / done / trackers green,
+    place / split blue, alarm / memory violet, `neutral` for housekeeping rows, else the theme) on
+    `IconTile`, `Tile`, `NavRow` and sheet rows. `IconName` is typed, so a name Ionicons lacks
+    fails the typecheck; a new icon must not reuse another meaning's glyph.
+  - Contrast (computed 2026-11-27, all three themes): text is 4.5:1 or more on a card and on the
+    mesh under the header line. For that `primary` (the filled button under white words) is
+    deeper than the first orange (#CE491A / #12856E / #7659E6), `inkFaint` is only a shade
+    lighter than `inkSoft`, and each kind's ink is checked on its square. `primary` is a fill and
+    an icon colour, never small text: words in the theme's colour use `primaryInk`. Re-compute
+    after changing a theme colour or a mesh spot (the darkest mesh pixel below the top 11%).
+  - The browser preview does not flip paddingStart / paddingEnd in Arabic (the phone does): shared
+    rows use paddingHorizontal. Its sample data (demo/server.web.ts, `SEED` restarts a saved
+    preview) has something for every new screen.
+  - From the first review round: a card that comes in a list never has a filled button (tonal;
+    one filled button a screen); `Segmented` switches views, an answer to pick is chips (`Choice`,
+    me/parts.tsx); a link to one part of a screen carries it (`/money?part=people`, `/list?new=1`;
+    the screen uses the word up with `router.setParams`); from a screen above the tabs go to a tab
+    with `router.dismissTo` (a plain `navigate` stacks a second copy of the tabs); white on the
+    filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
+    splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest

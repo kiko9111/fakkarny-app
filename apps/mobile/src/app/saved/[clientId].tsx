@@ -41,10 +41,6 @@ export default function SavedScreen() {
   return (
     <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.saved.title }} />
-      <Text variant="body" color={palette.inkSoft}>
-        {plain(t.saved.hint)}
-      </Text>
-
       {saved.items.map((item) => (
         <Card key={item.id} style={styles.card}>
           <View style={styles.head}>

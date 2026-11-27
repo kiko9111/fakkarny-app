@@ -1,0 +1,73 @@
+import type { SameKeys } from "./shape";
+
+// Layout rebuild: a circle's job screens: tasks, homework, money (owner: the circle-jobs area). Reached as t.lay.circlejobs.<key>. Same keys in both languages.
+const ar = {
+  /** /circle/tasks */
+  tasksTitle: "المهام",
+  open: "مفتوحة",
+  done: "خلصت",
+  tasksEmpty: "اطلب حاجة من حد في الدايرة.",
+  tasksAlone: "اعزم حد عشان تطلب منه.",
+  askSomeone: "اطلب من حد",
+  tasksSay: "اطلب من أحمد عيش",
+  invite: "اعزم على واتساب",
+
+  /** /circle/homework */
+  homeworkTitle: "الواجبات",
+  week: "الأسبوع ده",
+  pocket: "المصروف",
+  toReview: "راجعها",
+  late: "متأخر",
+  tomorrow: "بكرة",
+  noDay: "من غير يوم",
+  explain: "زكي، اشرحلي درس",
+  addWeek: "رسالة المدرسة",
+  addOne: "واجب واحد",
+  homeworkEmpty: "مفيش واجبات الأسبوع ده.",
+  homeworkAlone: "اعزم ولادك هنا.",
+  homeworkSay: "واجب لعمر: حساب",
+  pocketEmpty: "حط مكافأة على واجب وهتبان هنا.",
+
+  /** /circle/money */
+  moneyTitle: "الفلوس",
+  books: "دفاتر مشتركة",
+  splits: "تقسيم حسابات",
+  addBook: "دفتر مشترك",
+  addSplit: "قسّم حساب",
+  moneyEmpty: "مفيش مصاريف مشتركة لسه.",
+};
+
+const en: SameKeys<typeof ar> = {
+  tasksTitle: "Tasks",
+  open: "Open",
+  done: "Done",
+  tasksEmpty: "Ask someone in the circle for something.",
+  tasksAlone: "Invite someone to ask them.",
+  askSomeone: "Ask someone",
+  tasksSay: "Ask Ahmed for bread",
+  invite: "Invite on WhatsApp",
+
+  homeworkTitle: "Homework",
+  week: "This week",
+  pocket: "Pocket money",
+  toReview: "To review",
+  late: "Late",
+  tomorrow: "Tomorrow",
+  noDay: "No day",
+  explain: "Zaki, explain a lesson",
+  addWeek: "School's message",
+  addOne: "One homework",
+  homeworkEmpty: "No homework this week.",
+  homeworkAlone: "Invite your child here.",
+  homeworkSay: "Homework for Omar: math",
+  pocketEmpty: "Put a reward on a homework to see it here.",
+
+  moneyTitle: "Money",
+  books: "Shared books",
+  splits: "Splits",
+  addBook: "Shared book",
+  addSplit: "Split a bill",
+  moneyEmpty: "No shared costs yet.",
+};
+
+export const strings = { "ar-EG": ar, en } as const;

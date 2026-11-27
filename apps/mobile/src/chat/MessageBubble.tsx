@@ -17,7 +17,7 @@ const KIND: Partial<Record<MessageKind, { icon: IconName; label: () => string; c
   night: { icon: "moon", label: () => t.ui.kindNight, color: palette.calm },
   reminder: { icon: "alarm", label: () => t.ui.kindReminder, color: palette.primaryInk },
   followup: { icon: "chatbubble-ellipses", label: () => t.ui.kindFollowup, color: palette.primaryInk },
-  checkin: { icon: "heart", label: () => t.ui.kindCheckin, color: palette.primaryInk },
+  checkin: { icon: "hand-left", label: () => t.ui.kindCheckin, color: palette.primaryInk },
   update: { icon: "people", label: () => t.ui.kindUpdate, color: palette.family },
 };
 
@@ -89,7 +89,7 @@ export const MessageBubble = memo(function MessageBubble({
           {message.kind === "upsell" ? (
             // Out of free AI messages: inviting a friend comes first (both get 7 Pro days), then Pro.
             <View style={styles.upsell}>
-              <Button label={t.referral.inviteButton} icon="gift" size="sm" onPress={() => void shareInvite("upsell")} />
+              <Button label={t.referral.inviteButton} icon="heart" size="sm" onPress={() => void shareInvite("upsell")} />
               <Button
                 label={t.paywall.upsellButton}
                 icon="sparkles"

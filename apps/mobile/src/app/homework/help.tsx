@@ -9,7 +9,7 @@ import { createTask, homeworkHelp, peekTasks } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { PagePhotos } from "@/homework/PagePhotos";
 import { practiceNote, shortTitle } from "@/homework/logic";
-import { Button, Card, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
+import { Button, Card, notify, palette, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * Zaki helps the parent with homework (2026-11-26): explains the lesson simply, says how to
@@ -87,12 +87,11 @@ export default function HomeworkHelpScreen() {
           {[task.subject, task.title].filter(Boolean).join(" · ")}
         </Text>
       ) : null}
-      {help ? null : <Note icon="bulb-outline">{plain(t.homework.helpIntro)}</Note>}
       {help ? null : (
         <>
           <TextField value={text} onChangeText={setText} placeholder={t.homework.helpPlaceholder} maxLength={2000} multiline />
           <PagePhotos photos={photos} onChange={setPhotos} disabled={busy} />
-          <Button label={busy ? t.homework.thinking : t.homework.helpAsk} icon="sparkles-outline" size="lg" block busy={busy} disabled={!ready} onPress={() => void ask()} />
+          <Button label={busy ? t.homework.thinking : t.homework.helpAsk} icon="color-wand-outline" size="lg" block busy={busy} disabled={!ready} onPress={() => void ask()} />
         </>
       )}
       {message ? (

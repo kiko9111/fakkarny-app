@@ -1,14 +1,17 @@
-import { IBMPlexSansArabic_400Regular } from "@expo-google-fonts/ibm-plex-sans-arabic/400Regular";
-import { IBMPlexSansArabic_500Medium } from "@expo-google-fonts/ibm-plex-sans-arabic/500Medium";
-import { IBMPlexSansArabic_600SemiBold } from "@expo-google-fonts/ibm-plex-sans-arabic/600SemiBold";
-import { IBMPlexSansArabic_700Bold } from "@expo-google-fonts/ibm-plex-sans-arabic/700Bold";
+import { Rubik_400Regular } from "@expo-google-fonts/rubik/400Regular";
+import { Rubik_500Medium } from "@expo-google-fonts/rubik/500Medium";
+import { Rubik_600SemiBold } from "@expo-google-fonts/rubik/600SemiBold";
+import { Rubik_700Bold } from "@expo-google-fonts/rubik/700Bold";
 import { Ionicons } from "@expo/vector-icons";
 
-/** One family, IBM Plex Sans Arabic (Arabic and Latin), in four weights: clean and calm. */
+/**
+ * One family, Rubik (Arabic and Latin in the same files), in four weights (owner pick,
+ * 2026-11-27). Loaded at run time, so it reaches existing builds with an over-the-air update.
+ */
 export const appFonts = {
-  IBMPlexSansArabic_400Regular,
-  IBMPlexSansArabic_500Medium,
-  IBMPlexSansArabic_600SemiBold,
-  IBMPlexSansArabic_700Bold,
+  Rubik_400Regular,
+  Rubik_500Medium,
+  Rubik_600SemiBold,
+  Rubik_700Bold,
   ...Ionicons.font,
 };

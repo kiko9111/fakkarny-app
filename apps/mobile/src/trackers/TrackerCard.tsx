@@ -20,7 +20,7 @@ export const TRACKER_ICON: Record<TrackerKind, IconName> = {
   spending: "receipt",
   savings: "wallet",
   fasting: "moon",
-  charity: "heart",
+  charity: "ribbon",
   custom: "create",
 };
 
@@ -43,22 +43,16 @@ export function TrackerStreak({ days }: { days: number }) {
 }
 
 /**
- * One thing the user follows: today's number, the week, and one-tap logging. A step shows at
- * once (the card's own guess, lib/optimistic.ts) and is sent behind; taps that follow each other
- * add up and go out in order, so three glasses are three quick taps.
+ * Logging a step, for the card and for Today's short row. A step shows at once (the guess,
+ * lib/optimistic.ts) and is sent behind; taps that follow each other add up and go out in order,
+ * so three glasses are three quick taps.
  */
-export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { tracker: Tracker; onChanged: (t: Tracker) => void; onRemoved: () => void }) {
+export function useTrackerLog(fromList: Tracker, onChanged: (t: Tracker) => void) {
   const { shown: tr, waiting, run: send } = useGuess(fromList);
-  const [amountText, setAmountText] = useState("");
-  const [showMonth, setShowMonth] = useState(false);
-  const money = tr.unit === "money";
-  const amount = parseAmount(amountText);
-
   const failed = () => notify(t.trackers.failed, "error");
   const log = (amount?: number) => {
     const step = amount ?? (TRACKER_TEMPLATES[tr.kind]?.step || 1);
     let guessed: Tracker | null = null;
-    setAmountText("");
     void send(() => logTracker(fromList.id, amount), { next: (shown) => (guessed = bumpTracker(shown, step)), adopt: (answer) => answer, keep: (err) => err instanceof QueuedOffline }).then(onChanged, (err) => {
       if (!(err instanceof QueuedOffline)) return failed();
       // No connection: the step is kept on the phone and sent later, so the guess stays, here
@@ -66,6 +60,37 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
       if (guessed) saveTracker(guessed);
       notify(t.trackers.savedOffline, "info");
     });
+  };
+  return { tr, waiting, send, log, failed };
+}
+
+/** Whether today's goal is reached, and the one line under a tracker's name. */
+export function trackerLine(tr: Tracker): { done: boolean; line: string } {
+  const money = tr.unit === "money";
+  const p = progress(tr);
+  const done = p !== null && p >= 1 && !tr.cumulative;
+  const sub = money
+    ? tr.cumulative
+      ? tr.goal
+        ? fill(t.trackers.ofGoal, { n: formatNumber(tr.total), goal: formatNumber(tr.goal) })
+        : t.ui.pounds.replace("{n}", "").trim()
+      : fill(t.trackers.todayMoney, { n: formatNumber(tr.today) })
+    : tr.goal
+      ? fill(t.trackers.ofGoalToday, { n: formatNumber(tr.today), goal: formatNumber(tr.goal) })
+      : fill(t.trackers.today, { n: formatNumber(tr.today) });
+  return { done, line: done ? t.ui.goalDone : sub };
+}
+
+/** One thing the user follows: today's number, the week, and one-tap logging. */
+export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { tracker: Tracker; onChanged: (t: Tracker) => void; onRemoved: () => void }) {
+  const { tr, waiting, send, log: logStep, failed } = useTrackerLog(fromList, onChanged);
+  const [amountText, setAmountText] = useState("");
+  const [showMonth, setShowMonth] = useState(false);
+  const money = tr.unit === "money";
+  const amount = parseAmount(amountText);
+  const log = (value?: number) => {
+    setAmountText("");
+    logStep(value);
   };
   /** A change with nothing to show before the server answers (undo, stop sharing). */
   const run = (fn: () => Promise<Tracker>) => void send(fn, { adopt: (answer) => answer }).then(onChanged, failed);
@@ -86,17 +111,8 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
     );
 
   const p = progress(tr);
-  const done = p !== null && p >= 1 && !tr.cumulative;
+  const { done, line } = trackerLine(tr);
   const big = money ? formatNumber(tr.cumulative ? tr.total : tr.today) : formatNumber(tr.today);
-  const sub = money
-    ? tr.cumulative
-      ? tr.goal
-        ? fill(t.trackers.ofGoal, { n: formatNumber(tr.total), goal: formatNumber(tr.goal) })
-        : t.ui.pounds.replace("{n}", "").trim()
-      : fill(t.trackers.todayMoney, { n: formatNumber(tr.today) })
-    : tr.goal
-      ? fill(t.trackers.ofGoalToday, { n: formatNumber(tr.today), goal: formatNumber(tr.goal) })
-      : fill(t.trackers.today, { n: formatNumber(tr.today) });
   const bars = weekBars(tr);
 
   return (
@@ -106,7 +122,7 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
         <View style={styles.flex}>
           <Text variant="headline">{trackerName(tr)}</Text>
           <Text variant="small" color={palette.inkSoft}>
-            {done ? t.ui.goalDone : sub}
+            {line}
           </Text>
         </View>
         {tr.streak >= 2 ? <TrackerStreak days={tr.streak} /> : null}
@@ -137,24 +153,20 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
         </View>
       ) : null}
 
-      {tr.ask_times.length || tr.circle_name ? (
-        <View style={styles.metaRow}>
-          {tr.ask_times.length ? (
-            <View style={styles.meta}>
-              <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
-              <Text variant="small" color={palette.inkSoft}>
-                {fill(t.trackers.asksAt, { times: tr.ask_times.map((x) => askTimeLabel(x, dateLocale)).join(listComma) })}
-              </Text>
-            </View>
-          ) : null}
-          {tr.circle_name ? (
-            <View style={styles.meta}>
-              <Icon name="people-outline" size={14} color={palette.inkSoft} />
-              <Text variant="small" color={palette.inkSoft}>
-                {fill(t.trackers.sharedWith, { name: tr.circle_name })}
-              </Text>
-            </View>
-          ) : null}
+      {tr.ask_times.length ? (
+        <View style={styles.meta}>
+          <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.inkSoft}>
+            {fill(t.trackers.asksAt, { times: tr.ask_times.map((x) => askTimeLabel(x, dateLocale)).join(listComma) })}
+          </Text>
+        </View>
+      ) : null}
+      {tr.circle_name ? (
+        <View style={styles.meta}>
+          <Icon name="people-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.inkSoft}>
+            {fill(t.trackers.sharedWith, { name: tr.circle_name })}
+          </Text>
         </View>
       ) : null}
 
@@ -186,10 +198,10 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
               maxLength={12}
               textAlign={textStart}
             />
-            <Button label={t.trackers.log} size="sm" disabled={amount === null} onPress={() => amount !== null && log(amount)} />
+            <Button label={t.trackers.log} size="sm" kind="tonal" disabled={amount === null} onPress={() => amount !== null && log(amount)} />
           </>
         ) : (
-          <Button label={t.trackers.plusOne} size="sm" style={styles.plus} onPress={() => log()} />
+          <Button label={t.trackers.plusOne} size="sm" kind="tonal" style={styles.plus} onPress={() => log()} />
         )}
         {tr.month.some((v) => v > 0) ? <Button label={showMonth ? t.trackers.hideMonth : t.trackers.showMonth} kind="text" size="sm" icon="stats-chart-outline" onPress={() => setShowMonth((v) => !v)} /> : null}
         {tr.total > 0 ? <Button label={t.trackers.undo} kind="text" size="sm" icon="arrow-undo-outline" disabled={waiting} onPress={() => run(() => undoTracker(tr.id))} /> : null}
@@ -208,7 +220,6 @@ const styles = StyleSheet.create({
   week: { flexDirection: "row", gap: 4, height: 30, alignItems: "flex-end", width: 104 },
   barSlot: { flex: 1, justifyContent: "flex-end" },
   bar: { borderRadius: 3, backgroundColor: palette.lineStrong },
-  metaRow: { gap: 4 },
   meta: { flexDirection: "row", alignItems: "center", gap: 6 },
   monthBox: { gap: space.xs },
   month: { flexDirection: "row", gap: 2, height: 56, alignItems: "flex-end" },

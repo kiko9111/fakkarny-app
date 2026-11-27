@@ -143,7 +143,6 @@ function SessionBody() {
           </Text>
         </View>
         <Card style={styles.soft}>
-          <Text variant="body">{t.session.what}</Text>
           <Text variant="body">{t.session.notDoctor}</Text>
           <Text variant="body" color={palette.inkSoft}>
             {t.session.privacy}
@@ -167,9 +166,6 @@ function SessionBody() {
           <Text variant="title" align="center">
             {t.session.howAreYou}
           </Text>
-          <Text variant="small" color={palette.inkSoft} align="center">
-            {t.ui.sessionSafe}
-          </Text>
         </View>
         <View style={styles.faces}>
           {FACES.map((face, i) => {
@@ -191,9 +187,6 @@ function SessionBody() {
             <Chip key={m} label={t.session.modes[m]} tone="calm" selected={mode === m} onPress={() => setMode(m)} />
           ))}
         </View>
-        <Text variant="small" color={palette.inkSoft} align="center">
-          {t.session.modeHints[mode]}
-        </Text>
         {blocked ? (
           <>
             <Text variant="body" align="center">
@@ -204,11 +197,6 @@ function SessionBody() {
         ) : (
           <Button label={t.session.start} size="lg" block busy={busy} disabled={mood === null} style={styles.calmBtn} onPress={() => void run(async () => setSession(await startSession({ mode, mood: mood ?? 3 })))} />
         )}
-        {state.free_left !== null && !blocked ? (
-          <Text variant="caption" color={palette.inkSoft} align="center">
-            {t.session.freeNote}
-          </Text>
-        ) : null}
         {state.moods.length ? (
           <Card style={styles.soft}>
             <Text variant="smallStrong" color={palette.inkSoft}>
@@ -286,7 +274,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: palette.calmSoft, alignItems: "center", justifyContent: "center", gap: space.md, padding: space.xl },
   hero: { alignItems: "center", gap: space.sm, marginBottom: space.xs },
   soft: { boxShadow: "none" },
-  helpline: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: "rgba(255,255,255,0.6)", borderRadius: radius.md, padding: space.md, marginTop: space.xs },
+  helpline: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, backgroundColor: palette.wash, borderRadius: radius.md, padding: space.md, marginTop: space.xs },
   tickRow: { flexDirection: "row", gap: space.md, alignItems: "center", minHeight: 48 },
   tick: { width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: palette.calm, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface },
   tickOn: { backgroundColor: palette.calm },

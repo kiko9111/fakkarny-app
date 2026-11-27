@@ -11,13 +11,14 @@ const MESH: Record<ThemeId | "calm", number> = {
 };
 
 /**
- * The soft colour mesh behind the whole app, from the liquid-glass logo. It is a small
- * blurred image (assets/bg), so it works in every build without a gradient or blur module.
+ * The ground behind the whole app: a light mesh of the theme (a glow in the top corner, a blush
+ * at the side, a paler glow below). It is a small image (assets/bg, drawn by scripts/make-meshes.mjs),
+ * so it works in every build without a gradient or blur module.
  * `calm` is Session's own fixed ground, the same in every theme.
  */
 export function Backdrop({ calm }: { calm?: boolean }) {
   return (
-    <View style={[StyleSheet.absoluteFill, styles.clip, { backgroundColor: calm ? palette.calmSoft : palette.ground }]} pointerEvents="none">
+    <View style={[StyleSheet.absoluteFill, styles.clip, { backgroundColor: calm ? palette.calmGround : palette.ground }]} pointerEvents="none">
       <Image source={MESH[calm ? "calm" : themeId]} style={styles.fill} resizeMode="cover" accessibilityIgnoresInvertColors />
     </View>
   );
@@ -37,8 +38,8 @@ export function withGround({ children }: { children: ReactNode }) {
   );
 }
 
-/** A frosted bar for headers: the mesh, softened by white glass, with a bright lower edge. */
-export const glassBar = "rgba(255,255,255,0.55)";
+/** The bar behind a header: the ground under a light veil of white, with a hairline lower edge. */
+export const glassBar = "rgba(255,255,255,0.45)";
 export function GlassHeader() {
   return (
     <View style={styles.bar}>
