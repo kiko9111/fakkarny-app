@@ -67,6 +67,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       if (topics.length && b.brief_time === undefined && !req.user.briefTime) data.briefTime = DEFAULT_BRIEF_TIME;
     }
     if (b.brief_time !== undefined) data.briefTime = b.brief_time;
+    if (b.city !== undefined) data.city = b.city;
     // New waking hours or time zone: let the proactive tick look again now (proactive/schedule.ts).
     if (b.timezone || b.wake_time || b.sleep_time || b.checkin_interval_h || b.brief_topics || b.brief_time !== undefined) data.nextTickAt = null;
     if (b.instapay_link !== undefined) {

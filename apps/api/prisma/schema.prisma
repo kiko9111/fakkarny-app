@@ -149,6 +149,9 @@ model User {
   /// Daily news brief (shared/brief.ts): topic names ([] = off) and local "HH:MM".
   briefTopics        String[]        @default([]) @map("brief_topics")
   briefTime          String?         @map("brief_time")
+  /// A city id from packages/shared/src/local.ts (never an exact spot); null until picked.
+  /// Sets currency, prayer times, holidays and the helpline country.
+  city               String?
   // Proactive-message bookkeeping (M4).
   lastMorningAt      DateTime?       @map("last_morning_at")
   lastNightAt        DateTime?       @map("last_night_at")

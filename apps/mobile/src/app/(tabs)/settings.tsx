@@ -7,9 +7,15 @@ import { newsLine } from "@/me/news";
 import { InviteCard } from "@/me/parts";
 import { useAccount, useAlarms, useMe } from "@/me/useMe";
 import { usePlaces } from "@/places/store";
+import { cityById } from "@fakkarni/shared";
+import { serverKnowsCity } from "@/lib/api";
 import { shareInvite } from "@/referral/share";
 import { Button, glass, Icon, NavRow, palette, PersonAvatar, radius, RowGroup, Screen, space, Text, themeId } from "@/ui";
 
+const cityLine = (id: string | null) => {
+  const city = cityById(id);
+  return city ? (language === "en" ? city.en : city.ar) : t.lay.me.cityNone;
+};
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
 
 /** Me: who she is, her plan, and one row per topic. Nothing is edited here; each row opens its page. */
@@ -48,6 +54,9 @@ export default function MeScreen() {
         <NavRow icon="chatbubble-ellipses-outline" title={m.zaki} value={user ? joinLine([tone, checkins]) : undefined} onPress={() => router.push("/me/zaki")} />
         <NavRow icon="newspaper-outline" title={m.news} value={user ? newsLine(user.brief_topics, user.brief_time, m.topics, m.newsOff, listComma) : undefined} onPress={() => router.push("/me/news")} />
         <NavRow icon="color-palette-outline" title={m.look} value={joinLine([theme, language === "en" ? t.onboarding.english : t.onboarding.arabic])} onPress={() => router.push("/me/look")} />
+        {serverKnowsCity() || user?.city ? (
+          <NavRow icon="business-outline" kind="place" title={m.city} value={user ? cityLine(user.city) : undefined} onPress={() => router.push("/me/city")} />
+        ) : null}
         <NavRow icon="notifications-outline" kind="alarm" title={m.reminders} value={joinLine([countLine(alarms.length, m.alarmsOne, m.alarmsCount), countLine(places.length, m.placesOne, m.placesCount)])} onPress={() => router.push("/me/reminders")} />
         <NavRow icon="card-outline" kind="money" title={m.payments} value={user ? (user.instapay_link ? m.instapaySet : m.instapayNone) : undefined} onPress={() => router.push("/me/payments")} />
       </RowGroup>

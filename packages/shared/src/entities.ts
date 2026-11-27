@@ -51,6 +51,8 @@ export const User = z.object({
   /** Daily news brief: topic names (strings, so a phone keeps working when the server adds one) and local "HH:MM". Old servers omit them. */
   brief_topics: z.array(z.string()).default([]),
   brief_time: TimeOfDay.nullable().default(null),
+  /** The city the user picked (packages/shared/src/local.ts CITIES id); null until then. Old servers omit it. */
+  city: z.string().nullable().default(null),
   created_at: Instant,
   last_active_at: Instant.nullable(),
 });

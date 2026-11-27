@@ -18,6 +18,7 @@ const ar = {
   advanced: "متقدم",
   invite: "اعزم صاحبك",
   news: "أخبارك كل يوم",
+  city: "مدينتك",
 
   /** Value lines under the rows. */
   checkEvery2: "كل ساعتين",
@@ -75,6 +76,16 @@ const ar = {
   updateNow: "حدّث دلوقتي",
   upToDate: "آخر تحديث عندك",
   updateOff: "النسخة دي مش بتاخد تحديثات",
+
+  /** City: sets prayer times, holidays and money. */
+  cityNone: "مش متحددة",
+  prayerToday: "الصلاة النهارده",
+  holidaysAhead: "الإجازات الجاية",
+  holidayDays: "{n} أيام",
+  expected: "متوقّع",
+  notOff: "مش إجازة",
+  cityAsk: "مدينتك إيه؟ عشان أظبط مواعيد الصلاة والإجازات والعملة عليها.",
+  cityPick: "اختار مدينتك",
 };
 
 const en: SameKeys<typeof ar> = {
@@ -92,6 +103,7 @@ const en: SameKeys<typeof ar> = {
   advanced: "Advanced",
   invite: "Invite a friend",
   news: "Daily news",
+  city: "City",
 
   checkEvery2: "Every 2 hours",
   checkEvery4: "Every 4 hours",
@@ -141,6 +153,15 @@ const en: SameKeys<typeof ar> = {
   updateNow: "Update now",
   upToDate: "You have the latest",
   updateOff: "This build takes no updates",
+
+  cityNone: "Not set",
+  prayerToday: "Prayer today",
+  holidaysAhead: "Holidays ahead",
+  holidayDays: "{n} days",
+  expected: "expected",
+  notOff: "not a day off",
+  cityAsk: "Which city are you in? I'll match prayer times, holidays and money to it.",
+  cityPick: "Pick your city",
 };
 
 export const strings = { "ar-EG": ar, en } as const;

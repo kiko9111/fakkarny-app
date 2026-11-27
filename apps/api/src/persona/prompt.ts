@@ -1,3 +1,4 @@
+import { cityById } from "@fakkarni/shared";
 /**
  * Zaki persona (PRD §3 "Personality", §6 "Persona prompt essentials", §7 wellbeing).
  *
@@ -209,6 +210,8 @@ const ZONE_COUNTRY: Record<string, string> = {
   "Asia/Dubai": "AE",
 };
 
-export function helplineFor(timezone: string): string {
-  return HELPLINES[ZONE_COUNTRY[timezone] ?? "DEFAULT"] ?? HELPLINES["DEFAULT"]!;
+/** The city the user picked decides the country; without one, the phone's time zone. */
+export function helplineFor(timezone: string, city?: string | null): string {
+  const country = cityById(city)?.country ?? ZONE_COUNTRY[timezone] ?? "DEFAULT";
+  return HELPLINES[country] ?? HELPLINES["DEFAULT"]!;
 }
