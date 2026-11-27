@@ -116,19 +116,13 @@ export default function NewSplitScreen() {
   return (
     <Screen keyboard contentStyle={styles.content}>
       <Stack.Screen options={{ title: t.split.title }} />
-      <Text variant="small" color={palette.inkSoft}>
-        {t.split.intro}
-      </Text>
       {photosAvailable ? <Button label={t.receipt.fromReceipt} icon="camera-outline" kind="tonal" onPress={() => router.push({ pathname: "/receipt", params: { for: "split" } })} /> : null}
-      <TextField label={t.split.subtotal} hint={t.split.subtotalHint} value={d.subtotal} onChangeText={(v) => set({ subtotal: v })} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
+      <TextField label={t.split.subtotal} value={d.subtotal} onChangeText={(v) => set({ subtotal: v })} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
       <TextField label={t.split.what} value={d.title} onChangeText={(v) => set({ title: v })} maxLength={60} placeholder={t.split.whatHint} />
 
       {circles.length ? (
         <>
           <Text variant="headline">{t.split.withCircle}</Text>
-          <Text variant="small" color={palette.inkSoft}>
-            {t.split.circleHint}
-          </Text>
           <View style={styles.wrap}>
             {circles.map((c) => (
               <Chip key={c.id} label={c.name} selected={d.circleId === c.id} onPress={() => void pickCircle(c.id)} />
@@ -171,9 +165,6 @@ export default function NewSplitScreen() {
       </View>
 
       <Text variant="headline">{t.split.items}</Text>
-      <Text variant="small" color={palette.inkSoft}>
-        {t.split.itemsHint}
-      </Text>
       {d.items.map((it, i) => (
         <Card key={i} style={styles.item}>
           <View style={styles.row}>
@@ -208,9 +199,6 @@ export default function NewSplitScreen() {
         </Card>
       ) : null}
       <Button label={t.split.send} kind="whatsapp" icon="logo-whatsapp" size="lg" block busy={busy} disabled={!preview} onPress={() => void send()} />
-      <Text variant="small" color={palette.inkSoft} align="center">
-        {t.split.sendHint}
-      </Text>
     </Screen>
   );
 }

@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { FamilyRole, type CircleDetail } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
-import { ago, CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
+import { CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
 import { t } from "@/i18n";
 import { askCheckin, deleteCircle, removeCircleMember, setFamilyRole } from "@/lib/api";
 import { useLive } from "@/lib/live";
@@ -71,14 +71,8 @@ export default function CircleInfoScreen() {
               <Text variant="bodyStrong" numberOfLines={1}>
                 {memberName(m)}
               </Text>
-              <Text variant="small" color={palette.inkSoft} numberOfLines={2}>
-                {[
-                  m.role === "owner" ? t.circles.owner : null,
-                  m.family_role ? t.family.roles[m.family_role] : null,
-                  m.last_checkin ? fill(t.ui.lastSeen, { what: plain(t.family.checkins[m.last_checkin.kind]), when: ago(m.last_checkin.at) }) : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || " "}
+              <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
+                {[m.role === "owner" ? t.circles.owner : null, m.family_role ? t.family.roles[m.family_role] : null].filter(Boolean).join(" · ") || " "}
               </Text>
             </View>
             {!m.is_me ? <IconButton name="hand-left-outline" label={plain(t.family.ask)} color={tint} onPress={() => void askOne(m.user_id)} /> : null}

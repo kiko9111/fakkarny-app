@@ -365,11 +365,6 @@ export default function ListScreen() {
             busy={tripBusy}
             onPress={() => void trip(true)}
           />
-          {list.circle_id ? (
-            <Text variant="small" color={palette.inkSoft}>
-              {t.lists.tripHint}
-            </Text>
-          ) : null}
         </Card>
       ) : null}
 

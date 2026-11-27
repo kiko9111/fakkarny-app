@@ -139,9 +139,6 @@ export default function PlacesScreen() {
       <View style={styles.hero}>
         <IconTile name="location" size={64} color={palette.primaryInk} bg={palette.primarySoft} />
       </View>
-      <Text variant="body" color={palette.inkSoft}>
-        {t.places.intro}
-      </Text>
 
       {places.length && access ? (
         <Pressable onPress={access.background ? undefined : openPhoneSettings} accessibilityRole={access.background ? undefined : "button"} style={styles.status}>
@@ -164,9 +161,6 @@ export default function PlacesScreen() {
               <Button label={fill(t.places.saveHereNamed, { place: w })} size="sm" kind="tonal" onPress={() => startAdding(w)} />
             </View>
           ))}
-          <Text variant="small" color={palette.inkSoft}>
-            {t.places.waitingHint}
-          </Text>
         </Card>
       ) : null}
 
@@ -239,9 +233,6 @@ export default function PlacesScreen() {
             </Text>
           ) : arrivalCircle !== null ? (
             <>
-              <Text variant="small" color={palette.inkSoft}>
-                {t.places.arrivalHint}
-              </Text>
               <View style={styles.chips}>
                 {circles.map((c) => (
                   <Chip key={c.id} label={c.name} tone="family" selected={arrivalCircle === c.id} onPress={() => setArrivalCircle(c.id)} />

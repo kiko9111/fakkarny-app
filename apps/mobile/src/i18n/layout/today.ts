@@ -23,7 +23,7 @@ const ar = {
   /** Nothing waits and nothing is planned. */
   emptyTitle: "مفيش حاجة مستنياك.",
   emptyAction: "ضيف تذكير",
-  emptySay: "فكّرني أجيب عيش الساعة 6",
+  emptySay: "فكّرني بالعيش الساعة 6",
 };
 
 const en: SameKeys<typeof ar> = {
@@ -43,7 +43,7 @@ const en: SameKeys<typeof ar> = {
   addTracker: "A tracker",
   emptyTitle: "Nothing is waiting for you.",
   emptyAction: "Add a reminder",
-  emptySay: "Remind me to buy bread at 6",
+  emptySay: "Remind me: bread at 6",
 };
 
 export const strings = { "ar-EG": ar, en } as const;

@@ -9,7 +9,7 @@ const ar = {
   tasksEmpty: "اطلب حاجة من حد في الدايرة.",
   tasksAlone: "اعزم حد عشان تطلب منه.",
   askSomeone: "اطلب من حد",
-  tasksSay: "اطلب من أحمد يجيب عيش",
+  tasksSay: "اطلب من أحمد عيش",
   invite: "اعزم على واتساب",
 
   /** /circle/homework */
@@ -21,11 +21,11 @@ const ar = {
   tomorrow: "بكرة",
   noDay: "من غير يوم",
   explain: "زكي، اشرحلي درس",
-  addWeek: "أسبوع من رسالة المدرسة",
+  addWeek: "رسالة المدرسة",
   addOne: "واجب واحد",
   homeworkEmpty: "مفيش واجبات الأسبوع ده.",
-  homeworkAlone: "اعزم ابنك يسلّم واجباته هنا.",
-  homeworkSay: "واجب لعمر: حساب صفحة 12",
+  homeworkAlone: "اعزم ولادك هنا.",
+  homeworkSay: "واجب لعمر: حساب",
   pocketEmpty: "حط مكافأة على واجب وتظهر هنا.",
 
   /** /circle/money */
@@ -34,7 +34,7 @@ const ar = {
   splits: "تقسيم حسابات",
   addBook: "دفتر مشترك",
   addSplit: "قسّم حساب",
-  moneyEmpty: "مصاريف الدايرة المشتركة مكانها هنا.",
+  moneyEmpty: "مفيش مصاريف مشتركة لسه.",
 };
 
 const en: SameKeys<typeof ar> = {
@@ -44,7 +44,7 @@ const en: SameKeys<typeof ar> = {
   tasksEmpty: "Ask someone in the circle for something.",
   tasksAlone: "Invite someone to ask them.",
   askSomeone: "Ask someone",
-  tasksSay: "Ask Ahmed to get bread",
+  tasksSay: "Ask Ahmed for bread",
   invite: "Invite on WhatsApp",
 
   homeworkTitle: "Homework",
@@ -55,11 +55,11 @@ const en: SameKeys<typeof ar> = {
   tomorrow: "Tomorrow",
   noDay: "No day",
   explain: "Zaki, explain a lesson",
-  addWeek: "Week from school message",
+  addWeek: "School's message",
   addOne: "One homework",
   homeworkEmpty: "No homework this week.",
-  homeworkAlone: "Invite your child to hand in homework here.",
-  homeworkSay: "Homework for Omar: math page 12",
+  homeworkAlone: "Invite your child here.",
+  homeworkSay: "Homework for Omar: math",
   pocketEmpty: "Put a reward on a homework to see it here.",
 
   moneyTitle: "Money",
@@ -67,7 +67,7 @@ const en: SameKeys<typeof ar> = {
   splits: "Splits",
   addBook: "Shared book",
   addSplit: "Split a bill",
-  moneyEmpty: "The circle's shared costs live here.",
+  moneyEmpty: "No shared costs yet.",
 };
 
 export const strings = { "ar-EG": ar, en } as const;

@@ -112,9 +112,10 @@ export default function ReceiptScreen() {
       <Stack.Screen options={{ title: t.receipt.title }} />
       {state.step === "pick" ? (
         <>
-          <Text variant="body">{t.receipt.intro}</Text>
-          <Note icon="color-wand-outline">{t.receipt.costNote}</Note>
           {pickButtons}
+          <Text variant="caption" color={palette.inkSoft} align="center">
+            {t.receipt.intro}
+          </Text>
         </>
       ) : null}
 

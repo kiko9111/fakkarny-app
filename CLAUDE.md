@@ -1261,6 +1261,12 @@ Rules:
     People / الناس, circle / دايرة, A space for you / مساحة ليك, Plans / مواعيدك, Today /
     النهارده); an empty screen is Zaki's one sentence and one button (`IntroPanel`). Far fewer
     words: no helper sentence under a title, row, button or field; legal and safety text stays.
+    Applied to every screen on 2026-11-27 (strings.ts lost about 230 lines). What stays, short:
+    Session's "not a doctor" line, consent ticks and helpline, "Zaki is an AI, not a person.",
+    the location disclosure on My places, the paywall's terms, "A record only" on pocket money,
+    one line where a photo goes (receipt, homework pages), and "Tap the wallet for who paid" on
+    a new split (the only hint left, because the control has no label). A new string follows the
+    same budget: a button 1-3 words, a row's value line one line, an empty state one sentence.
   - Building blocks (src/ui): `Segmented`, `Tile` / `TileGrid`, `NavRow` / `RowGroup`,
     `IntroPanel` (layout.tsx), `useAddSheet` / `AddSheet` / `HeaderPlus` (AddSheet.tsx, usage at
     the top of the file; plain `Modal`). Words: src/i18n/layout/<area>.ts (common, tabs, today,

@@ -78,9 +78,6 @@ export default function NewDaftarScreen() {
       <TextField label={t.daftar.amount} value={amountText} onChangeText={setAmountText} keyboardType="decimal-pad" maxLength={12} big placeholder="0" />
       <TextField label={t.daftar.note} value={note} onChangeText={setNote} maxLength={120} />
       <Button label={t.daftar.send} kind="whatsapp" icon="logo-whatsapp" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
-      <Text variant="small" color={palette.inkSoft} align="center">
-        {t.daftar.intro}
-      </Text>
     </Screen>
   );
 }

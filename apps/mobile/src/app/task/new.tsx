@@ -7,7 +7,7 @@ import { parseReward } from "@/homework/logic";
 import { t } from "@/i18n";
 import { createTask, getCircle } from "@/lib/api";
 import { dueAt, dueChoices, remindAt, remindChoices, type DueChoice, type RemindChoice } from "@/tasks/logic";
-import { Button, Chip, DateTimePicker, EmptyState, formatPick, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
+import { Button, Chip, DateTimePicker, EmptyState, formatPick, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * Ask someone in the circle to do something. They get the request from Zaki and decide;
@@ -94,7 +94,7 @@ export default function NewTaskScreen() {
               <Chip key={m.user_id} icon="person-outline" label={m.name ?? t.circles.noName} selected={who === m.user_id} onPress={() => setWho(m.user_id)} />
             ))}
           </View>
-          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={homework ? t.tasks.homeworkIdea : t.tasks.what} maxLength={120} />
+          <TextField label={t.tasks.what} value={title} onChangeText={setTitle} placeholder={homework ? t.tasks.homeworkIdea : t.tasks.whatIdea} maxLength={120} />
           <View style={styles.row}>
             <Chip icon="school-outline" label={t.tasks.homeworkToggle} selected={homework} onPress={() => setHomework((h) => !h)} />
           </View>
@@ -116,11 +116,6 @@ export default function NewTaskScreen() {
                 <Chip label={t.homework.rewardCustom} selected={reward === "custom"} onPress={() => setReward("custom")} />
               </View>
               {reward === "custom" ? <TextField value={customReward} onChangeText={setCustomReward} keyboardType="number-pad" placeholder="25" maxLength={4} /> : null}
-              {reward !== null ? (
-                <Text variant="caption" color={palette.inkSoft}>
-                  {t.homework.rewardHint}
-                </Text>
-              ) : null}
             </>
           ) : null}
           {familyType && !title.trim() ? (
@@ -170,7 +165,6 @@ export default function NewTaskScreen() {
             />
           ) : null}
           <Button label={t.tasks.send} icon="send" size="lg" block busy={busy} disabled={!ready} onPress={() => void submit()} />
-          <Note icon="hand-left-outline">{plain(t.tasks.intro)}</Note>
         </>
       ) : null}
     </Screen>

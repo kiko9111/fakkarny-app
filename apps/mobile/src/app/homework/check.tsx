@@ -7,7 +7,7 @@ import { track } from "@/lib/analytics";
 import { checkHomework, peekTasks } from "@/lib/api";
 import { HttpError } from "@/sync/queue";
 import { PagePhotos } from "@/homework/PagePhotos";
-import { Button, Card, Note, palette, plain, Screen, space, Text, TextField } from "@/ui";
+import { Button, Card, palette, Screen, space, Text, TextField } from "@/ui";
 
 /**
  * The child asks Zaki to look at their answers before handing in (2026-11-26). Zaki praises what
@@ -51,7 +51,6 @@ export default function HomeworkCheckScreen() {
           {[task.subject, task.title].filter(Boolean).join(" · ")}
         </Text>
       ) : null}
-      {check ? null : <Note icon="color-wand-outline">{plain(t.homework.checkIntro)}</Note>}
       <TextField value={text} onChangeText={setText} placeholder={t.homework.checkPlaceholder} maxLength={2000} multiline />
       <PagePhotos photos={photos} onChange={setPhotos} disabled={busy} />
       <Button label={busy ? t.homework.thinking : t.homework.checkAsk} icon="color-wand-outline" size="lg" block busy={busy} disabled={!ready} onPress={() => void ask()} />

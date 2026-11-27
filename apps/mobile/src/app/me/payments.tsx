@@ -6,7 +6,7 @@ import { dateLocale, t } from "@/i18n";
 import { planLine, planNow } from "@/me/lines";
 import { Field, FieldGroup, MeInput } from "@/me/parts";
 import { useMe } from "@/me/useMe";
-import { Button, IconTile, notify, palette, Screen, space, Text } from "@/ui";
+import { Button, IconTile, notify, Screen, space, Text } from "@/ui";
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { day: "numeric", month: "long" });
 
@@ -49,9 +49,6 @@ export default function PaymentsScreen() {
       <FieldGroup title={t.daftar.instapayLabel}>
         <Field first>
           <MeInput value={instapay} onChangeText={setInstapay} onEnd={saveInstapay} placeholder={t.daftar.instapayPlaceholder} autoCapitalize="none" autoCorrect={false} keyboardType="url" textAlign="left" />
-          <Text variant="caption" color={palette.inkSoft}>
-            {t.daftar.instapayHint}
-          </Text>
         </Field>
       </FieldGroup>
     </Screen>

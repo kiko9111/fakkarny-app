@@ -51,9 +51,6 @@ export default function TrackersScreen() {
           <Text variant="headline" color={palette.friends}>
             {t.ramadan.addPack}
           </Text>
-          <Text variant="small" color={palette.inkSoft}>
-            {t.ramadan.packHint}
-          </Text>
         </Card>
       ) : null}
       {state === "offline" ? <Note icon="cloud-offline-outline">{why}</Note> : null}
@@ -62,11 +59,6 @@ export default function TrackersScreen() {
         <TrackerCard key={tr.id} tracker={tr} onChanged={replace} onRemoved={() => void load()} />
       ))}
       {state === "ready" ? <Button label={canAdd(own, limit) ? t.trackers.add : t.trackers.addPro} kind={canAdd(own, limit) ? "tonal" : "outline"} icon={canAdd(own, limit) ? "add" : "sparkles"} block onPress={add} /> : null}
-      {state === "ready" && trackers.length > 0 ? (
-        <Text variant="caption" color={palette.inkSoft} align="center">
-          {t.trackers.chatHint}
-        </Text>
-      ) : null}
     </Screen>
   );
 }

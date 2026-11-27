@@ -8,7 +8,7 @@ import { fill } from "@/circles/logic";
 import { listCircles, peekCircles, peekMoney } from "@/lib/api";
 import { makeSection } from "@/money/actions";
 import { sameSection } from "@/money/logic";
-import { Button, Chip, Note, notify, palette, plain, Screen, space, Text, TextField } from "@/ui";
+import { Button, Chip, Note, notify, palette, Screen, space, Text, TextField } from "@/ui";
 
 /** A new expense or income section, with an optional monthly budget, personal or shared with a circle. */
 export default function NewSectionScreen() {
@@ -65,12 +65,7 @@ export default function NewSectionScreen() {
         <Chip icon="arrow-down-circle-outline" label={t.book.kinds.income} selected={kind === "income"} onPress={() => setKind("income")} />
       </View>
       {kind === "expense" ? (
-        <>
-          <TextField label={t.book.budget} value={budgetText} onChangeText={setBudgetText} placeholder="3000" keyboardType="decimal-pad" maxLength={12} />
-          <Text variant="small" color={palette.inkSoft}>
-            {plain(t.book.budgetHint)}
-          </Text>
-        </>
+        <TextField label={t.book.budget} value={budgetText} onChangeText={setBudgetText} placeholder="3000" keyboardType="decimal-pad" maxLength={12} />
       ) : null}
       {circles.length ? (
         <>
@@ -81,7 +76,6 @@ export default function NewSectionScreen() {
               <Chip key={c.id} icon="people-outline" tone={c.kind === "family" ? "family" : "primary"} label={c.name} selected={circleId === c.id} onPress={() => setCircleId(c.id)} />
             ))}
           </View>
-          {circleId ? <Note icon="people-outline">{plain(t.book.shareHint)}</Note> : null}
         </>
       ) : null}
       {twin ? <Note icon="information-circle-outline">{fill(t.book.twin, { name: twin.name })}</Note> : null}

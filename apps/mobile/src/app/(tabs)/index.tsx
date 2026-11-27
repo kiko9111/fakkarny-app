@@ -72,9 +72,11 @@ function ZakiHeader({ typing }: { typing: boolean }) {
         <Text variant="headline" style={styles.headerName}>
           {t.ui.tabZaki}
         </Text>
-        <Text variant="caption" color={typing ? palette.primaryInk : palette.ok}>
-          {typing ? t.ui.zakiTyping : t.ui.zakiOnline}
-        </Text>
+        {typing ? (
+          <Text variant="caption" color={palette.primaryInk}>
+            {t.ui.zakiTyping}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

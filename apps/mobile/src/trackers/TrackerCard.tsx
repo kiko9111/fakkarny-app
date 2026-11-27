@@ -3,12 +3,12 @@ import { StyleSheet, TextInput, View } from "react-native";
 import { TRACKER_TEMPLATES, type Tracker, type TrackerKind } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { parseAmount } from "@/daftar/logic";
-import { dateLocale, listComma, t } from "@/i18n";
+import { t } from "@/i18n";
 import { deleteTracker, logTracker, saveTracker, undoTracker, updateTracker } from "@/lib/api";
 import { useGuess } from "@/lib/optimistic";
 import { ask, Button, Card, confirm, fonts, Icon, IconButton, IconTile, notify, palette, plain, radius, space, Text, textStart, type IconName } from "@/ui";
 import { QueuedOffline } from "@/sync/writes";
-import { askTimeLabel, bumpTracker, formatNumber, monthBars, progress, weekBars } from "./logic";
+import { bumpTracker, formatNumber, monthBars, progress, weekBars } from "./logic";
 
 export const TRACKER_ICON: Record<TrackerKind, IconName> = {
   water: "water",
@@ -137,24 +137,12 @@ export function TrackerCard({ tracker: fromList, onChanged, onRemoved }: { track
         </View>
       ) : null}
 
-      {tr.ask_times.length || tr.circle_name ? (
-        <View style={styles.metaRow}>
-          {tr.ask_times.length ? (
-            <View style={styles.meta}>
-              <Icon name="alarm-outline" size={14} color={palette.inkSoft} />
-              <Text variant="small" color={palette.inkSoft}>
-                {fill(t.trackers.asksAt, { times: tr.ask_times.map((x) => askTimeLabel(x, dateLocale)).join(listComma) })}
-              </Text>
-            </View>
-          ) : null}
-          {tr.circle_name ? (
-            <View style={styles.meta}>
-              <Icon name="people-outline" size={14} color={palette.inkSoft} />
-              <Text variant="small" color={palette.inkSoft}>
-                {fill(t.trackers.sharedWith, { name: tr.circle_name })}
-              </Text>
-            </View>
-          ) : null}
+      {tr.circle_name ? (
+        <View style={styles.meta}>
+          <Icon name="people-outline" size={14} color={palette.inkSoft} />
+          <Text variant="small" color={palette.inkSoft}>
+            {fill(t.trackers.sharedWith, { name: tr.circle_name })}
+          </Text>
         </View>
       ) : null}
 
@@ -208,7 +196,6 @@ const styles = StyleSheet.create({
   week: { flexDirection: "row", gap: 4, height: 30, alignItems: "flex-end", width: 104 },
   barSlot: { flex: 1, justifyContent: "flex-end" },
   bar: { borderRadius: 3, backgroundColor: palette.lineStrong },
-  metaRow: { gap: 4 },
   meta: { flexDirection: "row", alignItems: "center", gap: 6 },
   monthBox: { gap: space.xs },
   month: { flexDirection: "row", gap: 2, height: 56, alignItems: "flex-end" },

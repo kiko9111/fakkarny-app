@@ -10,7 +10,7 @@ const ar = {
   cancel: "إلغاء",
   close: "اقفل",
   /** Under an empty screen's button: the words she could say in the chat instead. */
-  orTellZaki: "أو قول لزكي: «{words}»",
+  orTellZaki: "أو قول: «{words}»",
   needsYou: "مستنيك",
   nothingYet: "لسه مفيش حاجة",
   tryAgain: "جرّب تاني",
@@ -31,7 +31,7 @@ const en: SameKeys<typeof ar> = {
   done: "Done",
   cancel: "Cancel",
   close: "Close",
-  orTellZaki: "Or tell Zaki: “{words}”",
+  orTellZaki: "Or say: “{words}”",
   needsYou: "Needs you",
   nothingYet: "Nothing here yet",
   tryAgain: "Try again",

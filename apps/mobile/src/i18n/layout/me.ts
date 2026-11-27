@@ -44,8 +44,7 @@ const ar = {
   /** Payments. */
   plan: "باقتك",
 
-  /** What Zaki remembers: the one honest line (what is kept, and that it can be removed). */
-  memoryLine: "زكي بيفتكر اللي بتقولهوله في الشات، وتقدر تمسح أي حاجة.",
+  /** What Zaki remembers. */
   memoryRow: "اللي فاكره عنك",
 
   /** Privacy and my data. */
@@ -89,7 +88,6 @@ const en: SameKeys<typeof ar> = {
 
   plan: "Your plan",
 
-  memoryLine: "Zaki remembers what you tell him in chat. You can remove anything.",
   memoryRow: "What he knows about you",
 
   account: "Account",
