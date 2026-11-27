@@ -5,7 +5,7 @@ import type { Feature } from "../lib/unlock";
  * opens a screen, asks which circle first, or puts a starter in the composer.
  */
 
-export type PlusKey = "receipt" | "split" | "homework" | "ask" | "list" | "remind";
+export type PlusKey = "receipt" | "split" | "homework" | "ask" | "list" | "remind" | "forward";
 
 export interface PlusCircle {
   id: string;
@@ -68,6 +68,8 @@ export function plusActions({ photos, lists, listIds, circles }: PlusInput): Plu
   if (homework) rows.push({ key: "homework", place: "people", step: homework });
   rows.push({ key: "split", place: "daftar", step: { go: "/split/new" } });
   if (photos) rows.push({ key: "receipt", place: "daftar", step: { go: "/receipt" } });
+  // A message from WhatsApp, pasted (every phone; Android builds from 2026-11-27 can also share it straight to Zaki).
+  rows.push({ key: "forward", place: null, step: { go: "/forward" } });
   return rows;
 }
 
