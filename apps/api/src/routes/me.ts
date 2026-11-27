@@ -84,7 +84,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, gameyas] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, linkTasks, gameyas] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -105,6 +105,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.photo.findMany({ where, include: { task: { select: { title: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.pocketMoneyEntry.findMany({ where: { OR: [{ childId: id }, { parentId: id }] }, orderBy: { createdAt: "asc" } }),
       prisma.houseListItem.findMany({ where: { OR: [{ addedById: id }, { doneById: id }] }, include: { list: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
+      prisma.linkTask.findMany({ where: { creatorId: id }, orderBy: { createdAt: "asc" } }),
       prisma.gameya.findMany({ where: { OR: [{ ownerId: id }, { members: { some: { userId: id } } }] }, include: { members: { orderBy: { turn: "asc" } }, payments: true }, orderBy: { createdAt: "asc" } }),
     ]);
     const res: ExportResponse = {
@@ -129,6 +130,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       photos: photos.map((p) => ({ task: p.task?.title ?? null, mime: p.mime, data: Buffer.from(p.data).toString("base64"), created_at: p.createdAt.toISOString() })),
       pocket_money: pocket.map((e) => ({ role: e.childId === id ? ("child" as const) : ("parent" as const), kind: e.kind, amount: e.amount, title: e.title, at: e.createdAt.toISOString() })),
       list_items: listItems.map((i) => ({ list: i.list.name, title: i.title, qty: i.qty, added: i.addedById === id, done_at: i.doneAt?.toISOString() ?? null, created_at: i.createdAt.toISOString() })),
+      link_tasks: linkTasks.map((t) => ({ other_name: t.otherName, title: t.title, note: t.note, status: t.status, due_at: t.dueAt?.toISOString() ?? null, done_at: t.doneAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
       gameyas: gameyas.map((g) => ({
         name: g.name,
         role: g.ownerId === id ? ("organizer" as const) : ("member" as const),

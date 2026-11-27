@@ -47,6 +47,10 @@ import {
   type CreateTrackerRequest,
   type Tracker,
   CircleFeedResponse,
+  LinkTask,
+  LinkTaskResponse,
+  ListLinkResponse,
+  type CreateLinkTaskRequest,
   ListTasksResponse,
   TaskResponse,
   type CircleTask,
@@ -609,8 +613,12 @@ export async function listTasks(): Promise<CircleTask[]> {
 export const peekTasks = () => peek("/tasks", parseTasks);
 
 const parseFeed = (raw: unknown): CircleFeedResponse => {
-  const r = (raw ?? {}) as { posts?: unknown; tasks?: unknown };
-  return { posts: eachValid(CircleFeedResponse.shape.posts.element.safeParse, r.posts), tasks: eachValid(CircleFeedResponse.shape.tasks.element.safeParse, r.tasks) };
+  const r = (raw ?? {}) as { posts?: unknown; tasks?: unknown; link_tasks?: unknown };
+  return {
+    posts: eachValid(CircleFeedResponse.shape.posts.element.safeParse, r.posts),
+    tasks: eachValid(CircleFeedResponse.shape.tasks.element.safeParse, r.tasks),
+    link_tasks: eachValid(LinkTask.safeParse, r.link_tasks),
+  };
 };
 export async function getCircleFeed(circleId: string): Promise<CircleFeedResponse> {
   return cachedGet(`/circles/${circleId}/feed`, parseFeed);
@@ -949,6 +957,37 @@ export async function removeListItem(id: string, itemId: string): Promise<HouseL
 export async function clearListDone(id: string): Promise<HouseList> {
   return listAnswer(await writeOrQueue("POST", `/lists/${id}/clear`));
 }
+/** The list's no-app link and the WhatsApp text (the same link each time until it is stopped). */
+export async function shareListLink(id: string): Promise<ListLinkResponse> {
+  const out = ListLinkResponse.parse(await request(`/lists/${id}/link`, { method: "POST" }));
+  saved("/lists", parseLists, (old) => ({ lists: old.map((l) => (l.id === id ? { ...l, has_link: true } : l)) }));
+  return out;
+}
+export async function stopListLink(id: string): Promise<HouseList> {
+  return listAnswer(await request(`/lists/${id}/link`, { method: "DELETE" }));
+}
+
+// Tasks for people not on Zaki (2026-11-27): shown on the circle's tasks screen from its feed.
+const feedPath = (circleId: string) => `/circles/${circleId}/feed`;
+function savedLinkTask(task: LinkTask): LinkTask {
+  if (task.circle_id) saved(feedPath(task.circle_id), parseFeed, (feed) => ({ ...feed, link_tasks: [task, ...feed.link_tasks.filter((x) => x.id !== task.id)] }));
+  return task;
+}
+export async function createLinkTask(body: CreateLinkTaskRequest): Promise<LinkTaskResponse> {
+  const out = LinkTaskResponse.parse(await request("/link-tasks", { method: "POST", body: JSON.stringify(body) }));
+  savedLinkTask(out.task);
+  return out;
+}
+export async function shareLinkTask(id: string): Promise<LinkTaskResponse> {
+  const out = LinkTaskResponse.parse(await request(`/link-tasks/${id}/share`, { method: "POST" }));
+  savedLinkTask(out.task);
+  return out;
+}
+export async function cancelLinkTask(task: LinkTask): Promise<void> {
+  await request(`/link-tasks/${task.id}/cancel`, { method: "POST" });
+  if (task.circle_id) saved(feedPath(task.circle_id), parseFeed, (feed) => ({ ...feed, link_tasks: feed.link_tasks.filter((x) => x.id !== task.id) }));
+}
+
 /** "I'm going shopping" tells other people: only shown as done once the server says so. */
 export async function setListTrip(id: string, going: boolean): Promise<HouseList> {
   return listAnswer(await request(`/lists/${id}/trip`, { method: "POST", body: JSON.stringify({ going }) }));

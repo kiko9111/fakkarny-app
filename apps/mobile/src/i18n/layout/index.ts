@@ -8,12 +8,13 @@ import { strings as gameya } from "./gameya";
 import { strings as me } from "./me";
 import { strings as tabs } from "./tabs";
 import { strings as today } from "./today";
+import { strings as widget } from "./widget";
 
 /**
  * The layout rebuild's words, one file per area so areas can be written side by side. Screens
  * read them as `t.lay.<area>.<key>`; each file checks that English has the Arabic keys.
  */
-const areas = { common, circle, circlejobs, today, daftar, gameya, chat, me, tabs };
+const areas = { common, circle, circlejobs, today, daftar, gameya, chat, me, tabs, widget };
 type Areas = typeof areas;
 export type LayoutStrings = { [A in keyof Areas]: Areas[A]["en"] };
 

@@ -82,7 +82,7 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect(pushed[0]).toMatchObject({ to: "ExponentPushToken[ahmed]", title: "Zaki", body: asked.text });
     expect(await items(ahmed)).toHaveLength(0);
     // The third member sees nothing yet; the two people do.
-    expect(await feed(sara, circleId)).toEqual({ posts: [], tasks: [] });
+    expect(await feed(sara, circleId)).toEqual({ posts: [], tasks: [], link_tasks: [] });
     expect((await feed(ahmed, circleId)).tasks).toMatchObject([{ id: task.id, role: "assignee", status: "pending" }]);
 
     // Only Ahmed can answer.
@@ -141,7 +141,7 @@ describe.skipIf(!hasTestDb)("assigned tasks", () => {
     expect(TaskResponse.parse((await post(ahmed, `/tasks/${task.id}/respond`, { answer: "decline" })).json()).task.status).toBe("declined");
     expect((await chat(mona)).at(-1)!.text).toBe("الرد من أحمد على «وصّل الولاد»: مش هينفع دلوقتي. ولا يهمك، هنلاقي حل تاني 💛");
     expect(await items(ahmed)).toHaveLength(0);
-    expect(await feed(sara, circleId)).toEqual({ posts: [], tasks: [] });
+    expect(await feed(sara, circleId)).toEqual({ posts: [], tasks: [], link_tasks: [] });
     expect((await post(mona, `/tasks/${task.id}/nudge`)).statusCode).toBe(409);
   });
 

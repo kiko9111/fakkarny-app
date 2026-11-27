@@ -309,7 +309,7 @@ Rules:
   sync then jams for good. `toWireMessage` sends "upsell" and "update" as "chat" unless
   the request carries `x-message-kinds: 2` (sent by the app since Zaki M9). When adding a
   message kind or any enum value the phone parses, gate it the same way.
-- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`).
+- The public pages share apps/api/src/web/shell.ts (escape every user value with `esc`); a new one follows "No-app links".
 - Family plan sharing: a member with an active plan of tier "family" covers 6 people in
   all: the payer plus the first 5 others by join time across all of the payer's family
   circles, never 6 per circle (apps/api/src/billing/family.ts); used for the AI allowance
@@ -1364,6 +1364,32 @@ Rules:
   goes to the model. Not on Today: the brief is a message, never something due.
   `npm run brief:feeds -w @fakkarni/api` lists which feeds answer; the cloud
   session can't reach them, so .github/workflows/brief-feeds.yml runs it ("[brief-feeds]").
+- No-app links (2026-11-27, kareem: "no app web pages"): someone not on Zaki opens a WhatsApp link in
+  any browser and answers there. Debts (/d/), splits (/s/) and invites (/i/) came first; now tasks
+  (/t/) and household lists (/l/), both in apps/api/src/routes/link-pages.ts, shapes and pure rules
+  in packages/shared/src/links.ts, words in apps/api/src/links/rules.ts (gender-neutral Arabic).
+  - The recipe for any new one (gam'eya turns, medicine doses) is at the top of
+    apps/api/src/web/link-page.ts: a unique `code` (`withFreshCode`), a GET page through
+    `renderShell` + `sendPage`, answers only as POST forms (`acceptForms`, `postButton`; a link
+    preview never answers) then a 303 back (`backTo`), the app user told by `postUpdate` + push,
+    `PAGE_LIMIT` / `ANSWER_LIMIT`, `getAppBlock` at the end.
+  - The shell (web/shell.ts) has the app's look since this change: Sunrise colours, a soft mesh,
+    86% white card, pill buttons, the spark-smile tile; no emoji on buttons; a page adds its own
+    CSS through `meta.css` with the shell's variables (--primary, --soft, --wash, --line…).
+  - Tasks by link: table link_tasks (creator, other_name, title, note, due_at, status pending |
+    accepted | declined | done | cancelled, web_views). POST /link-tasks (phone-made id), GET
+    /link-tasks, POST /link-tasks/:id/share (the ask while pending, a nudge once accepted),
+    /cancel. The page: accept / already done / not this time, then Done; a decline can still be
+    taken on (`linkTaskNext`). Each answer: a chat line to the creator (client_id
+    `linktask:<id>:<status>`) + push. Only the creator sees them: on the circle's feed as
+    `link_tasks` (old servers: none) and on its Tasks screen ("+" › Send a link, /task/link).
+    In /me/export; removed with the account (FK).
+  - Lists by link: house_lists.share_code (POST /lists/:id/link gives the same link until DELETE
+    stops it; wire `has_link`). The page lists open and recently got things, ticks and unticks,
+    and adds (splitThings); a typed name is kept on the item (added_by_name / done_by_name) and in
+    a `zaki_name` cookie on /l. Adds: a chat line to every person of the list, a push only to the
+    one out shopping; the last open thing ticked: chat + push to all. List screen: "Send a link",
+    "Stop the link".
 - Forward from WhatsApp (2026-11-27, kareem: "add forward to whatsapp in a smart way"). A forwarded
   message is an ordinary chat message whose text starts with `FORWARD_MARK` ("↪ ",
   packages/shared/src/forward.ts: `markForwarded` tidies WhatsApp copies (time stamps go, the
@@ -1402,12 +1428,34 @@ Rules:
   currency reloads. City row and question appear only once the server's profile carries `city`
   (`serverKnowsCity`), so an update that lands before the deploy offers nothing it can't save.
   Not swapped yet: pocket money, circle book posts and homework rewards (EGP), store prices.
+- Home-screen widget (2026-11-27, Android, native; kareem's ask): modules/zaki-widget (local Expo
+  module, Kotlin, RemoteViews; no JS runs in the widget). The app writes what it shows as JSON
+  (`widgetData`, src/widget/data.ts, pure + tested) into SharedPreferences "zaki_widget" after every
+  `itemsChanged` / `cacheRefreshed` / `dataChanged` / `needsChanged` (0.8 s debounce) and when the app
+  is left; src/widget/index.ts, started from startSync. It shows the "Needs you" count and the oldest
+  row (header pill, opens Today), the next repeating reminder ("next dose": its next 12 occurrences
+  from the same anchor as notifications/plan.ts), the next 3 one-off plans (8 sent, so later ones move
+  up as times pass) with a Done button each, and Talk to Zaki / Remind me. Times are instants and the
+  widget writes them itself (android.icu, Latin digits in Arabic), dropping a plan an hour after its
+  last time on its own redraws (system period 30 min). Two layouts (zaki_widget_ltr / _rtl, keep them
+  in step) so it follows the app's language. Links are fakkarni://widget/<chat|remind|today|plans>,
+  mapped by src/app/+native-intent.tsx (`widgetRoute`); every other link passes through. Done hides
+  the row at once (2 days, or until new data) and queues the tap; the app answers it on start, on
+  return, or at once through the module's onDone event while it runs: a plan closes like a tick in
+  Today (local first, PATCH via writeOrQueue), a dose says `doneSay` in the chat like Done on its
+  notification. A tap made while the app never opens again stays queued (its reminders still ring).
+  It follows the Layout map: the app's card (near-white, large radius), near-black ink, words in
+  `primaryInk`, one filled button (Talk to Zaki), soft `primarySoft` fills, Zaki's art, all in the
+  user's theme (drawables zaki_widget_<mark|button|pill|check>_<sunrise|mint|cloud>; add a theme
+  there too), and "Needs you" worded as on Today. Its row lives in Me › Reminders ("Home screen
+  widget", icon apps, kind neutral; `requestPinAppWidget`, else how-to text), not on Me itself.
+  Sign-out / delete clears it (db/reset.ts). Optional module: older builds, iPhone and Expo Go skip it.
 
 ## Milestones (PRD §8)
 - [x] M1 Skeleton: monorepo, Expo placeholder screens, Fastify /health, Prisma schema, shared zod types, vitest
 - [x] M2 Capture and local storage: chat UI, SQLite, outbox sync, POST/GET /messages
 - [x] M3 Conversation and memory: persona, pipeline, Saved chip fixes, evals (101 cases; extraction ≥98%, native review of evals/out/review.csv still pending). Reply streaming came later (2026-11-26, see the repo notes).
 - [x] M4 Notifications: local reminders + quick replies, push registration, pg-boss proactive messages with auto-slowdown
-- [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget (P1) deferred: expo-widgets needs the bundle ID and a dev build.
+- [x] M5 Auth, sync and screens: Supabase sign-in (email link, phone OTP, Apple, Google), account linking + full sync, Upcoming/Money/Settings/Memories, export, delete. Home-screen widget: Android since 2026-11-27 (see "Home-screen widget" in the repo notes); iPhone not yet.
 - [x] M6 Paywall: RevenueCat purchase/restore, webhook + refresh, chat lock (data readable), trial-ending notice
 - [x] M7 Hardening: Sentry, rate limits + daily cap, retries, admin dashboard with AI cost per user, EAS profiles, Dockerfile. Store submission steps are manual (see README launch checklist).

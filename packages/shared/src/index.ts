@@ -21,5 +21,6 @@ export * from "./phone-brain";
 export { understand, isCrisis, addDays, addMinutes, type Understood, type UnderstandInput, type UnderstandItem } from "./understand";
 export * from "./understand/clarify";
 export * from "./places";
+export * from "./links";
 export * from "./forward";
 export * from "./local";

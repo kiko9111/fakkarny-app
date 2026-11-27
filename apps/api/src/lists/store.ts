@@ -77,10 +77,10 @@ export function toWireList(
     id: i.id,
     title: i.title,
     qty: i.qty,
-    added_by_name: i.addedBy?.name ?? null,
+    added_by_name: i.addedBy?.name ?? i.addedByName ?? null,
     is_mine: i.addedById === userId,
     done: i.doneAt !== null,
-    done_by_name: i.doneBy?.name ?? null,
+    done_by_name: i.doneBy?.name ?? i.doneByName ?? null,
     done_at: i.doneAt?.toISOString() ?? null,
     created_at: i.createdAt.toISOString(),
   }));
@@ -101,6 +101,7 @@ export function toWireList(
         }
       : null,
     items,
+    has_link: l.shareCode !== null,
     updated_at: l.updatedAt.toISOString(),
   };
 }
@@ -259,8 +260,8 @@ export async function setDone(
   const n = await db.houseListItem.updateMany({
     where: { id: itemId, listId, list: visibleLists(userId) },
     data: done
-      ? { doneAt: now, doneById: userId }
-      : { doneAt: null, doneById: null },
+      ? { doneAt: now, doneById: userId, doneByName: null }
+      : { doneAt: null, doneById: null, doneByName: null },
   });
   if (n.count)
     await db.houseList.update({
@@ -305,7 +306,7 @@ export async function doneByName(
   if (hit.length) {
     await db.houseListItem.updateMany({
       where: { id: { in: hit.map((h) => h.id) } },
-      data: { doneAt: now, doneById: userId },
+      data: { doneAt: now, doneById: userId, doneByName: null },
     });
     await db.houseList.update({
       where: { id: listId },

@@ -2,6 +2,7 @@ import { forgetSaved } from "@/lib/api";
 import { clearScheduled } from "@/notifications";
 import { prefs } from "@/lib/prefs";
 import { placeStore } from "@/places/store";
+import { clearWidget } from "@/widget";
 import { getDb } from "./database";
 
 /** Wipe everything on this phone (after account deletion or sign-out). */
@@ -15,4 +16,6 @@ export async function resetLocalData(): Promise<void> {
   // Saved places (their coordinates) belonged to that person too; geofences stop with the next refresh.
   placeStore.clear();
   forgetSaved();
+  // Nothing of that person stays on the home screen.
+  clearWidget();
 }
