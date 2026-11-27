@@ -1,6 +1,7 @@
 import { standLine } from "../gameya/chat";
 import { toWireGameya } from "../gameya/store";
 import type { Item, Memory, Message, PrismaClient, Summary, User } from "../generated/prisma/client";
+import { readForwarded } from "@fakkarni/shared";
 import { describeNow, describeUpcomingDays, toLocalIso } from "../lib/time";
 import { helplineFor } from "../persona/prompt";
 import { detectScriptInContext, type Script } from "./rules";
@@ -220,9 +221,12 @@ export function mustReplyInArabic(userTexts: string[], fallback: Script = "engli
   return /[a-z\u0600-\u06FF]/i.test(last) && detectScriptInContext(userTexts, fallback) !== "english";
 }
 
-/** The user's own messages in the recent chat, oldest first. */
+/**
+ * The user's own messages in the recent chat, oldest first. Messages they forwarded from WhatsApp
+ * are someone else's words, so they never decide the language Zaki answers in.
+ */
 export function userTexts(recent: Pick<Message, "role" | "text">[]): string[] {
-  return recent.filter((m) => m.role === "user").map((m) => m.text);
+  return recent.filter((m) => m.role === "user" && !readForwarded(m.text).forwarded).map((m) => m.text);
 }
 
 /**

@@ -1,0 +1,3 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Nothing to declare: the share targets are intent filters on the main activity (app.json android.intentFilters). -->
+</manifest>

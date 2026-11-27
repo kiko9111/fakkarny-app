@@ -22,6 +22,16 @@ async function shrink(uri: string, width: number, height: number): Promise<Photo
   return out.base64 ? { mime: "image/jpeg", data: out.base64 } : null;
 }
 
+/** A photo already on the phone (shared to Zaki from another app), shrunk the same way. */
+export async function photoFromFile(uri: string): Promise<{ photo: PhotoUpload } | { tooBig: true } | null> {
+  if (!photosAvailable) return null;
+  const { ImageManipulator } = require("expo-image-manipulator") as typeof import("expo-image-manipulator");
+  const image = await ImageManipulator.manipulate(uri).renderAsync();
+  const p = await shrink(uri, image.width, image.height);
+  if (!p) return null;
+  return p.data.length > MAX_PHOTO_B64 ? { tooBig: true } : { photo: p };
+}
+
 /** Camera or library. `max` > 1 lets the library pick several (homework pages). */
 export async function pickPhotos(source: "camera" | "library", max = 1): Promise<PickPhotos> {
   if (!photosAvailable) return null;
