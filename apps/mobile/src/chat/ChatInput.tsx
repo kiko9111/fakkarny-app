@@ -27,6 +27,12 @@ export const ChatInput = forwardRef<ChatInputHandle, { onSend: (text: string) =>
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const wait = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => void (wait.current && clearTimeout(wait.current)), []);
+  // While the tab bar shows, its raised Zaki button reaches above the bar: the composer keeps clear of it.
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    const subs = [Keyboard.addListener("keyboardDidShow", () => setTyping(true)), Keyboard.addListener("keyboardDidHide", () => setTyping(false))];
+    return () => subs.forEach((sub) => sub.remove());
+  }, []);
   const startReminder = useCallback(() => {
     setText((old) => withStarter(old, t.lay.chat.remindStarter));
     input.current?.focus();
@@ -79,7 +85,7 @@ export const ChatInput = forwardRef<ChatInputHandle, { onSend: (text: string) =>
   };
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, !typing && styles.clear]}>
       <View style={styles.plus}>
         <IconButton name="add" label={t.lay.chat.plus} onPress={openPlus} color={palette.primaryInk} size={44} />
       </View>
@@ -136,6 +142,8 @@ const styles = StyleSheet.create({
   spinner: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   // The "+" leads (left in English, right in Arabic) and stays at the bottom while the box grows.
   bar: { flexDirection: "row", alignItems: "flex-end", gap: space.xs, paddingHorizontal: space.sm, paddingTop: space.xs, paddingBottom: space.md, backgroundColor: "transparent" },
+  /** The raised tab button stands about 26dp above the tab bar. */
+  clear: { paddingBottom: 30 },
   // Lifted to the middle of a one-line box (the box is 40 + its padding and edge).
   plus: { marginBottom: 5 },
   field: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "flex-end", gap: space.sm, ...glass, backgroundColor: palette.surfaceStrong, borderRadius: radius.xl, paddingStart: space.lg, paddingEnd: space.xs + 2, paddingVertical: space.xs + 2 },

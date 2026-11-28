@@ -11,7 +11,7 @@ export { ThemePicker } from "./ThemePicker";
 export { Backdrop, GlassHeader, glassBar, withGround } from "./glass";
 export { Appear, LoadingCards, reduceMotion } from "./motion";
 export { Segmented, Tile, TileGrid, NavRow, RowGroup, IntroPanel, type TileTone } from "./layout";
-export { NumberStrip, Rows, MoreRow, MiniTile, MiniTiles, GROUP_RADIUS, type StripCell } from "./glance";
+export { NumberStrip, StatStrip, Rows, MoreRow, MiniTile, MiniTiles, GROUP_RADIUS, type StripCell, type StatCell } from "./glance";
 export { AddSheet, HeaderPlus, useAddSheet, type AddAction } from "./AddSheet";
 export { ChatTabButton } from "./ChatTabButton";
 export { DateTimePicker, formatPick } from "./DateTimePicker";

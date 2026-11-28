@@ -24,6 +24,15 @@ const ar = {
   pocketYouOwe: "عليك {n} جنيه",
   pocketOwedYou: "ليك {n} جنيه",
   pocketClear: "خالص",
+  /** The third amount on People: this month's gam'eya round and shares of other people's bills. */
+  dueMonth: "عليك الشهر ده",
+  /** The strip on Spending and on Splits. */
+  left: "الباقي",
+  openBills: "مفتوحة",
+  /** A split's row says the reader's side first. */
+  splitYouOwe: "عليك {amount}",
+  splitOwed: "ليك {amount}",
+  splitSettled: "اتقفل",
 };
 
 const en: SameKeys<typeof ar> = {
@@ -44,6 +53,12 @@ const en: SameKeys<typeof ar> = {
   pocketYouOwe: "You owe EGP {n}",
   pocketOwedYou: "You're owed EGP {n}",
   pocketClear: "All paid",
+  dueMonth: "Due this month",
+  left: "Left",
+  openBills: "Open",
+  splitYouOwe: "You owe {amount}",
+  splitOwed: "Owed to you {amount}",
+  splitSettled: "Settled",
 };
 
 export const strings = { "ar-EG": ar, en } as const;

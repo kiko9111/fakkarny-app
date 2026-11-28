@@ -8,6 +8,7 @@ import { glass, kind as kinds, palette, space, type IconKind } from "./tokens";
 /**
  * Design round 2 ("The Glance"): a screen answers its question in numbers first.
  *   NumberStrip  two or three numbers in one card; tapping one filters the screen under it
+ *   StatStrip    the same card for amounts (not tappable)
  *   Rows         rows in one card with hairlines between them (denser than a card per row)
  *   MiniTile, MiniTiles   three small doors in one line
  *   MoreRow      "+N more" at the foot of a `Rows`
@@ -47,6 +48,34 @@ export function NumberStrip<K extends string>({ cells, selected, onSelect }: { c
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+export interface StatCell {
+  key: string;
+  /** Already written: "EGP 950", "36%". */
+  value: string;
+  label: string;
+  tone?: "ok" | "danger" | "warn";
+}
+const STAT_INK = { ok: palette.ok, danger: palette.danger, warn: palette.warn } as const;
+
+/** Two or three amounts that sum a screen up, in the strip's card. Headline amounts carry their unit. */
+export function StatStrip({ cells }: { cells: readonly StatCell[] }) {
+  if (!cells.length) return null;
+  return (
+    <View style={styles.strip}>
+      {cells.map((c) => (
+        <View key={c.key} style={styles.stat} accessible accessibilityLabel={`${plain(c.label)}, ${c.value}`}>
+          <Text variant="headline" color={c.tone ? STAT_INK[c.tone] : palette.ink} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            {c.value}
+          </Text>
+          <Text variant="caption" color={palette.inkSoft} align="center" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+            {plain(c.label)}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -114,6 +143,7 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: palette.wash },
   strip: { ...glass, flexDirection: "row", borderRadius: GROUP_RADIUS, overflow: "hidden" },
   cell: { flex: 1, minWidth: 0, minHeight: 72, alignItems: "center", justifyContent: "center", paddingTop: space.sm, paddingHorizontal: space.xs },
+  stat: { flex: 1, minWidth: 0, minHeight: 68, alignItems: "center", justifyContent: "center", paddingVertical: space.sm, paddingHorizontal: space.sm },
   under: { height: 2, width: 28, borderRadius: 1, marginTop: space.xs, marginBottom: space.sm, backgroundColor: "transparent" },
   underOn: { backgroundColor: palette.ink },
 

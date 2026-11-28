@@ -2,7 +2,7 @@ import { clearParam } from "@/lib/clear-param";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import type { MoneySection } from "@fakkarni/shared";
-import { partFrom, spendTarget, type DaftarPart } from "@/daftar/layout";
+import { partFirst, partFrom, spendTarget, type DaftarPart } from "@/daftar/layout";
 import { PeopleView } from "@/daftar/PeopleView";
 import { t } from "@/i18n";
 import { peekMoney } from "@/lib/api";
@@ -46,15 +46,16 @@ export default function MoneyScreen() {
     else setPart("spend");
   };
 
-  const actions: AddAction[] = [
+  // The open part's own action comes first; a new section is offered on Spending (elsewhere it is the last row of "Which section?").
+  const actions: AddAction[] = partFirst<AddAction>([
     { key: "money", icon: "wallet-outline", kind: "money", label: t.lay.daftar.addMoney, onPress: addMoney },
     { key: "debt", icon: "swap-horizontal-outline", kind: "people", label: t.lay.daftar.addDebt, onPress: () => router.push("/daftar/new") },
     { key: "split", icon: "pie-chart-outline", kind: "place", label: t.lay.daftar.addSplit, onPress: () => router.push("/split/new") },
     { key: "gameya", icon: "sync-circle-outline", kind: "money", label: t.lay.gameya.add, onPress: () => router.push("/gameya/new") },
     // From Splits the receipt fills a new split; elsewhere its total goes into a section.
     ...(photosAvailable ? [{ key: "receipt", icon: "camera-outline" as const, kind: "money" as const, label: t.lay.daftar.addReceipt, onPress: () => (part === "split" ? router.push({ pathname: "/receipt", params: { for: "split" } }) : router.push("/receipt")) }] : []),
-    { key: "section", icon: "folder-open-outline", kind: "neutral", label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") },
-  ];
+    ...(part === "spend" ? [{ key: "section", icon: "folder-open-outline" as const, kind: "neutral" as const, label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") }] : []),
+  ], part);
   const add = useAddSheet(actions);
   const navigation = useNavigation();
   useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
@@ -77,7 +78,10 @@ export default function MoneyScreen() {
         visible={pick !== null}
         onClose={() => setPick(null)}
         title={t.lay.daftar.pickSection}
-        actions={(pick ?? []).map((s) => ({ key: s.id, icon: s.circle_id ? "people-outline" : s.kind === "income" ? "cash-outline" : "wallet-outline", kind: "money", label: s.name, onPress: () => openSection(s.id) }))}
+        actions={[
+          ...(pick ?? []).map((s): AddAction => ({ key: s.id, icon: s.circle_id ? "people-outline" : s.kind === "income" ? "cash-outline" : "wallet-outline", kind: "money", label: s.name, onPress: () => openSection(s.id) })),
+          { key: "new-section", icon: "folder-open-outline", kind: "neutral", label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") },
+        ]}
       />
     </Screen>
   );

@@ -60,3 +60,32 @@ describe("pocketRows", () => {
     expect(pocketRows([account({ balance: -5, child_name: null })])).toEqual([{ key: "parent:kid", name: null, role: "parent", owed: 0 }]);
   });
 });
+
+describe("the strips", () => {
+  const bill = (over: object) => ({ mine: true, me: null, paid_by: 0, people: [{ share: 100, paid: false }, { share: 60, paid: false }, { share: 40, paid: true }], ...over }) as never;
+
+  it("counts private notes, this month's gam'eya round and shares of other people's bills", async () => {
+    const { peopleTotals } = await import("./layout");
+    const book = { round: 1, months: 3, amount: 1000, members: [{ id: "me", is_me: true }], payments: [] } as never;
+    const paidBook = { round: 1, months: 3, amount: 500, members: [{ id: "me", is_me: true }], payments: [{ member_id: "me", round: 1 }] } as never;
+    expect(peopleTotals({ shared: { owedToMe: 750, iOwe: 120 }, notesOwedToMe: 200, notesIOwe: 0, gameyas: [book, paidBook], splits: [bill({ mine: false, me: 1 })] })).toEqual({ owedToMe: 950, iOwe: 120, due: 1060 });
+  });
+
+  it("sums the splits and says the reader's side of each", async () => {
+    const { splitSide, splitTotals } = await import("./layout");
+    const mine = bill({});
+    const theirs = bill({ mine: false, me: 1 });
+    const done = bill({ people: [{ share: 100, paid: false }, { share: 60, paid: true }] });
+    expect(splitTotals([mine, theirs, done, bill({ paid_by: null })])).toEqual({ open: 2, iOwe: 60, owedToMe: 60 });
+    expect(splitSide(mine)).toEqual({ says: "owed", amount: 60 });
+    expect(splitSide(theirs)).toEqual({ says: "you_owe", amount: 60 });
+    expect(splitSide(done)).toEqual({ says: "settled", amount: 0 });
+  });
+
+  it("puts the open part's action first", async () => {
+    const { partFirst } = await import("./layout");
+    const rows = [{ key: "money" }, { key: "debt" }, { key: "split" }];
+    expect(partFirst(rows, "split").map((r) => r.key)).toEqual(["split", "money", "debt"]);
+    expect(partFirst(rows, "spend").map((r) => r.key)).toEqual(["money", "debt", "split"]);
+  });
+});
