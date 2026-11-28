@@ -21,6 +21,13 @@ const ar = {
   forwardOther: "زكي بيقرا الكلام وصور الفواتير بس",
   /** The second step, when more than one circle fits. */
   whichCircle: "أنهي دايرة؟",
+  /** The one line under the header while something is due; it opens Today. */
+  dueNeeds: "{n} مستنيك",
+  dueDose: "جرعة {time}",
+  /** Labels over what Zaki sends by himself, by what it is. */
+  kindNews: "أخبار اليوم",
+  kindWeek: "أسبوعك",
+  kindMemory: "فاكر؟",
   /** What "Remind me" writes in the composer; she finishes the sentence. Keep the space at the end. */
   remindStarter: "فكّرني ",
   /** Old quick replies that the "+" now starts: not shown as chips any more. */
@@ -44,6 +51,11 @@ const en: SameKeys<typeof ar> = {
   forwardEmpty: "There are no words in it",
   forwardOther: "Zaki reads words and receipt photos only",
   whichCircle: "Which circle?",
+  dueNeeds: "{n} need you",
+  dueDose: "dose {time}",
+  kindNews: "Daily news",
+  kindWeek: "Your week",
+  kindMemory: "Remember?",
   remindStarter: "Remind me to ",
   inPlus: ["Remind me of something"],
 };

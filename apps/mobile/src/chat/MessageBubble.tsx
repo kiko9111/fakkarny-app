@@ -21,8 +21,20 @@ const KIND: Partial<Record<MessageKind, { icon: IconName; label: () => string; c
   update: { icon: "people", label: () => t.ui.kindUpdate, color: palette.family },
 };
 
+/** What Zaki sends by himself says what it is: the kind alone called the news brief "Checking in". */
+const BY_ID: { prefix: string; icon: IconName; label: () => string }[] = [
+  { prefix: "brief:", icon: "newspaper", label: () => t.lay.chat.kindNews },
+  { prefix: "checkup:", icon: "calendar", label: () => t.lay.chat.kindWeek },
+  { prefix: "memory:", icon: "bulb", label: () => t.lay.chat.kindMemory },
+];
+/** The label over a message of Zaki's own: by its client_id's prefix first, else by its kind. */
+export function labelOf(message: Pick<LocalMessage, "client_id" | "kind">) {
+  const named = BY_ID.find((x) => message.client_id.startsWith(x.prefix));
+  return named ? { icon: named.icon, label: named.label, color: palette.primaryInk } : KIND[message.kind];
+}
+
 /** A forwarded message shows as its words under a small "Forwarded" line, folded when long. */
-const FOLDED_LINES = 10;
+const FOLDED_LINES = 6;
 const forwardedWords = (body: string) => body.replace(/^\(sent [^)\n]*\)\n/, "");
 
 const time = (iso: string) => {
@@ -60,7 +72,7 @@ export const MessageBubble = memo(function MessageBubble({
   const mine = message.role === "user";
   const fwd = mine ? readForwarded(message.text) : null;
   const [open, setOpen] = useState(false);
-  const kind = !mine ? KIND[message.kind] : undefined;
+  const kind = !mine ? labelOf(message) : undefined;
   // Decided once, when the bubble first shows. The words of a reply still being written and the
   // stored reply that takes their place are the same bubble, so it arrives once.
   const [arrives] = useState(() => entrance?.fresh(message.client_id) ?? false);

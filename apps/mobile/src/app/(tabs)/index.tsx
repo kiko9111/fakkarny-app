@@ -1,11 +1,12 @@
 import { clearParam } from "@/lib/clear-param";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { FlatList, Keyboard, KeyboardAvoidingView, Pressable, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { useNetworkState } from "expo-network";
 import { AFTER_SHEET_MS, ChatInput, type ChatInputHandle } from "@/chat/ChatInput";
 import { dayLabel, opensDay } from "@/chat/days";
+import { DueStrip } from "@/chat/DueStrip";
 import { createEntrance } from "@/chat/entrance";
 import { quickReplies } from "@/chat/plus";
 import { MessageBubble } from "@/chat/MessageBubble";
@@ -139,6 +140,12 @@ export default function ChatScreen() {
   useEffect(() => {
     if (locked) void getMe().then((u) => setNeverSubscribed(u.plan === "none")).catch(() => {});
   }, [locked]);
+  // Typing: the quick replies make room for the list (a new chat keeps its starters).
+  const [keyboard, setKeyboard] = useState(false);
+  useEffect(() => {
+    const subs = [Keyboard.addListener("keyboardDidShow", () => setKeyboard(true)), Keyboard.addListener("keyboardDidHide", () => setKeyboard(false))];
+    return () => subs.forEach((sub) => sub.remove());
+  }, []);
   const headerHeight = useHeaderHeight();
   const network = useNetworkState();
   const offline = network.isConnected === false || network.isInternetReachable === false;
@@ -179,6 +186,7 @@ export default function ChatScreen() {
           </Note>
         </View>
       ) : null}
+      <DueStrip />
       <View style={styles.flex}>
         <FlatList
           ref={list}
@@ -254,7 +262,7 @@ export default function ChatScreen() {
             </View>
           ) : null}
           <QuickReplies
-            options={chips}
+            options={keyboard && !fresh ? [] : chips}
             onPick={(text) => {
               const index = chips.indexOf(text);
               track(fresh ? "starter_tapped" : "quick_reply", { index });

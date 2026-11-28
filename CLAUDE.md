@@ -1375,6 +1375,23 @@ Rules:
       assigner only by name, so a request is put on a member's row only when no other member
       shares that name. People's rows show faces and `circleStatus` ("3 need you", else the next
       dose, else the member count) from the saved copies.
+    - Step 2, the Daftar and the chat. Amounts that sum a part up sit in `StatStrip` (the strip's
+      card, not tappable; a headline amount carries its unit): Spending says spent, income and
+      what is left of the month's budgets (only sections with a budget count); People says owed
+      to you, you owe (both count the private notes too: `peopleTotals`, daftar/layout.ts) and
+      what this month asks (a running gam'eya's unpaid round, shares of other people's bills);
+      Splits says open bills, you owe, owed to you (`splitTotals`), and a split's row says the
+      reader's side first (`splitSide`). On People what has a date comes first (gam'eyas, pocket
+      money), then debts as rows in one card whose actions fold under them (`DaftarCard flat`;
+      open from the start only when the entry waits for the reader's answer). The "+" sheet puts
+      the open part's action first (`partFirst`); "New section" shows on Spending and as the
+      last row of "Which section?". The Daftar answer is "Confirm" / "تأكيد" everywhere.
+    - Chat: `DueStrip` (one line under the header, only while something is due and Today has been
+      introduced: "6 need you · dose 8:00 PM", opens Today; saved copies only). The composer
+      keeps 30dp under it while the keyboard is down, clear of the raised Zaki button; quick
+      replies leave while the keyboard is up (a new chat keeps its starters). What Zaki sends by
+      himself is labelled by its client_id prefix (`labelOf`: brief: Daily news, checkup: Your
+      week, memory: Remember?), else by its kind. A forwarded bubble folds at 6 lines.
 - Daily news brief (2026-11-27, kareem: "the user chooses topics and Zaki gives a short daily brief").
   Topics and wording in packages/shared/src/brief.ts (12 topics; free 1, Pro up to 5, limits off
   while REQUIRE_SUBSCRIPTION=0; 402 `brief_limit` opens the paywall). users.brief_topics /
