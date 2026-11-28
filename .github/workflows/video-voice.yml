@@ -1,0 +1,27 @@
+# Audio for the feature video (the cloud session can't reach the TTS service or the sound library CDN).
+# "[video-voice]" in a pushed commit message makes the voice lines; "[video-fetch]" downloads
+# video/sfx/urls.txt ("name url" per line, licensed through the Higgsfield/Epidemic Sound plan).
+# Results are committed back to the branch.
+name: Video audio
+on: push
+permissions:
+  contents: write
+jobs:
+  audio:
+    if: contains(github.event.head_commit.message, '[video-voice]') || contains(github.event.head_commit.message, '[video-fetch]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: contains(github.event.head_commit.message, '[video-voice]')
+        run: pip install edge-tts && python video/voice/make.py
+      - if: contains(github.event.head_commit.message, '[video-fetch]')
+        run: |
+          mkdir -p video/sfx/out
+          while read -r name url; do [ -n "$name" ] && curl -sSfL -o "video/sfx/out/$name.mp3" "$url"; done < video/sfx/urls.txt
+          git rm -q --cached video/sfx/urls.txt; rm video/sfx/urls.txt
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git add -A video
+          git commit -m "Video audio (generated)"
+          git push
