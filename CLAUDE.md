@@ -1392,6 +1392,15 @@ Rules:
       replies leave while the keyboard is up (a new chat keeps its starters). What Zaki sends by
       himself is labelled by its client_id prefix (`labelOf`: brief: Daily news, checkup: Your
       week, memory: Remember?), else by its kind. A forwarded bubble folds at 6 lines.
+    - Step 3, Me and Plans. Me is the name card, then three titled groups (Zaki: Zaki and me,
+      Daily news, What Zaki remembers; This phone: Look, City, Reminders, Advanced; Account:
+      Payments, Privacy), the invite card last. Every row has a value line from saved copies only
+      (memories counted from `peekMemories`, the city with the next prayer there today:
+      `nextPrayer`, me/lines.ts; the running update on Advanced). Plans (/upcoming) is one `Rows`
+      card per day, a late plan in red, and a tick offers Undo as on Today.
+    - Not built from the round-2 brief: a plan row's sheet (move, Later, alarm, Remove), the
+      circle's jobs as one line of six chips, a grouped chat "+" sheet, clocks for times on the
+      Me pages, a "Someone else" chip for task links.
 - Daily news brief (2026-11-27, kareem: "the user chooses topics and Zaki gives a short daily brief").
   Topics and wording in packages/shared/src/brief.ts (12 topics; free 1, Pro up to 5, limits off
   while REQUIRE_SUBSCRIPTION=0; 402 `brief_limit` opens the paywall). users.brief_topics /

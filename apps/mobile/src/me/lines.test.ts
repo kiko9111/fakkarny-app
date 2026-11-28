@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countLine, joinLine, planLine, planNow } from "./lines";
+import { countLine, joinLine, planLine, planNow, nextPrayer } from "./lines";
 
 const now = new Date("2026-11-27T10:00:00Z");
 const base = { pro: false, plan: "none" as const, plan_tier: "pro" as const, plan_expires_at: null, bonus_pro_until: null };
@@ -48,5 +48,20 @@ describe("row values", () => {
   it("joins what there is, and gives no line for nothing", () => {
     expect(joinLine(["2 alarms", null, "1 place"])).toBe("2 alarms · 1 place");
     expect(joinLine([null, undefined])).toBeUndefined();
+  });
+});
+
+describe("nextPrayer", () => {
+  const at = (h: number) => new Date(Date.UTC(2026, 10, 28, h));
+  const times = { fajr: at(3), sunrise: at(4), dhuhr: at(10), asr: at(13), maghrib: at(15), isha: at(16) };
+  const order = ["fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"] as const;
+
+  it("is the first prayer still ahead, never sunrise", () => {
+    expect(nextPrayer(times, order, new Date(Date.UTC(2026, 10, 28, 3, 30)))?.name).toBe("dhuhr");
+    expect(nextPrayer(times, order, at(14))?.name).toBe("maghrib");
+  });
+
+  it("is nothing after Isha", () => {
+    expect(nextPrayer(times, order, at(17))).toBeNull();
   });
 });
