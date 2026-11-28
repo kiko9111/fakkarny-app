@@ -67,7 +67,10 @@ Rules:
   `git diff --cached origin/main` prints nothing, run the tests, push; never force-push. Railway
   builds and switches over in under 5 minutes. Then start "Live API smoke test" by hand on main
   (it has `workflow_dispatch`): `/bootstrap 200` and the header `x-reply-stream: 1` say the new
-  server answers, a 404 that the old one still does. Deployed 2026-11-26 22:41Z (153c511; the live check at
+  server answers, a 404 that the old one still does. Deployed 2026-11-27 12:01Z (7558ae9; the live check at
+  12:08Z passed, server in `europe-west4-drams3a`): main at ac6a334 (through #86, local defaults by city,
+  migration user_city; #81's widget is phone-only). An earlier deploy that morning (e8f0645) carried
+  #85 gam'eya. #83 (daily news brief) was deployed after it, 12:11Z (93f4857; the live check at 12:17Z passed). Before that, 2026-11-26 22:41Z (153c511; the live check at
   22:48Z passed): main at ab604e0 (through #77, household lists, migration household_lists).
   Before that, 22:10Z (db553d7; the live check at 22:16Z passed, server in
   `europe-west4-drams3a`): main at 8313c9e (through #74, group bill split, migration group_splits;
@@ -82,7 +85,11 @@ Rules:
   It runs with REQUIRE_SUBSCRIPTION=0 and ALLOW_INSTALL_ID=1 until the stores and
   RevenueCat are set up; flip both before launch. `tsx` is a runtime dependency of the
   API because the container starts the server with it.
-- Expo: project `@kiki91111/fakkarni` (projectId in apps/mobile/app.json). The build
+- Expo: project `@kiki91111s-team/fakkarni` (projectId in apps/mobile/app.json; moved from the
+  personal account kiki91111 into the organization kiki91111s-team, "kiki91111's team", on
+  2026-11-27 so iPhone testers can be members; app.json `owner` must match; EXPO_TOKEN is
+  kiki91111's, an Owner of the team; `[expo-whoami]` (.github/workflows/expo-whoami.yml) prints
+  who owns the project). The build
   variables (EXPO_PUBLIC_API_URL, EXPO_PUBLIC_SUPABASE_URL,
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SENTRY_DISABLE_AUTO_UPLOAD) live on EAS for
   the development, preview and production environments, not in the repo. Android test
@@ -98,14 +105,11 @@ Rules:
   set runtimeVersion policy to sdkVersion for that publish, do not commit it); open it
   from Expo Go signed in to the Expo account. Purchases, Sentry and push do not work there.
   Other people's iPhones: since 2026-05-12 Expo Go loads EAS updates only for an account that
-  owns the project or is a member of the organization that owns it (a 403 otherwise), and the
-  project belongs to the owner's personal account, so a link or QR code alone opens nothing. A
-  tester needs Expo Go signed in to the owner's account (Projects > fakkarni > Branches >
-  expo-go > the top update; a branch-page open stays on that update), or an Expo organization
-  that owns the project with the tester as a Viewer (owner's decision: a transfer changes
-  app.json `owner`, a conversion changes his login). `eas update --branch` creates no channel,
-  so there is no always-newest exp://u.expo.dev/<projectId>?channel-name=expo-go link until an
-  expo-go channel is created.
+  owns the project or is a member of the organization that owns it (a 403 otherwise). Testers:
+  invite them as Viewer on expo.dev (kiki91111s-team > Members); they sign in to Expo Go with
+  their own Expo account and open fakkarni from the team's projects, or the always-newest link
+  exp://u.expo.dev/249766b3-d4c3-46d0-b596-3004a690def9?channel-name=expo-go (ota-update.yml
+  links channel expo-go to branch expo-go on every publish).
 - DB columns are snake_case (`@map`), TS fields camelCase; wire types in
   packages/shared are snake_case.
 - Changes to the PRD §6 data model: Item gains `remind_at` + `important` (needed by
@@ -612,6 +616,9 @@ Rules:
   JavaScript-only fixes; EAS's free plan Android builds run out monthly. Since 2026-11-24 it also
   publishes the iPhone copy (branch "expo-go", Expo Go): before that, iPhone fixes needed a manual
   publish and the owner's iPhone ran an old bundle for a day of fixes.
+  It also links the EAS channel "preview" to the branch "preview" before publishing: builds made
+  with `eas build --local` never create that link, and such a build said "There are no branches
+  linked to the channel" in Me > Advanced and kept its built-in bundle (2026-11-27).
 - Alarms: `wantsAlarm` (pipeline/rules.ts) hears "منبه / صحيني / alarm / mnabeh" and the pipeline
   sets alarm on what the turn creates or changes (the model sometimes said "set" with alarm false);
   "بلاش منبه" turns it off. Me has an Alarms list (local SQLite `listAlarms`) with Remove; the Saved
