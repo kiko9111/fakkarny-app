@@ -8,8 +8,10 @@ android
 
 ## Users
 
-- First users: a mom running a household in Egypt. She plans school, homework, shopping, money and her parents' medicine from her phone, mostly inside WhatsApp today, often with one hand and in short moments.
-- Around her: her husband, children (including teens), brothers and sisters, friends. Many of them meet Zaki through a WhatsApp link before they install anything.
+- A wide audience, not one group (owner decision, 2026-11-28): anyone who keeps their own life and shares parts of it with family and friends. Students and teens, young professionals, friend groups splitting bills and trips, couples, parents running a household, grown children caring for their parents, work and gym groups. Men and women, roughly 13 to 60+.
+- The design must feel right to all of them: neither childish nor motherly, neither corporate nor only for the young. No screen may assume a role (a parent, a wife, an employee). A household mom is one important user and was the first growth audience; she is not the design's only target.
+- What they share: they live in WhatsApp, use the phone in short moments with one hand, and want things remembered without managing an app.
+- Many people meet Zaki through a WhatsApp link from someone else before they install anything.
 - Language: Egyptian Arabic first, right to left. English second. Franco-Arabic is read, never written back.
 - Phones: mid-range Android first. iPhone runs the same app and the same design.
 
