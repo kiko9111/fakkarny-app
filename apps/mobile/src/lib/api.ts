@@ -923,7 +923,11 @@ export async function updateSplit(id: string, body: UpdateSplitRequest): Promise
   return SplitResponse.parse(await request(`/splits/${id}`, { method: "PUT", body: JSON.stringify(body) }));
 }
 export async function markSplitPaid(id: string, index: number, paid: boolean): Promise<SplitResponse> {
-  return SplitResponse.parse(await request(`/splits/${id}/paid`, { method: "POST", body: JSON.stringify({ index, paid }) }));
+  const res = SplitResponse.parse(await request(`/splits/${id}/paid`, { method: "POST", body: JSON.stringify({ index, paid }) }));
+  // Today's inbox and the Daftar's list draw from the saved list: they have the tick before their next read.
+  saved("/splits", parseSplits, (old) => ({ splits: old.map((x) => (x.id === res.split.id ? res.split : x)) }));
+  reads.set(`/splits/${id}`, res);
+  return res;
 }
 export async function deleteSplit(id: string): Promise<void> {
   await request(`/splits/${id}`, { method: "DELETE" });

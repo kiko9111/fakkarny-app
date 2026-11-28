@@ -3,10 +3,17 @@ import type { Item } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { t, dateLocale } from "@/i18n";
 import { planTimes } from "@/lib/plan-time";
+import { dayOf } from "@/today/glance";
 import { glass, Icon, IconTile, palette, radius, space, Text } from "@/ui";
 
-const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString(dateLocale, { hour: "numeric", minute: "2-digit" });
+/** Today says the clock alone, tomorrow its word, any other day the weekday. */
+const when = (iso: string) => {
+  const day = dayOf(iso, new Date());
+  if (day === "today") return clock(iso);
+  if (day === "tomorrow") return `${t.lay.today.tomorrow} ${clock(iso)}`;
+  return new Date(iso).toLocaleString(dateLocale, { weekday: "short", hour: "numeric", minute: "2-digit" });
+};
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
 
 /**
@@ -14,26 +21,26 @@ const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Dat
  * reminds, if apart), the place for a place reminder, and at the end a violet alarm square when it rings as an alarm
  * or a blue pin when it waits for a place.
  */
-export function PlanRow({ item, onDone }: { item: Item; onDone: () => void }) {
+export function PlanRow({ item, onDone, flat, late }: { item: Item; onDone: () => void; flat?: boolean; late?: boolean }) {
   const { main, reminder } = planTimes(item);
   const reminderText = reminder && main ? (sameDay(reminder, main) ? clock(reminder) : when(reminder)) : null;
   const place = item.place?.trim() || null;
   return (
-    <View style={styles.row}>
-      <Pressable onPress={onDone} accessibilityRole="button" accessibilityLabel={`${t.upcoming.done}: ${item.title}`} hitSlop={8} style={({ pressed }) => [styles.check, pressed && styles.checkOn]}>
+    <View style={flat ? styles.flat : styles.row}>
+      <Pressable onPress={onDone} accessibilityRole="button" accessibilityLabel={`${t.upcoming.done}: ${item.title}`} hitSlop={9} style={({ pressed }) => [styles.check, pressed && styles.checkOn]}>
         {({ pressed }) => <Icon name="checkmark" size={18} color={pressed ? palette.onPrimary : palette.lineStrong} />}
       </Pressable>
       <View style={styles.text}>
-        <Text variant="bodyStrong" numberOfLines={2}>
+        <Text variant="bodyStrong" numberOfLines={flat ? 1 : 2}>
           {item.title}
         </Text>
         {main || place ? (
           <View style={styles.meta}>
             {main ? (
               <View style={styles.bit}>
-                <Icon name={item.remind_at && !reminder ? "alarm-outline" : "calendar-outline"} size={14} color={palette.inkSoft} />
-                <Text variant="small" color={palette.inkSoft}>
-                  {when(main)}
+                <Icon name={late ? "alert-circle-outline" : item.remind_at && !reminder ? "alarm-outline" : "calendar-outline"} size={14} color={late ? palette.danger : palette.inkSoft} />
+                <Text variant={late ? "smallStrong" : "small"} color={late ? palette.danger : palette.inkSoft}>
+                  {late ? `${t.lay.today.late} · ${when(main)}` : when(main)}
                 </Text>
               </View>
             ) : null}
@@ -70,6 +77,7 @@ export function PlanRow({ item, onDone }: { item: Item; onDone: () => void }) {
 
 const styles = StyleSheet.create({
   row: { ...glass, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 64 },
+  flat: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.sm, minHeight: 60 },
   check: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: palette.lineStrong, alignItems: "center", justifyContent: "center" },
   checkOn: { backgroundColor: palette.ok, borderColor: palette.ok },
   text: { flex: 1, minWidth: 0, gap: 2 },

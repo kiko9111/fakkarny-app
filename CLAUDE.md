@@ -1347,6 +1347,34 @@ Rules:
     filled and WhatsApp fills keeps 4.5:1 under the button's 4% gloss. The launcher icon and the
     splash are native: they change with the next Android build, the in-app Zaki art over the air.
 
+  - Design round 2 (2026-11-28, owner pick after an Impeccable critique: "The Glance" everywhere,
+    the circle by person; apps/mobile/PRODUCT.md and DESIGN.md are the records; the audience is
+    wide, no screen assumes a role). Step 1, Today and the circle:
+    - A screen answers in numbers first: `NumberStrip` (src/ui/glance.tsx) holds two or three
+      counts, a cell with 0 is left out, tapping one shows only that, the chosen one is underlined
+      in near-black; red ink only on what is late or missed. Lists are `Rows` (one card, radius 18,
+      `lineStrong` hairlines, rows of about 60dp with `flat`), not a card per row; a capped list
+      ends in `MoreRow`; small doors are `MiniTile` in `MiniTiles`, three to a line.
+    - Today (today/glance.ts, pure): the date, then one "next" line (the next dose still to come
+      today, else the round in which the gam'eya pot is the reader's, else the holiday beside the
+      date); the strip Needs you / Plans / Late; the inbox ranked (`rankNeeds`: a dose nobody
+      marked, gam'eya money late or due today, requests, reviews, Daftar, splits, the rest) and
+      capped at MAX_NEEDS = 4 with "+N more" opening in place; plans (3 beside an inbox, else 5;
+      the newest late plan keeps the first place and says "Late" in red; today shows the clock
+      alone, tomorrow its word); one line of doors (Lists, Tracking, A space for you).
+    - Undo: `notify(text, tone, { label, onPress })` shows a snackbar for 6 s with one way back.
+      It is offered only for the reader's own marks (a dose taken, "I paid" on a gam'eya or a
+      split, a ticked plan: `useItems().reopen`), never for an answer another person already
+      heard (a request's Yes, a Daftar Confirm). A split share is paid from Today (`pay_split`),
+      and `markSplitPaid` writes the saved list.
+    - A circle (app/circle/[id].tsx, circles/people.ts pure): the check-in button, then one row
+      per member (`memberRows`: last check-in, and the one open thing between them and the
+      reader, most pressing first: a dose of theirs nobody marked with Taken, their request with
+      Yes, their homework with Review, what the reader asked them, their next dose), capped at 5;
+      then the jobs as doors with their counts; then the newest 2 lines. A task names its
+      assigner only by name, so a request is put on a member's row only when no other member
+      shares that name. People's rows show faces and `circleStatus` ("3 need you", else the next
+      dose, else the member count) from the saved copies.
 - Daily news brief (2026-11-27, kareem: "the user chooses topics and Zaki gives a short daily brief").
   Topics and wording in packages/shared/src/brief.ts (12 topics; free 1, Pro up to 5, limits off
   while REQUIRE_SUBSCRIPTION=0; 402 `brief_limit` opens the paywall). users.brief_topics /

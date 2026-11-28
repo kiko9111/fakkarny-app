@@ -1,26 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
-import { checkinOrder, type CareMed, type CheckinKind, type CircleDetail, type CircleFeedResponse, type HouseList, type MoneySection, type PocketAccount, type SharedTracker, type Split } from "@fakkarni/shared";
+import { guessDose as guessDoseMark, checkinOrder, type CareMed, type CheckinKind, type CircleDetail, type CircleFeedResponse, type HouseList, type MoneySection, type PocketAccount, type SharedTracker, type Split } from "@fakkarni/shared";
 import { careSummary } from "@/care/logic";
 import { doseClock } from "@/care/clock";
 import { fill, guessCheckin } from "@/circles/logic";
-import { latestCheckin, listSummary, moneyTile, moreCheckins, pocketOwed, showsHomework, taskCounts } from "@/circles/summary";
+import { memberRows, type MemberRow, type MemberThing } from "@/circles/people";
+import { listSummary, moneyTile, moreCheckins, pocketOwed, showsHomework, taskCounts } from "@/circles/summary";
 import { ago, CircleWaiting, memberName, useCircle, useInvite } from "@/circles/useCircle";
 import { dateLocale, t } from "@/i18n";
-import { checkIn, getCircleFeed, getCircleTrackers, getMoney, getPocketMoney, listCare, listLists, listSplits, peekCircleFeed, peekCare, peekCircleTrackers, peekLists, peekMoney, peekPocketMoney, peekSplits, saveCircle } from "@/lib/api";
+import { checkIn, markDose, respondTask, savedMed, getCircleFeed, getCircleTrackers, getMoney, getPocketMoney, listCare, listLists, listSplits, peekCircleFeed, peekCare, peekCircleTrackers, peekLists, peekMoney, peekPocketMoney, peekSplits, saveCircle } from "@/lib/api";
 import { useLive } from "@/lib/live";
+import { pullItems } from "@/sync/items";
+import { dayOf } from "@/today/glance";
+import { needsChanged } from "@/today/useNeeds";
 import { QueuedOffline } from "@/sync/writes";
-import { Button, Card, Chip, IconButton, notify, palette, PersonAvatar, plain, Screen, SectionHeader, space, Text, Tile, TileGrid, ZakiAvatar, type IconName } from "@/ui";
+import { Button, Card, Chip, Icon, IconButton, MiniTile, MiniTiles, MoreRow, notify, palette, PersonAvatar, plain, Rows, Screen, SectionHeader, space, Text, ZakiAvatar, type IconName } from "@/ui";
 
 const CHECKIN_ICON: Record<CheckinKind, IconName> = { arrived: "flag-outline", home: "home-outline", on_way: "car-outline", medicine: "medkit-outline", ok: "happy-outline" };
 const LATEST = 2;
-const FACES = 6;
+/** Three doors to a line. */
+const PER_LINE = 3;
+/** A check-in's time: today the clock alone, else the weekday too. */
+const checkinTime = (iso: string) => (dayOf(iso, new Date()) === "today" ? new Date(iso).toLocaleTimeString(dateLocale, { hour: "numeric", minute: "2-digit" }) : ago(iso));
+const ANSWER: Partial<Record<MemberThing["type"], () => string>> = { dose: () => t.lay.care.taken, request: () => t.lay.today.yes, review: () => t.lay.today.review };
 const amount = (n: number) => Math.round(n).toLocaleString(dateLocale);
 
 /**
- * One circle in about one phone height: who's OK, a tile per job (each opens its own screen),
- * and the two newest lines. Members, invite, leave and delete are on Circle info (the header's
+ * One circle by person, in about one phone height: the check-in, a row per member (their last
+ * check-in and the one open thing between you, answered in place), a small door per job, and the
+ * two newest lines. Members, invite, leave and delete are on Circle info (the header's
  * button); the whole feed is behind "See all".
  */
 export default function CircleScreen() {
@@ -36,6 +45,7 @@ export default function CircleScreen() {
   // As with lists: a server from before care circles answers 404, and the tile stays hidden.
   const [care, setCare] = useState<CareMed[] | null>(() => peekCare());
   const [more, setMore] = useState(false);
+  const [answering, setAnswering] = useState<string | null>(null);
 
   // Each part loads on its own: the circle shows as soon as it arrives, and a feed or tracker
   // problem never keeps the whole circle from opening.
@@ -108,12 +118,81 @@ export default function CircleScreen() {
   const others = circle.members.length > 1;
   const open = (pathname: string) => () => router.push({ pathname, params: { id } } as Href);
 
-  const last = latestCheckin(circle.members);
   const counts = taskCounts(feed.tasks);
   const owed = pocketOwed(pocket, id);
   const list = listSummary(lists, id);
   const money = moneyTile(sections, splits, id);
   const meds = careSummary(care, id);
+  const people = memberRows({ members: circle.members, tasks: feed.tasks, care, circleId: id }, { askedYou: t.lay.circle.askedYou, youAsked: t.lay.circle.youAsked, notMarked: t.lay.circle.medNotMarked, nextDose: t.lay.circle.medNext, clock: doseClock });
+
+  /** Where a member's row goes: the screen of the thing beside them, else Circle info. */
+  const thingRoute = (thing: MemberThing | null) => (!thing ? "/circle/info" : thing.type === "dose" || thing.type === "next" ? "/circle/care" : thing.type === "review" || (thing.type === "asked" && thing.homework) ? "/circle/homework" : "/circle/tasks");
+  /** Taken and Yes answer in place; the row changes once the saved copies hold the answer. */
+  const answerThing = async (row: MemberRow) => {
+    const thing = row.thing;
+    if (!thing || answering) return;
+    if (thing.type !== "dose" && thing.type !== "request") return open(thingRoute(thing))();
+    setAnswering(row.member.user_id);
+    try {
+      if (thing.type === "request") {
+        await respondTask(thing.taskId, "accept");
+        void pullItems();
+      } else {
+        const { medId, dueAt } = thing;
+        try {
+          await markDose(medId, { due_at: dueAt, status: "taken" });
+          notify(t.lay.today.markedTaken, "ok", {
+            label: t.lay.common.undo,
+            onPress: () =>
+              void markDose(medId, { due_at: dueAt, status: "open" }).then(
+                () => void load(),
+                () => notify(t.lay.care.failed, "error"),
+              ),
+          });
+        } catch (err) {
+          if (!(err instanceof QueuedOffline)) throw err;
+          const med = peekCare()?.find((m) => m.id === medId);
+          if (med) savedMed(guessDoseMark(med, dueAt, "taken", new Date(), null));
+        }
+      }
+      needsChanged.emit();
+      await load();
+    } catch {
+      notify(thing.type === "dose" ? t.lay.care.failed : t.tasks.failed, "error");
+    } finally {
+      setAnswering(null);
+    }
+  };
+
+  const doors = [
+    <MiniTile key="tasks" icon="checkmark-circle-outline" kind="people" title={t.lay.circle.tasks} line={counts.waiting ? fill(t.lay.circle.waiting, { n: counts.waiting }) : counts.open ? String(counts.open) : undefined} onPress={open("/circle/tasks")} />,
+    showsHomework(family, feed.tasks) ? <MiniTile key="homework" icon="school-outline" title={t.lay.circle.homework} line={owed ? fill(t.ui.pounds, { n: amount(owed) }) : counts.homework ? String(counts.homework) : undefined} onPress={open("/circle/homework")} /> : null,
+    lists ? <MiniTile key="lists" icon="cart-outline" title={t.lay.circle.lists} line={list.open ? fill(t.lay.today.listsOpen, { n: list.open }) : undefined} onPress={() => router.push({ pathname: "/list", params: { circle: id } })} /> : null,
+    care && (meds.count > 0 || family) ? (
+      <MiniTile
+        key="care"
+        icon="medkit-outline"
+        kind="people"
+        title={t.lay.care.title}
+        line={meds.missed ? fill(t.lay.care.missedN, { n: meds.missed }) : meds.next ? fill(t.lay.care.nextAt, { time: doseClock(meds.next) }) : meds.count ? t.lay.care.allDone : undefined}
+        danger={meds.missed > 0}
+        onPress={open("/circle/care")}
+      />
+    ) : null,
+    <MiniTile
+      key="money"
+      icon="wallet-outline"
+      kind="money"
+      title={t.lay.circle.money}
+      line={money.value === null ? undefined : `${{ pay: t.lay.circle.toPay, share: t.lay.circle.yourShare, splits: t.lay.circle.openSplits, start: "" }[money.says]} ${money.says === "splits" ? String(money.value) : amount(money.value)}`.trim()}
+      danger={money.says === "pay"}
+      onPress={open("/circle/money")}
+    />,
+    <MiniTile key="trackers" icon="stats-chart-outline" kind="people" title={t.lay.circle.trackers} line={trackers.length ? String(trackers.length) : undefined} onPress={open("/circle/trackers")} />,
+  ].filter((d): d is NonNullable<typeof d> => d !== null);
+  const doorLines: (typeof doors)[] = [];
+  for (let i = 0; i < doors.length; i += PER_LINE) doorLines.push(doors.slice(i, i + PER_LINE));
+
   const checkinChips = (
     <View style={styles.chips}>
       {(others ? moreCheckins(checkinOrder(circle.family_type)) : checkinOrder(circle.family_type)).map((kind) => (
@@ -133,22 +212,7 @@ export default function CircleScreen() {
       />
 
       {others ? (
-        <Card style={styles.top}>
-          <View style={styles.faces}>
-            {circle.members.slice(0, FACES).map((m) => (
-              <PersonAvatar key={m.user_id} name={memberName(m)} size={36} color={tint} bg={tintSoft} />
-            ))}
-            {circle.members.length > FACES ? (
-              <Text variant="smallStrong" color={palette.inkSoft}>
-                +{circle.members.length - FACES}
-              </Text>
-            ) : null}
-          </View>
-          <Text variant="small" color={palette.inkSoft} numberOfLines={2}>
-            {last?.last_checkin
-              ? `${fill(t.lay.circle.checkinLine, { name: memberName(last), what: plain(t.family.checkins[last.last_checkin.kind]) })} · ${ago(last.last_checkin.at)}`
-              : t.lay.circle.noCheckins}
-          </Text>
+        <>
           <View style={styles.actions}>
             <View style={styles.flex}>
               <Button label={plain(t.family.checkins.ok)} icon={CHECKIN_ICON.ok} block onPress={() => sendCheckin("ok")} />
@@ -156,7 +220,49 @@ export default function CircleScreen() {
             <Button label={t.lay.circle.more} kind="text" onPress={() => setMore((m) => !m)} />
           </View>
           {more ? checkinChips : null}
-        </Card>
+          <Rows>
+            {people.rows.map((row) => {
+              const { member: m, thing } = row;
+              const label = thing ? ANSWER[thing.type]?.() : undefined;
+              const checkin = m.last_checkin ? `${plain(t.family.checkins[m.last_checkin.kind])} · ${checkinTime(m.last_checkin.at)}` : null;
+              const busy = answering === m.user_id;
+              return (
+                <Pressable
+                  key={m.user_id}
+                  onPress={open(thingRoute(thing))}
+                  accessibilityRole="button"
+                  accessibilityLabel={[memberName(m), checkin, thing?.text].filter(Boolean).join(", ")}
+                  style={({ pressed }) => [styles.person, pressed && styles.pressed]}
+                >
+                  <PersonAvatar name={memberName(m)} size={36} color={tint} bg={tintSoft} />
+                  <View style={styles.flex}>
+                    <View style={styles.nameLine}>
+                      <Text variant="bodyStrong" numberOfLines={1} style={styles.name}>
+                        {memberName(m)}
+                      </Text>
+                      {checkin ? (
+                        <Text variant="caption" color={palette.inkSoft} numberOfLines={1} style={styles.checkin}>
+                          {checkin}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {thing ? (
+                      <Text variant="small" color={thing.type === "dose" ? palette.danger : palette.inkSoft} numberOfLines={1}>
+                        {thing.text}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {label ? (
+                    <Button label={label} size="sm" kind="tonal" busy={busy} disabled={busy} onPress={() => void answerThing(row)} accessibilityLabel={`${label}: ${thing?.text ?? ""}`} />
+                  ) : (
+                    <Icon name="chevron-forward" size={18} color={palette.inkFaint} />
+                  )}
+                </Pressable>
+              );
+            })}
+            {people.more > 0 ? <MoreRow label={fill(t.lay.circle.moreMembers, { n: people.more })} onPress={open("/circle/info")} /> : null}
+          </Rows>
+        </>
       ) : (
         <Card style={styles.top}>
           <Text variant="headline">{t.lay.circle.inviteFirst}</Text>
@@ -166,57 +272,11 @@ export default function CircleScreen() {
         </Card>
       )}
 
-      <TileGrid>
-        <Tile
-          title={t.lay.circle.tasks}
-          icon="checkmark-circle-outline"
-          kind="people"
-          value={String(counts.open)}
-          line={counts.waiting ? fill(t.lay.circle.waiting, { n: counts.waiting }) : undefined}
-          tone="primary"
-          onPress={open("/circle/tasks")}
-        />
-        {showsHomework(family, feed.tasks) ? (
-          <Tile
-            title={t.lay.circle.homework}
-            icon="school-outline"
-            value={String(counts.homework)}
-            line={owed ? fill(t.lay.circle.pocket, { n: amount(owed) }) : undefined}
-            onPress={open("/circle/homework")}
-          />
-        ) : null}
-        {lists ? (
-          <Tile title={t.lay.circle.lists} icon="cart-outline" value={String(list.open)} line={list.top?.name} onPress={() => router.push({ pathname: "/list", params: { circle: id } })} />
-        ) : null}
-        {care && (meds.count > 0 || family) ? (
-          <Tile
-            title={t.lay.care.title}
-            icon="medkit-outline"
-            kind="people"
-            value={meds.count ? String(meds.left) : undefined}
-            line={meds.missed ? fill(t.lay.care.missedN, { n: meds.missed }) : meds.next ? fill(t.lay.care.nextAt, { time: doseClock(meds.next) }) : meds.count ? t.lay.care.allDone : t.lay.care.add}
-            tone={meds.missed ? "warn" : undefined}
-            onPress={open("/circle/care")}
-          />
-        ) : null}
-        <Tile
-          title={t.lay.circle.money}
-          icon="wallet-outline"
-          kind="money"
-          value={money.value === null ? undefined : money.says === "splits" ? String(money.value) : amount(money.value)}
-          line={{ pay: t.lay.circle.toPay, share: t.lay.circle.yourShare, splits: t.lay.circle.openSplits, start: t.lay.circle.startBook }[money.says]}
-          tone={money.says === "pay" ? "warn" : undefined}
-          onPress={open("/circle/money")}
-        />
-        <Tile
-          title={t.lay.circle.trackers}
-          icon="stats-chart-outline"
-          kind="people"
-          value={trackers.length ? String(trackers.length) : undefined}
-          line={trackers.length ? undefined : t.lay.circle.startTracker}
-          onPress={open("/circle/trackers")}
-        />
-      </TileGrid>
+      <View style={styles.doors}>
+        {doorLines.map((line, i) => (
+          <MiniTiles key={i}>{line}</MiniTiles>
+        ))}
+      </View>
 
       <SectionHeader title={t.lay.circle.latest} action={t.lay.common.seeAll} onAction={open("/circle/feed")} />
       <Card style={styles.latest}>
@@ -244,7 +304,12 @@ export default function CircleScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   top: { gap: space.md },
-  faces: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  person: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.sm, minHeight: 60 },
+  pressed: { backgroundColor: palette.wash },
+  nameLine: { flexDirection: "row", alignItems: "baseline", gap: space.sm },
+  name: { flexShrink: 1 },
+  checkin: { flexShrink: 0 },
+  doors: { gap: space.sm },
   actions: { flexDirection: "row", alignItems: "center", gap: space.sm },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   latest: { paddingVertical: space.xs, gap: 0 },
