@@ -1,0 +1,20 @@
+# Voice-over lines for the feature video (the cloud session can't reach the TTS service).
+# Runs when a pushed commit message contains "[video-voice]" and commits video/voice/out back.
+name: Video voice-over
+on: push
+permissions:
+  contents: write
+jobs:
+  voice:
+    if: contains(github.event.head_commit.message, '[video-voice]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install edge-tts==7.2.3 || pip install edge-tts
+      - run: python video/voice/make.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git add video/voice/out
+          git commit -m "Voice-over lines (generated)"
+          git push

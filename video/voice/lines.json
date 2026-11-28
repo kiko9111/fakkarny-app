@@ -1,0 +1,27 @@
+{
+  "voices": { "ar": "ar-EG-SalmaNeural", "ar2": "ar-EG-ShakirNeural", "en": "en-US-AvaNeural" },
+  "lines": [
+    { "id": "hook", "ar": "تسع أبلكيشنات، وميت جروب… ومحدش فاكر حاجة.", "en": "Nine apps. A hundred group chats. And nobody remembers a thing." },
+    { "id": "onechat", "ar": "زكي بيجمعهم كلهم في شات واحد.", "en": "Zaki puts it all in one chat." },
+    { "id": "remind", "ar": "اكتب زي ما بتتكلم، وزكي يفتكر لك.", "en": "Type like you talk, and Zaki remembers." },
+    { "id": "franco", "ar": "وبيفهم فرانكو كمان.", "en": "It reads Franco too." },
+    { "id": "place", "ar": "فكّرني لما أوصل السوبر ماركت.", "en": "Remind me when I get to the supermarket." },
+    { "id": "today", "ar": "وكل اللي محتاجك النهارده، قدامك.", "en": "Everything that needs you today, in one place." },
+    { "id": "split", "ar": "قسّم الفاتورة، والخدمة والضريبة محسوبين.", "en": "Split the bill, service and VAT included." },
+    { "id": "debt", "ar": "الدفتر: مين عليه كام، والاتنين موافقين.", "en": "Who owes what, confirmed by both." },
+    { "id": "gameya", "ar": "والجمعية منظّمة: الدور على مين، ومين دفع.", "en": "Your gam'eya, organised: whose turn, and who paid." },
+    { "id": "spend", "ar": "ومصاريفك في جملة واحدة.", "en": "Your spending, in one sentence." },
+    { "id": "care", "ar": "مواعيد دوا بابا، للعيلة كلها.", "en": "Dad's medicine times, for the whole family." },
+    { "id": "taken", "ar": "ولو جرعة اتنست، الكل يعرف.", "en": "A missed dose? Everyone knows." },
+    { "id": "checkin", "ar": "طمّنهم بكلمة، من غير تتبّع.", "en": "Let them know with a word. No tracking." },
+    { "id": "forward", "ar": "حوّل رسالة المدرسة، وزكي يوزّع الواجب.", "en": "Forward the school message, and Zaki hands out the homework." },
+    { "id": "homework", "ar": "والمصروف بالمجهود.", "en": "Pocket money that's earned." },
+    { "id": "list", "ar": "والقايمة بتروح مع اللي نازل.", "en": "The list goes with whoever's out." },
+    { "id": "ask", "ar": "اطلب من حد في البيت، وهو يوافق بضغطة.", "en": "Ask someone at home, and they say yes with a tap." },
+    { "id": "water", "ar": "وتابع عاداتك بكلمة.", "en": "And track habits with a word." },
+    { "id": "compare", "ar": "كل أبلكيشن بيعمل حتة. زكي بيجمع الناس.", "en": "Each app does one part. Zaki brings people together." },
+    { "id": "truths", "ar": "بيتكلم مصري، وصحابك يردّوا من لينك واتساب، وبيشتغل من غير نت.", "en": "It speaks Egyptian, friends answer from a WhatsApp link, and it works offline." },
+    { "id": "trust", "ar": "ومفيش حاجة توصل لحد من غير موافقتك.", "en": "And nothing reaches anyone without your yes." },
+    { "id": "end", "ar": "زكي… بيفتكر عشانك.", "en": "Zaki. Remembers, so you don't have to." }
+  ]
+}
