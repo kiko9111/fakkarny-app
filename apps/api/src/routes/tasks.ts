@@ -9,6 +9,8 @@ import { hasProAccess } from "../billing/family";
 import { canCancel, canFinish, canNudge, canRespond, canSetRemind, postLine } from "../tasks/rules";
 import { inviteToIftar } from "../circles/ops";
 import { postUpdate } from "../daftar/store";
+import { toWireLinkTask } from "../links/store";
+import { baseUrl } from "./circles";
 import { assignTask, cancel, finish, langOf, nudge, respond, reviewHomework, roleOf, submitHomework, toWireTask, wirePosts, withPeople, type Outcome } from "../tasks/store";
 
 export interface TaskRoutesOptions {
@@ -18,6 +20,7 @@ export interface TaskRoutesOptions {
   authenticate: preHandlerAsyncHookHandler;
   now?: () => Date;
   push?: PushSender;
+  publicUrl?: string;
 }
 
 const IdParam = z.object({ id: z.uuid() });
@@ -62,7 +65,7 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
     const params = IdParam.safeParse(req.params);
     if (!params.success || !(await isMember(params.data.id, req.user.id))) return reply.code(404).send({ error: "not_found" });
     const circleId = params.data.id;
-    const [posts, tasks] = await Promise.all([
+    const [posts, tasks, linkTasks] = await Promise.all([
       prisma.circlePost.findMany({ where: { circleId }, orderBy: { createdAt: "desc" }, take: 50 }),
       prisma.circleTask.findMany({
         where: { circleId, OR: [{ status: { in: ["accepted", "done"] } }, { status: { in: ["pending", "declined"] }, OR: [{ assignerId: req.user.id }, { assigneeId: req.user.id }] }] },
@@ -70,9 +73,15 @@ export const taskRoutes: FastifyPluginAsync<TaskRoutesOptions> = async (app, opt
         orderBy: { createdAt: "desc" },
         take: 200,
       }),
+      prisma.linkTask.findMany({ where: { circleId, creatorId: req.user.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" }, take: 50 }),
     ]);
     const at = now();
-    return { posts: await wirePosts(prisma, posts, langOf(req.user), req.user.id), tasks: tasks.map((t) => toWireTask(t, req.user.id, at)) } satisfies CircleFeedResponse;
+    const base = baseUrl(req, opts.publicUrl);
+    return {
+      posts: await wirePosts(prisma, posts, langOf(req.user), req.user.id),
+      tasks: tasks.map((t) => toWireTask(t, req.user.id, at)),
+      link_tasks: linkTasks.map((t) => toWireLinkTask(t, base)),
+    } satisfies CircleFeedResponse;
   });
 
   /** Iftar invitation to the whole circle (Ramadan pack): a post everyone can answer, plus a push. */

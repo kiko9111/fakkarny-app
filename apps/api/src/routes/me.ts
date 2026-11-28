@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync, preHandlerAsyncHookHandler } from "fastify";
-import { INSTALL_ID_HEADER, parseInstapayLink, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
+import { briefTopicLimit, DEFAULT_BRIEF_TIME, INSTALL_ID_HEADER, knownTopics, parseInstapayLink, PatchMeRequest, type ExportResponse, type MeResponse } from "@fakkarni/shared";
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import { coveredByFamilyPlan } from "../billing/family";
+import { hasPro } from "../billing/plan";
 import { isValidTimeZone } from "../lib/time";
 import { forgetCachedUser, installAuthId, linkInstallToAccount, type AuthConfig } from "../plugins/auth";
 import { toWireEntry, withPeople as daftarPeople } from "../daftar/store";
@@ -12,6 +13,8 @@ export interface MeRoutesOptions {
   prisma: PrismaClient;
   auth: AuthConfig;
   authenticate: preHandlerAsyncHookHandler;
+  /** Free users follow FREE_BRIEF_TOPICS news topics only while subscriptions are on. */
+  requireSubscription?: boolean;
   /** Deletes the Supabase auth user too (needs the service role key); optional. */
   deleteAuthUser?: (sub: string) => Promise<void>;
 }
@@ -52,8 +55,21 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
     }
     if (b.always_direct !== undefined) data.alwaysDirect = b.always_direct;
     if (b.gender !== undefined) data.gender = b.gender;
+    if (b.brief_topics !== undefined) {
+      const topics = knownTopics(b.brief_topics);
+      if (topics.length > 1 && opts.requireSubscription) {
+        const now = new Date();
+        const pro = hasPro(req.user, now) || (await coveredByFamilyPlan(prisma, req.user.id, now));
+        if (topics.length > briefTopicLimit(pro)) return reply.code(402).send({ error: "brief_limit" });
+      }
+      data.briefTopics = topics;
+      // Turning the brief on without a time: the default, so the user is never left waiting for nothing.
+      if (topics.length && b.brief_time === undefined && !req.user.briefTime) data.briefTime = DEFAULT_BRIEF_TIME;
+    }
+    if (b.brief_time !== undefined) data.briefTime = b.brief_time;
+    if (b.city !== undefined) data.city = b.city;
     // New waking hours or time zone: let the proactive tick look again now (proactive/schedule.ts).
-    if (b.timezone || b.wake_time || b.sleep_time || b.checkin_interval_h) data.nextTickAt = null;
+    if (b.timezone || b.wake_time || b.sleep_time || b.checkin_interval_h || b.brief_topics || b.brief_time !== undefined) data.nextTickAt = null;
     if (b.instapay_link !== undefined) {
       const link = b.instapay_link ? parseInstapayLink(b.instapay_link) : null;
       if (b.instapay_link && !link) return reply.code(400).send({ error: "invalid_instapay_link" });
@@ -68,7 +84,7 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
   app.get("/me/export", async (req) => {
     const where = { userId: req.user.id };
     const id = req.user.id;
-    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems] = await Promise.all([
+    const [messages, items, memories, summaries, circles, daftar, tasks, trackers, checkins, sessions, money, comments, splits, photos, pocket, listItems, linkTasks, gameyas, careMeds, careMarks] = await Promise.all([
       prisma.message.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.item.findMany({ where, orderBy: { createdAt: "asc" } }),
       prisma.memory.findMany({ where, orderBy: { createdAt: "asc" } }),
@@ -89,6 +105,10 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       prisma.photo.findMany({ where, include: { task: { select: { title: true } } }, orderBy: { createdAt: "asc" } }),
       prisma.pocketMoneyEntry.findMany({ where: { OR: [{ childId: id }, { parentId: id }] }, orderBy: { createdAt: "asc" } }),
       prisma.houseListItem.findMany({ where: { OR: [{ addedById: id }, { doneById: id }] }, include: { list: { select: { name: true } } }, orderBy: { createdAt: "asc" } }),
+      prisma.linkTask.findMany({ where: { creatorId: id }, orderBy: { createdAt: "asc" } }),
+      prisma.gameya.findMany({ where: { OR: [{ ownerId: id }, { members: { some: { userId: id } } }] }, include: { members: { orderBy: { turn: "asc" } }, payments: true }, orderBy: { createdAt: "asc" } }),
+      prisma.careMed.findMany({ where: { OR: [{ createdById: id }, { personUserId: id }] }, orderBy: { createdAt: "asc" } }),
+      prisma.careDose.findMany({ where: { byUserId: id }, include: { med: { select: { name: true, personName: true } } }, orderBy: { dueAt: "asc" } }),
     ]);
     const res: ExportResponse = {
       exported_at: new Date().toISOString(),
@@ -112,6 +132,19 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       photos: photos.map((p) => ({ task: p.task?.title ?? null, mime: p.mime, data: Buffer.from(p.data).toString("base64"), created_at: p.createdAt.toISOString() })),
       pocket_money: pocket.map((e) => ({ role: e.childId === id ? ("child" as const) : ("parent" as const), kind: e.kind, amount: e.amount, title: e.title, at: e.createdAt.toISOString() })),
       list_items: listItems.map((i) => ({ list: i.list.name, title: i.title, qty: i.qty, added: i.addedById === id, done_at: i.doneAt?.toISOString() ?? null, created_at: i.createdAt.toISOString() })),
+      link_tasks: linkTasks.map((t) => ({ other_name: t.otherName, title: t.title, note: t.note, status: t.status, due_at: t.dueAt?.toISOString() ?? null, done_at: t.doneAt?.toISOString() ?? null, created_at: t.createdAt.toISOString() })),
+      gameyas: gameyas.map((g) => ({
+        name: g.name,
+        role: g.ownerId === id ? ("organizer" as const) : ("member" as const),
+        amount: g.amount,
+        currency: g.currency,
+        pay_day: g.payDay,
+        start_month: g.startMonth,
+        members: g.members.map((m) => ({ name: m.name, turn: m.turn, is_me: m.userId === id, received: m.receivedAt !== null, paid_rounds: g.payments.filter((p) => p.memberId === m.id).map((p) => p.round) })),
+        created_at: g.createdAt.toISOString(),
+      })),
+      care_meds: careMeds.map((m) => ({ person: m.personName, for_me: m.personUserId === id, added: m.createdById === id, name: m.name, dose: m.dose, times: m.times, time_zone: m.timeZone, note: m.note, active: m.active, created_at: m.createdAt.toISOString() })),
+      care_marks: careMarks.map((d) => ({ medicine: d.med.name, person: d.med.personName, due_at: d.dueAt.toISOString(), status: d.status, marked_at: d.markedAt?.toISOString() ?? null })),
     };
     return res;
   });
@@ -125,6 +158,15 @@ export const meRoutes: FastifyPluginAsync<MeRoutesOptions> = async (app, opts) =
       await tx.circlePost.deleteMany({ where: { OR: [{ actorId: user.id }, { targetId: user.id }] } });
       // Private lists go with the account; a circle's lists stay for the others.
       await tx.houseList.deleteMany({ where: { ownerId: user.id, circleId: null } });
+      // Gam'eyas they organize pass to the first Zaki member by turn (the book is everyone's
+      // record); one with no other Zaki member goes. In others' gam'eyas their name stays as text.
+      for (const g of await tx.gameya.findMany({ where: { ownerId: user.id }, select: { id: true, members: { where: { userId: { not: null } }, orderBy: { turn: "asc" }, select: { userId: true } } } })) {
+        const next = g.members.find((m) => m.userId !== user.id);
+        if (next) await tx.gameya.update({ where: { id: g.id }, data: { ownerId: next.userId! } });
+        else await tx.gameya.delete({ where: { id: g.id } });
+      }
+      // Care circles: their family keeps the medicine record (foreign keys let go of the account), minus reminders to them.
+      await tx.$executeRaw`UPDATE care_meds SET remind_user_ids = array_remove(remind_user_ids, ${user.id}::uuid) WHERE ${user.id}::uuid = ANY(remind_user_ids)`;
       // Group splits others made keep the name (their record) but stop pointing at this account.
       await tx.$executeRaw`UPDATE splits SET member_ids = array_remove(member_ids, ${user.id}::uuid) WHERE ${user.id}::uuid = ANY(member_ids)`;
       // Circles they own pass to the longest-standing member, as when an owner leaves;

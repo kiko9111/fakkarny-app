@@ -34,7 +34,11 @@ import { taskRoutes } from "./routes/tasks";
 import { feedRoutes } from "./routes/feed";
 import { moneyRoutes } from "./routes/money";
 import { trackerRoutes } from "./routes/trackers";
+import { linkPageRoutes } from "./routes/link-pages";
+import { linkTaskRoutes } from "./routes/link-tasks";
 import { listRoutes } from "./routes/lists";
+import { gameyaPageRoutes, gameyaRoutes } from "./routes/gameya";
+import { careRoutes } from "./routes/care";
 import { sessionRoutes } from "./routes/session";
 import type { FriendModel } from "./ai/model";
 import type { PushSender } from "./proactive/push";
@@ -142,9 +146,14 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(invitePageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
     app.register(daftarRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
     app.register(daftarPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl });
-    app.register(taskRoutes, { prisma, authenticate, now: deps.now, requireSubscription: billing.requireSubscription, push: deps.push });
+    app.register(taskRoutes, { prisma, authenticate, now: deps.now, requireSubscription: billing.requireSubscription, push: deps.push, publicUrl: deps.invites?.publicUrl });
     app.register(trackerRoutes, { prisma, authenticate, now: deps.now });
-    app.register(listRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
+    app.register(listRoutes, { prisma, authenticate, now: deps.now, push: deps.push, publicUrl: deps.invites?.publicUrl });
+    app.register(linkTaskRoutes, { prisma, authenticate, now: deps.now, publicUrl: deps.invites?.publicUrl });
+    app.register(linkPageRoutes, { prisma, now: deps.now, storeUrl: deps.invites?.storeUrl, push: deps.push });
+    app.register(gameyaRoutes, { prisma, authenticate, publicUrl: deps.invites?.publicUrl, now: deps.now, push: deps.push });
+    app.register(gameyaPageRoutes, { prisma, publicUrl: deps.invites?.publicUrl, storeUrl: deps.invites?.storeUrl, now: deps.now, push: deps.push });
+    app.register(careRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(feedRoutes, { prisma, authenticate, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
     app.register(moneyRoutes, { prisma, authenticate, now: deps.now, push: deps.push });
     app.register(sessionRoutes, { prisma, authenticate, now: deps.now, model: deps.model, enabled: deps.sessionEnabled });
@@ -156,7 +165,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps: AppDeps = {}) {
     app.register(cardRoutes, { prisma, publicUrl: deps.invites?.publicUrl });
     app.register(photoRoutes, { prisma, authenticate, model: deps.model, now: deps.now, requireSubscription: billing.requireSubscription });
     app.register(homeworkRoutes, { prisma, authenticate, model: deps.model, now: deps.now, push: deps.push, requireSubscription: billing.requireSubscription });
-    app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser });
+    app.register(meRoutes, { prisma, auth, authenticate, deleteAuthUser: deps.deleteAuthUser, requireSubscription: billing.requireSubscription });
     app.register(bootstrapRoutes, { authenticate });
     if (deps.adminPassword) app.register(adminRoutes, { prisma, password: deps.adminPassword, metrics, now: deps.now });
   }

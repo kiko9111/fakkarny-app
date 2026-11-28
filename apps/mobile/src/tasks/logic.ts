@@ -1,4 +1,4 @@
-import type { CircleTask } from "@fakkarni/shared";
+import { linkTaskCancellable, linkTaskShareable, type CircleTask, type LinkTask } from "@fakkarni/shared";
 
 /** Pure helpers for assigned tasks (unit-tested; no react-native imports). */
 export type TaskAction = "accept" | "decline" | "done" | "nudge" | "cancel";
@@ -88,4 +88,21 @@ export function remindAt(choice: RemindChoice, now: Date, due: string | null): s
 export function firstLink(note: string | null | undefined): string | null {
   const m = note?.match(/https?:\/\/[^\s<>"']+/i);
   return m ? m[0].replace(/[.,;:!?)\]]+$/, "") : null;
+}
+
+export type LinkTaskState = "pending" | "seen" | "accepted" | "declined" | "done" | "cancelled";
+
+/** A task sent by link, as its creator sees it: the word under it and the buttons it has. */
+export function linkTaskView(t: Pick<LinkTask, "status" | "seen">): { state: LinkTaskState; again: boolean; cancel: boolean } {
+  const state: LinkTaskState = t.status === "pending" && t.seen ? "seen" : t.status;
+  return { state, again: linkTaskShareable(t.status), cancel: linkTaskCancellable(t.status) };
+}
+
+/** Open ones first (waiting, then accepted), then the rest; newest first inside each. Done ones older than a week drop off. */
+export function sortLinkTasks<T extends Pick<LinkTask, "status" | "created_at" | "done_at">>(tasks: readonly T[], now: Date): T[] {
+  const rank = (t: T) => (t.status === "pending" ? 0 : t.status === "accepted" ? 1 : t.status === "declined" ? 2 : 3);
+  const weekAgo = now.getTime() - 7 * 86_400_000;
+  return tasks
+    .filter((t) => t.status !== "cancelled" && !(t.status === "done" && t.done_at && Date.parse(t.done_at) < weekAgo))
+    .sort((a, b) => rank(a) - rank(b) || b.created_at.localeCompare(a.created_at));
 }

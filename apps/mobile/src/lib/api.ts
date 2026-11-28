@@ -1,7 +1,19 @@
 import Constants from "expo-constants";
 import {
+  CareMed,
+  CareMedResponse,
+  CareHistoryResponse,
+  type CareDay,
+  type CreateCareMedRequest,
+  type UpdateCareMedRequest,
+  type MarkDoseRequest,
   HouseList,
   HouseListResponse,
+  Gameya,
+  GameyaResponse,
+  GameyaRemindResponse,
+  type CreateGameyaRequest,
+  type UpdateGameyaRequest,
   type CreateListRequest,
   type AddListItemsRequest,
   type UpdateListRequest,
@@ -42,6 +54,10 @@ import {
   type CreateTrackerRequest,
   type Tracker,
   CircleFeedResponse,
+  LinkTask,
+  LinkTaskResponse,
+  ListLinkResponse,
+  type CreateLinkTaskRequest,
   ListTasksResponse,
   TaskResponse,
   type CircleTask,
@@ -422,7 +438,17 @@ export async function listItems(status?: "open" | "done" | "cancelled") {
   return ListItemsResponse.parse(await request(`/items${status ? `?status=${status}` : ""}`)).items;
 }
 
-const parseMe = (raw: unknown) => MeResponse.parse(raw).user;
+// A server from before cities omits `city` (zod fills null): the City row and Zaki's question wait
+// for a profile that carries the key, so an update that reaches phones first offers nothing it
+// can't save.
+let cityKnown = false;
+export const serverKnowsCity = () => cityKnown;
+const parseMe = (raw: unknown) => {
+  const user = MeResponse.parse(raw).user;
+  const sent = (raw as { user?: Record<string, unknown> } | null)?.user;
+  if (sent && "city" in sent) cityKnown = true;
+  return user;
+};
 export async function getMe(): Promise<User> {
   return cachedGet("/me", parseMe);
 }
@@ -594,8 +620,12 @@ export async function listTasks(): Promise<CircleTask[]> {
 export const peekTasks = () => peek("/tasks", parseTasks);
 
 const parseFeed = (raw: unknown): CircleFeedResponse => {
-  const r = (raw ?? {}) as { posts?: unknown; tasks?: unknown };
-  return { posts: eachValid(CircleFeedResponse.shape.posts.element.safeParse, r.posts), tasks: eachValid(CircleFeedResponse.shape.tasks.element.safeParse, r.tasks) };
+  const r = (raw ?? {}) as { posts?: unknown; tasks?: unknown; link_tasks?: unknown };
+  return {
+    posts: eachValid(CircleFeedResponse.shape.posts.element.safeParse, r.posts),
+    tasks: eachValid(CircleFeedResponse.shape.tasks.element.safeParse, r.tasks),
+    link_tasks: eachValid(LinkTask.safeParse, r.link_tasks),
+  };
 };
 export async function getCircleFeed(circleId: string): Promise<CircleFeedResponse> {
   return cachedGet(`/circles/${circleId}/feed`, parseFeed);
@@ -934,9 +964,107 @@ export async function removeListItem(id: string, itemId: string): Promise<HouseL
 export async function clearListDone(id: string): Promise<HouseList> {
   return listAnswer(await writeOrQueue("POST", `/lists/${id}/clear`));
 }
+/** The list's no-app link and the WhatsApp text (the same link each time until it is stopped). */
+export async function shareListLink(id: string): Promise<ListLinkResponse> {
+  const out = ListLinkResponse.parse(await request(`/lists/${id}/link`, { method: "POST" }));
+  saved("/lists", parseLists, (old) => ({ lists: old.map((l) => (l.id === id ? { ...l, has_link: true } : l)) }));
+  return out;
+}
+export async function stopListLink(id: string): Promise<HouseList> {
+  return listAnswer(await request(`/lists/${id}/link`, { method: "DELETE" }));
+}
+
+// Tasks for people not on Zaki (2026-11-27): shown on the circle's tasks screen from its feed.
+const feedPath = (circleId: string) => `/circles/${circleId}/feed`;
+function savedLinkTask(task: LinkTask): LinkTask {
+  if (task.circle_id) saved(feedPath(task.circle_id), parseFeed, (feed) => ({ ...feed, link_tasks: [task, ...feed.link_tasks.filter((x) => x.id !== task.id)] }));
+  return task;
+}
+export async function createLinkTask(body: CreateLinkTaskRequest): Promise<LinkTaskResponse> {
+  const out = LinkTaskResponse.parse(await request("/link-tasks", { method: "POST", body: JSON.stringify(body) }));
+  savedLinkTask(out.task);
+  return out;
+}
+export async function shareLinkTask(id: string): Promise<LinkTaskResponse> {
+  const out = LinkTaskResponse.parse(await request(`/link-tasks/${id}/share`, { method: "POST" }));
+  savedLinkTask(out.task);
+  return out;
+}
+export async function cancelLinkTask(task: LinkTask): Promise<void> {
+  await request(`/link-tasks/${task.id}/cancel`, { method: "POST" });
+  if (task.circle_id) saved(feedPath(task.circle_id), parseFeed, (feed) => ({ ...feed, link_tasks: feed.link_tasks.filter((x) => x.id !== task.id) }));
+}
+
 /** "I'm going shopping" tells other people: only shown as done once the server says so. */
 export async function setListTrip(id: string, going: boolean): Promise<HouseList> {
   return listAnswer(await request(`/lists/${id}/trip`, { method: "POST", body: JSON.stringify({ going }) }));
+}
+
+// The gam'eya book (2026-11-27). Needs a connection for writes (others see them at once), except
+// that every answer goes into the saved copies so the list and the screen agree.
+const parseGameyas = (raw: unknown): Gameya[] => eachValid(Gameya.safeParse, (raw as { gameyas?: unknown } | null)?.gameyas);
+export async function listGameyas(): Promise<Gameya[]> {
+  return cachedGet("/gameyas", parseGameyas);
+}
+export const peekGameyas = (): Gameya[] | null => peek("/gameyas", parseGameyas);
+/** One gam'eya from the saved list (no request of its own: GET /gameyas carries everything). */
+export const peekGameya = (id: string): Gameya | null => peekGameyas()?.find((g) => g.id === id) ?? null;
+export async function getGameya(id: string): Promise<GameyaResponse> {
+  return gameyaAnswer(await cachedGet(`/gameyas/${id}`, GameyaResponse.parse));
+}
+export function savedGameya(g: Gameya): Gameya {
+  saved("/gameyas", parseGameyas, (old) => ({ gameyas: old.some((x) => x.id === g.id) ? old.map((x) => (x.id === g.id ? g : x)) : [g, ...old] }));
+  return g;
+}
+const gameyaAnswer = (res: GameyaResponse): GameyaResponse => {
+  savedGameya(res.gameya);
+  return res;
+};
+const gameyaWrite = async (path: string, method: string, body?: unknown): Promise<GameyaResponse> => {
+  const res = gameyaAnswer(GameyaResponse.parse(await request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })));
+  reads.set(`/gameyas/${res.gameya.id}`, res);
+  return res;
+};
+export const createGameya = (body: CreateGameyaRequest) => gameyaWrite("/gameyas", "POST", body);
+export const updateGameya = (id: string, body: UpdateGameyaRequest) => gameyaWrite(`/gameyas/${id}`, "PATCH", body);
+export const markGameyaPaid = (id: string, member_id: string, round: number, paid: boolean) => gameyaWrite(`/gameyas/${id}/paid`, "POST", { member_id, round, paid });
+export const markGameyaReceived = (id: string, round: number, received: boolean) => gameyaWrite(`/gameyas/${id}/received`, "POST", { round, received });
+export async function remindGameya(id: string): Promise<GameyaRemindResponse> {
+  return GameyaRemindResponse.parse(await request(`/gameyas/${id}/remind`, { method: "POST" }));
+}
+export async function deleteGameya(id: string): Promise<void> {
+  await request(`/gameyas/${id}`, { method: "DELETE" });
+  saved("/gameyas", parseGameyas, (old) => ({ gameyas: old.filter((g) => g.id !== id) }));
+}
+
+// Care circles (2026-11-27): a family's medicine times. Marks are idempotent (the same dose, the
+// same answer), so they go through writeOrQueue: offline they wait and the screen keeps its guess.
+const parseCare = (raw: unknown): CareMed[] => eachValid(CareMed.safeParse, (raw as { meds?: unknown } | null)?.meds);
+export async function listCare(): Promise<CareMed[]> {
+  return cachedGet("/care", parseCare);
+}
+export const peekCare = (): CareMed[] | null => peek("/care", parseCare);
+/** A medicine as the server (or a guess) has it, into the saved copy. */
+export function savedMed(med: CareMed): CareMed {
+  saved("/care", parseCare, (old) => ({ meds: old.some((m) => m.id === med.id) ? old.map((m) => (m.id === med.id ? med : m)) : [...old, med] }));
+  return med;
+}
+const medAnswer = (raw: unknown): CareMed => savedMed(CareMedResponse.parse(raw).med);
+export async function createMed(body: CreateCareMedRequest): Promise<CareMed> {
+  return medAnswer(await request("/care/meds", { method: "POST", body: JSON.stringify(body) }));
+}
+export async function updateMed(id: string, body: UpdateCareMedRequest): Promise<CareMed> {
+  return medAnswer(await request(`/care/meds/${id}`, { method: "PATCH", body: JSON.stringify(body) }));
+}
+export async function deleteMed(id: string): Promise<void> {
+  await request(`/care/meds/${id}`, { method: "DELETE" });
+  saved("/care", parseCare, (old) => ({ meds: old.filter((m) => m.id !== id) }));
+}
+export async function markDose(id: string, body: MarkDoseRequest): Promise<CareMed> {
+  return medAnswer(await writeOrQueue("POST", `/care/meds/${id}/doses`, body, { alsoOnServerError: true }));
+}
+export async function getMedHistory(id: string): Promise<CareDay[]> {
+  return CareHistoryResponse.parse(await request(`/care/meds/${id}/history`)).days;
 }
 
 // Every tab in one answer (GET /bootstrap, servers from 2026-11-26). The server runs each screen's
@@ -953,6 +1081,8 @@ const PARSERS: [RegExp, (raw: unknown) => unknown][] = [
   [/^\/memories$/, parseMemories],
   [/^\/pocket-money$/, parsePocket],
   [/^\/lists$/, parseLists],
+  [/^\/gameyas$/, parseGameyas],
+  [/^\/care$/, parseCare],
   [/^\/circles\/[^/]+$/, parseCircle],
   [/^\/circles\/[^/]+\/feed$/, parseFeed],
   [/^\/circles\/[^/]+\/trackers$/, parseShared],

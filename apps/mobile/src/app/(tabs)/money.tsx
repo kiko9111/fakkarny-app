@@ -50,6 +50,7 @@ export default function MoneyScreen() {
     { key: "money", icon: "wallet-outline", kind: "money", label: t.lay.daftar.addMoney, onPress: addMoney },
     { key: "debt", icon: "swap-horizontal-outline", kind: "people", label: t.lay.daftar.addDebt, onPress: () => router.push("/daftar/new") },
     { key: "split", icon: "pie-chart-outline", kind: "place", label: t.lay.daftar.addSplit, onPress: () => router.push("/split/new") },
+    { key: "gameya", icon: "sync-circle-outline", kind: "money", label: t.lay.gameya.add, onPress: () => router.push("/gameya/new") },
     // From Splits the receipt fills a new split; elsewhere its total goes into a section.
     ...(photosAvailable ? [{ key: "receipt", icon: "camera-outline" as const, kind: "money" as const, label: t.lay.daftar.addReceipt, onPress: () => (part === "split" ? router.push({ pathname: "/receipt", params: { for: "split" } }) : router.push("/receipt")) }] : []),
     { key: "section", icon: "folder-open-outline", kind: "neutral", label: t.lay.daftar.addSection, onPress: () => router.push("/money/new") },

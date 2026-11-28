@@ -56,6 +56,9 @@ export async function removeMember(prisma: PrismaClient, circleId: string, userI
     await tx.circleMember.delete({ where: { circleId_userId: { circleId, userId } } });
     await tx.tracker.updateMany({ where: { userId, circleId }, data: { circleId: null } });
     await tx.invite.updateMany({ where: { circleId, inviterId: userId, revokedAt: null }, data: { revokedAt: now } });
+    // Care circles: no more reminders for someone who left, and their medicines no longer point at their account.
+    await tx.$executeRaw`UPDATE care_meds SET remind_user_ids = array_remove(remind_user_ids, ${userId}::uuid) WHERE circle_id = ${circleId}::uuid AND ${userId}::uuid = ANY(remind_user_ids)`;
+    await tx.careMed.updateMany({ where: { circleId, personUserId: userId }, data: { personUserId: null } });
     const next = await tx.circleMember.findFirst({ where: { circleId }, orderBy: [{ joinedAt: "asc" }, { userId: "asc" }] });
     if (!next) await tx.circle.delete({ where: { id: circleId } });
     else if (target.role === "owner") await tx.circleMember.update({ where: { circleId_userId: { circleId, userId: next.userId } }, data: { role: "owner" } });

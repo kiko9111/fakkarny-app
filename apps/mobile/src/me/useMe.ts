@@ -4,7 +4,7 @@ import type { Item, PatchMeRequest, User } from "@fakkarni/shared";
 import { currentAccountLabel } from "@/auth";
 import { listAlarms } from "@/db/items";
 import { t } from "@/i18n";
-import { getMe, patchItem, patchMe, peekMe } from "@/lib/api";
+import { getMe, patchItem, patchMe, peekMe, serverKnowsCity } from "@/lib/api";
 import { failText } from "@/lib/errors";
 import { prefs } from "@/lib/prefs";
 import { saveItem } from "@/sync/save-item";
@@ -38,6 +38,8 @@ export function useMe(onFresh?: (user: User) => void) {
           if (!here) return;
           setUser(u);
           prefs.set("always_direct", u.always_direct ? "1" : "0");
+          // A city picked on another phone: the money words follow on the next start.
+          if (serverKnowsCity() && (u.city ?? null) !== prefs.get("city")) prefs.set("city", u.city ?? null);
           fresh.current?.(u);
         })
         .catch(() => {});
@@ -47,14 +49,15 @@ export function useMe(onFresh?: (user: User) => void) {
     }, []),
   );
 
-  const save = useCallback(async (patch: PatchMeRequest) => {
+  /** `handled` may take a failure itself (say, a 402 that opens the paywall); true stops the error toast. */
+  const save = useCallback(async (patch: PatchMeRequest, handled?: (err: unknown) => boolean) => {
     const before = latest.current;
     if (before) setUser({ ...before, ...patch } as User);
     try {
       setUser(await patchMe(patch));
     } catch (err) {
       setUser(before);
-      notify(failText(err, t.saved.offline), "error");
+      if (!handled?.(err)) notify(failText(err, t.saved.offline), "error");
     }
   }, []);
 

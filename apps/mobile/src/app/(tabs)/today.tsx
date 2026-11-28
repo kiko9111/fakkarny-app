@@ -1,12 +1,16 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useNavigation } from "expo-router";
-import type { CircleTask, DaftarEntry, HouseList, Item, ListTrackersResponse, Split, Tracker } from "@fakkarni/shared";
+import type { CareMed, CircleTask, DaftarEntry, Gameya, HouseList, Item, ListTrackersResponse, Split, Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { listUpcoming } from "@/db/items";
-import { t, dateLocale, listComma } from "@/i18n";
+import { t, dateLocale, language, listComma } from "@/i18n";
+import { prefs } from "@/lib/prefs";
+import { localDayOf } from "@/lib/unlock";
+import { holidayNote } from "@/today/holiday";
 import { PLACE_ICON, preview, sortLists } from "@/lists/logic";
-import { listDaftar, listLists, listSplits, listTasks, listTrackers, peekDaftar, peekLists, peekSplits, peekTasks, peekTrackers } from "@/lib/api";
+import { listCare, listDaftar, listGameyas, listLists, listSplits, listTasks, listTrackers, peekCare, peekDaftar, peekGameyas, peekLists, peekSplits, peekTasks, peekTrackers } from "@/lib/api";
+import { localDay } from "@/gameya/logic";
 import { comingUp } from "@/lib/coming-up";
 import { useLive } from "@/lib/live";
 import { useItems } from "@/lib/useItems";
@@ -38,14 +42,18 @@ export default function TodayScreen() {
   const [tasks, setTasks] = useState<CircleTask[] | null>(() => peekTasks());
   const [daftar, setDaftar] = useState<DaftarEntry[] | null>(() => peekDaftar());
   const [splits, setSplits] = useState<Split[] | null>(() => peekSplits());
+  const [gameyas, setGameyas] = useState<Gameya[] | null>(() => peekGameyas());
   const [trackers, setTrackers] = useState<Tracker[] | null>(() => peekTrackers()?.trackers ?? null);
   const [limit, setLimit] = useState<number | null>(() => peekTrackers()?.limit ?? 1);
   // null until this server has answered GET /lists once (a server from before lists says 404: no section).
   const [lists, setLists] = useState<HouseList[] | null>(() => peekLists());
+  const [care, setCare] = useState<CareMed[] | null>(() => peekCare());
 
   /** What the phone holds (the same objects when nothing changed: no redraw). No request. */
   const readSaved = useCallback(() => {
-    const held = { tasks: peekTasks(), daftar: peekDaftar(), splits: peekSplits(), trackers: peekTrackers(), lists: peekLists() };
+    const held = { tasks: peekTasks(), daftar: peekDaftar(), splits: peekSplits(), trackers: peekTrackers(), lists: peekLists(), gameyas: peekGameyas(), care: peekCare() };
+    if (held.gameyas) setGameyas(held.gameyas);
+    if (held.care) setCare(held.care);
     if (held.tasks) setTasks(held.tasks);
     if (held.daftar) setDaftar(held.daftar);
     if (held.splits) setSplits(held.splits);
@@ -67,6 +75,8 @@ export default function TodayScreen() {
     listSplits().then(setSplits).catch(quiet);
     listTrackers().then(showTrackers).catch(quiet);
     listLists().then(setLists).catch(quiet);
+    listGameyas().then(setGameyas).catch(quiet);
+    listCare().then(setCare).catch(quiet);
   }, [readSaved]);
   useLive(loadOnline);
   const reload = () => {
@@ -79,7 +89,7 @@ export default function TodayScreen() {
     needsChanged.emit();
   };
 
-  const needs = useMemo(() => needsYou({ tasks, daftar, splits }, needWords()), [tasks, daftar, splits]);
+  const needs = useMemo(() => needsYou({ tasks, daftar, splits, gameyas, care, today: localDay() }, needWords()), [tasks, daftar, splits, gameyas, care]);
   const { soon, repeating } = comingUp(items, new Date());
   const noPlans = soon.length === 0 && repeating.length === 0;
   const openLists = lists ? sortLists(lists).filter((l) => l.open_count > 0) : [];
@@ -101,7 +111,11 @@ export default function TodayScreen() {
   useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
 
   const done = (i: Item) => () => void complete(i.id).catch(() => {});
-  const dateLine = new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
+  const holiday = holidayNote(prefs.get("city"), localDayOf(new Date()), language === "en" ? "en" : "ar");
+  const dateLine = [
+    new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" }),
+    holiday ? (holiday.when === "today" ? holiday.name : fill(t.lay.today.tomorrowHoliday, { name: holiday.name })) : "",
+  ].filter(Boolean).join(" · ");
 
   return (
     <Screen onRefresh={reload}>

@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Zaki on the home screen: plans, the next dose, what waits for an answer. Reads only what the app wrote. -->
+    <receiver
+      android:name="expo.modules.zakiwidget.ZakiWidgetProvider"
+      android:exported="false"
+      android:label="@string/zaki_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/zaki_widget_info" />
+    </receiver>
+  </application>
+</manifest>

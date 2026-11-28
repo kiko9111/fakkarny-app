@@ -8,6 +8,7 @@ import { useAlarms } from "@/me/useMe";
 import { alarmStatus, fullScreenAlarms, openAlarmSetting, testAlarm } from "@/notifications";
 import { notify } from "@/ui/feedback";
 import { usePlaces } from "@/places/store";
+import { pinWidget, widgetAvailable, widgetsPlaced } from "@/widget";
 import { Button, IconTile, NavRow, palette, RowGroup, Screen, space, Text } from "@/ui";
 
 const when = (iso: string) => new Date(iso).toLocaleString(dateLocale, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -72,6 +73,16 @@ export default function RemindersScreen() {
       ) : null}
 
       <RowGroup>
+        {/* The home-screen widget (Android builds with it): the launcher adds it, else how to. */}
+        {widgetAvailable ? (
+          <NavRow
+            icon="apps-outline"
+            kind="neutral"
+            title={t.lay.widget.row}
+            value={widgetsPlaced() > 0 ? t.lay.widget.placed : undefined}
+            onPress={() => (pinWidget() ? undefined : notify(t.lay.widget.howTo))}
+          />
+        ) : null}
         <NavRow icon="location-outline" kind="place" title={t.places.row} value={countLine(places.length, m.placesOne, m.placesCount) ?? undefined} onPress={() => router.push("/places")} />
       </RowGroup>
     </Screen>

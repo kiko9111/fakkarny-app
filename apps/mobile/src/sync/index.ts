@@ -12,6 +12,7 @@ import { track } from "@/lib/analytics";
 import { createEmitter } from "@/lib/emitter";
 import { dataChanged } from "@/lib/live";
 import { itemsChanged } from "@/lib/signals";
+import { startWidget } from "@/widget";
 import { LIVE_EVERY_MS } from "@/lib/live-plan";
 import { kvGet } from "@/db/kv";
 import { listScheduled } from "@/db/items";
@@ -143,17 +144,17 @@ export function startSync() {
   // Keep the push token current once the user has been asked (first ask happens after their first message).
   void kvGet("asked_notifications").then((asked) => (asked ? ensurePermissionAndRegister() : false)).catch(() => {});
   watchPushToken();
-  listenForNotifications(
-    () => void pullMessages(),
-    // "Done" / "Later" on a reminder notification becomes a chat message, sent like any other.
-    (text) =>
-      void addUserMessage(text)
-        .then(() => {
-          messagesChanged.emit();
-          return syncQueue.flush();
-        })
-        .catch(() => {}),
-  );
+  // "Done" / "Later" on a reminder notification (and Done on the widget's next dose) becomes a chat message, sent like any other.
+  const say = (text: string) =>
+    void addUserMessage(text)
+      .then(() => {
+        messagesChanged.emit();
+        return syncQueue.flush();
+      })
+      .catch(() => {});
+  listenForNotifications(() => void pullMessages(), say);
+  // The home-screen widget (Android builds with it): kept current, its Done taps answered.
+  startWidget(say);
   const refresh = () => {
     void syncQueue.wake();
     // Shared-data taps made offline (tracker steps, check-ins) go out first, then screens reload.

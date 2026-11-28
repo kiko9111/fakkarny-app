@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueAt, dueChoices, firstLink, guessTask, iftarDate, remindAt, remindChoices, sortTasks, taskActions } from "./logic";
+import { dueAt, dueChoices, firstLink, guessTask, iftarDate, linkTaskView, remindAt, remindChoices, sortLinkTasks, sortTasks, taskActions } from "./logic";
 
 describe("task logic", () => {
   const t = (status: "pending" | "accepted" | "declined" | "done" | "cancelled", role: "assigner" | "assignee" | "watcher", can_nudge = false) => ({ status, role, can_nudge });
@@ -75,5 +75,26 @@ describe("reminder picks and homework links", () => {
   it("finds the link in a homework note", () => {
     expect(firstLink("صفحة 40 https://school.test/hw/12.")).toBe("https://school.test/hw/12");
     expect(firstLink("حل التمارين")).toBeNull();
+  });
+});
+
+describe("tasks sent by link", () => {
+  const at = (d: string) => `2026-11-${d}T10:00:00.000Z`;
+  it("says whether the page was opened and offers only what the server allows", () => {
+    expect(linkTaskView({ status: "pending", seen: false })).toEqual({ state: "pending", again: true, cancel: true });
+    expect(linkTaskView({ status: "pending", seen: true }).state).toBe("seen");
+    expect(linkTaskView({ status: "accepted", seen: true })).toEqual({ state: "accepted", again: true, cancel: true });
+    expect(linkTaskView({ status: "declined", seen: true })).toEqual({ state: "declined", again: false, cancel: true });
+    expect(linkTaskView({ status: "done", seen: true })).toEqual({ state: "done", again: false, cancel: false });
+  });
+  it("puts open ones first and lets old finished ones go", () => {
+    const tasks = [
+      { id: "a", status: "done" as const, created_at: at("26"), done_at: at("26") },
+      { id: "b", status: "accepted" as const, created_at: at("25"), done_at: null },
+      { id: "c", status: "pending" as const, created_at: at("24"), done_at: null },
+      { id: "d", status: "done" as const, created_at: at("10"), done_at: at("11") },
+      { id: "e", status: "cancelled" as const, created_at: at("27"), done_at: null },
+    ];
+    expect(sortLinkTasks(tasks, new Date(at("27"))).map((t) => t.id)).toEqual(["c", "b", "a"]);
   });
 });

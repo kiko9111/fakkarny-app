@@ -43,6 +43,17 @@ export function Choice<K extends string>({ options, value, onChange }: { options
   );
 }
 
+/** Several answers to pick (chips, each filled while picked). */
+export function Picks<K extends string>({ options, values, onToggle }: { options: readonly { key: K; label: string }[]; values: readonly string[]; onToggle: (key: K) => void }) {
+  return (
+    <View style={styles.choice}>
+      {options.map((o) => (
+        <Chip key={o.key} label={o.label} selected={values.includes(o.key)} onPress={() => onToggle(o.key)} />
+      ))}
+    </View>
+  );
+}
+
 /** A text box that saves when it is left (`onEnd`), as Me's boxes always have. */
 export function MeInput({ onEnd, style, ...rest }: TextInputProps & { onEnd: () => void }) {
   return <TextInput placeholderTextColor={palette.inkFaint} textAlign={textStart} {...rest} style={[styles.input, style]} onEndEditing={onEnd} onBlur={onEnd} />;

@@ -5,7 +5,7 @@ import type { Feature } from "../lib/unlock";
  * opens a screen, asks which circle first, or puts a starter in the composer.
  */
 
-export type PlusKey = "receipt" | "split" | "homework" | "ask" | "list" | "remind";
+export type PlusKey = "receipt" | "split" | "homework" | "medicine" | "ask" | "list" | "remind" | "forward";
 
 export interface PlusCircle {
   id: string;
@@ -34,6 +34,8 @@ export interface PlusInput {
   lists: boolean;
   /** The lists she has, when known: "Add to a list" opens the only one, or starts the first. */
   listIds?: readonly string[];
+  /** The server has answered GET /care (an older server has no care circles). */
+  care?: boolean;
   circles: readonly PlusCircle[];
 }
 
@@ -59,15 +61,20 @@ function toList(ids: readonly string[] | undefined): PlusStep {
   return { go: ids.length === 1 ? `/list/${encodeURIComponent(ids[0]!)}` : "/list" };
 }
 
-export function plusActions({ photos, lists, listIds, circles }: PlusInput): PlusRow[] {
+export function plusActions({ photos, lists, listIds, care, circles }: PlusInput): PlusRow[] {
   const rows: PlusRow[] = [{ key: "remind", place: null, step: { compose: "remind" } }];
   if (lists) rows.push({ key: "list", place: "today", step: toList(listIds) });
   // With no circle yet, asking someone starts by making one.
   rows.push({ key: "ask", place: "people", step: toCircle(withPeople(circles), "/task/new") ?? { go: "/circle/new" } });
   const homework = toCircle(withPeople(circles.filter((c) => c.kind === "family")), "/homework/plan");
   if (homework) rows.push({ key: "homework", place: "people", step: homework });
+  // Medicine times live in a family circle (often a parent's, who may not have the app): any family circle fits.
+  const medicine = care ? toCircle(circles.filter((c) => c.kind === "family"), "/care/new") : null;
+  if (medicine) rows.push({ key: "medicine", place: "people", step: medicine });
   rows.push({ key: "split", place: "daftar", step: { go: "/split/new" } });
   if (photos) rows.push({ key: "receipt", place: "daftar", step: { go: "/receipt" } });
+  // A message from WhatsApp, pasted (every phone; Android builds from 2026-11-27 can also share it straight to Zaki).
+  rows.push({ key: "forward", place: null, step: { go: "/forward" } });
   return rows;
 }
 

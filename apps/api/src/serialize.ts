@@ -1,4 +1,6 @@
 import { hasPro } from "./billing/plan";
+import { knownTopics } from "@fakkarni/shared";
+import { cityById } from "@fakkarni/shared";
 import type {
   Item as WireItem,
   Memory as WireMemory,
@@ -92,6 +94,9 @@ export function toWireUser(u: User): WireUser {
     always_direct: u.alwaysDirect,
     instapay_link: u.instapayLink,
     gender: u.gender === "female" || u.gender === "male" ? u.gender : null,
+    brief_topics: knownTopics(u.briefTopics ?? []),
+    brief_time: u.briefTime,
+    city: cityById(u.city)?.id ?? null,
     created_at: iso(u.createdAt),
     last_active_at: isoOrNull(u.lastActiveAt),
   };

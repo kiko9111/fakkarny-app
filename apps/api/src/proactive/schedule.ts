@@ -20,6 +20,9 @@ export interface ScheduleUser {
   timezone: string;
   wakeTime: string;
   sleepTime: string;
+  /** The daily news brief's local time and topics: the tick wakes up for it even while the user sleeps or the budget is spent. */
+  briefTime?: string | null;
+  briefTopics?: string[] | null;
 }
 
 function nextDay(date: string): string {
@@ -36,6 +39,13 @@ export function nextLocalTime(now: Date, tz: string, hhmm: string): Date {
 }
 
 export function nextTickAt(user: ScheduleUser, now: Date, opts: { budgetSpent?: boolean } = {}): Date {
+  const at = plainNextTickAt(user, now, opts);
+  if (!user.briefTime || !user.briefTopics?.length) return at;
+  // The brief's window (brief/rules.ts) is longer than IDLE_MIN, so waking at its start is enough.
+  return new Date(Math.min(at.getTime(), clamp(nextLocalTime(now, user.timezone, user.briefTime), now).getTime()));
+}
+
+function plainNextTickAt(user: ScheduleUser, now: Date, opts: { budgetSpent?: boolean }): Date {
   const idle = new Date(now.getTime() + IDLE_MIN * 60_000);
   if (!isAwake(now, user.timezone, user.wakeTime, user.sleepTime)) {
     return clamp(nextLocalTime(now, user.timezone, user.wakeTime), now);

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Linking, Share, StyleSheet, View } from "react-native";
-import type { CircleDetail, CircleTask } from "@fakkarni/shared";
+import type { CircleDetail, CircleTask, LinkTask } from "@fakkarni/shared";
 import { whatsappShareUrl } from "@/circles/logic";
 import { t } from "@/i18n";
 import { createInvite, getCircle, getCircleFeed, peekCircle, peekCircleFeed } from "@/lib/api";
@@ -13,17 +13,23 @@ import { Button, Note, notify, palette, plain, space, Text } from "@/ui";
  * The phone's saved copies draw first, the server's answer replaces them; `tasks` is null only on
  * a first load with nothing saved.
  */
-export function useCircleJob(id: string): { circle: CircleDetail | null; tasks: CircleTask[] | null; failed: string | null; load: () => Promise<void> } {
+export function useCircleJob(id: string): { circle: CircleDetail | null; tasks: CircleTask[] | null; linkTasks: LinkTask[] | null; failed: string | null; load: () => Promise<void> } {
   const [circle, setCircle] = useState<CircleDetail | null>(() => peekCircle(id));
   const [tasks, setTasks] = useState<CircleTask[] | null>(() => peekCircleFeed(id)?.tasks ?? null);
+  const [linkTasks, setLinkTasks] = useState<LinkTask[] | null>(() => peekCircleFeed(id)?.link_tasks ?? null);
   const [failed, setFailed] = useState<string | null>(null);
   const load = useCallback(async () => {
     const held = { circle: peekCircle(id), feed: peekCircleFeed(id) };
     if (held.circle) setCircle(held.circle);
-    if (held.feed) setTasks(held.feed.tasks);
+    if (held.feed) {
+      setTasks(held.feed.tasks);
+      setLinkTasks(held.feed.link_tasks);
+    }
     const circleDone = getCircle(id).then(setCircle, () => {});
     try {
-      setTasks((await getCircleFeed(id)).tasks);
+      const feed = await getCircleFeed(id);
+      setTasks(feed.tasks);
+      setLinkTasks(feed.link_tasks);
       setFailed(null);
     } catch (err) {
       setFailed(failText(err, t.circles.offline));
@@ -31,7 +37,7 @@ export function useCircleJob(id: string): { circle: CircleDetail | null; tasks: 
     await circleDone;
   }, [id]);
   useLive(load);
-  return { circle, tasks, failed, load };
+  return { circle, tasks, linkTasks, failed, load };
 }
 
 /** The circle's WhatsApp invite, sent from the user's own number (any other app when WhatsApp is not there). */

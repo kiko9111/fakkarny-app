@@ -24,6 +24,8 @@ const ar = {
   emptyTitle: "مفيش حاجة مستنياك.",
   emptyAction: "ضيف تذكير",
   emptySay: "فكّرني بالعيش الساعة 6",
+  /** Beside the date when a holiday starts tomorrow in the user's city. */
+  tomorrowHoliday: "بكرة {name}",
 };
 
 const en: SameKeys<typeof ar> = {
@@ -44,6 +46,7 @@ const en: SameKeys<typeof ar> = {
   emptyTitle: "Nothing is waiting for you.",
   emptyAction: "Add a reminder",
   emptySay: "Remind me: bread at 6",
+  tomorrowHoliday: "Tomorrow: {name}",
 };
 
 export const strings = { "ar-EG": ar, en } as const;

@@ -1,4 +1,5 @@
 import type { DaftarStatus } from "@fakkarni/shared";
+import { currencyByCode, moneyWords } from "@fakkarni/shared";
 
 /**
  * Shared Daftar wording and state rules (pure). Money talk stays friendly and face-saving
@@ -12,8 +13,9 @@ export const flip = (d: Direction): Direction => (d === "owed_to_me" ? "i_owe" :
 
 export function formatAmount(amount: number, currency: string, lang: Lang): string {
   const n = amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (currency !== "EGP") return `${n} ${currency}`;
-  return lang === "ar" ? `${n} جنيه` : `EGP ${n}`;
+  const known = currencyByCode(currency);
+  if (!known) return `${n} ${currency}`;
+  return moneyWords(n, known, lang);
 }
 
 /** What may happen next. `who` is the caller: the creator or the other person. */

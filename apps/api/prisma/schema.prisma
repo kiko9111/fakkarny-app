@@ -146,6 +146,12 @@ model User {
   alwaysDirect       Boolean         @default(false) @map("always_direct")
   /// "female" | "male" | null (not told yet). Arabic needs it for "you" (owner ask 2026-11-23).
   gender             String?
+  /// Daily news brief (shared/brief.ts): topic names ([] = off) and local "HH:MM".
+  briefTopics        String[]        @default([]) @map("brief_topics")
+  briefTime          String?         @map("brief_time")
+  /// A city id from packages/shared/src/local.ts (never an exact spot); null until picked.
+  /// Sets currency, prayer times, holidays and the helpline country.
+  city               String?
   // Proactive-message bookkeeping (M4).
   lastMorningAt      DateTime?       @map("last_morning_at")
   lastNightAt        DateTime?       @map("last_night_at")
@@ -175,6 +181,12 @@ model User {
   listTrips       HouseList[]        @relation("ListTrip")
   listItemsAdded  HouseListItem[]    @relation("ListItemAdder")
   listItemsDone   HouseListItem[]    @relation("ListItemDoer")
+  linkTasks       LinkTask[]
+  gameyasOwned    Gameya[]           @relation("GameyaOwner")
+  gameyaSeats     GameyaMember[]     @relation("GameyaSeat")
+  careMedsMade    CareMed[]          @relation("CareMedMaker")
+  careMedsFor     CareMed[]          @relation("CareMedPerson")
+  careDosesMarked CareDose[]         @relation("CareDoseMarker")
   trackers        Tracker[]
   moneySections   MoneySection[]
   splits          Split[]
@@ -334,10 +346,13 @@ model Circle {
   tasks         CircleTask[]
   pocketMoney   PocketMoneyEntry[]
   lists         HouseList[]
+  linkTasks     LinkTask[]
+  gameyas       Gameya[]
   posts         CirclePost[]
   trackers      Tracker[]
   moneySections MoneySection[]
   splits        Split[]
+  careMeds      CareMed[]
 
   @@map("circles")
 }
@@ -729,6 +744,8 @@ model HouseList {
   // "I'm going to the market": who is out shopping for this list, since when.
   tripUserId String?   @map("trip_user_id") @db.Uuid
   tripAt     DateTime? @map("trip_at")
+  // The no-app link (https://…/l/CODE): anyone holding it can see, tick and add. Null = no link.
+  shareCode  String?   @unique @map("share_code")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at")
 
@@ -750,6 +767,9 @@ model HouseListItem {
   addedById String?   @map("added_by_id") @db.Uuid
   doneAt    DateTime? @map("done_at")
   doneById  String?   @map("done_by_id") @db.Uuid
+  // Someone without Zaki, on the list's web page: the name they typed (if any).
+  addedByName String?   @map("added_by_name")
+  doneByName  String?   @map("done_by_name")
   createdAt DateTime  @default(now()) @map("created_at")
 
   list    HouseList @relation(fields: [listId], references: [id], onDelete: Cascade)
@@ -758,4 +778,169 @@ model HouseListItem {
 
   @@index([listId, doneAt])
   @@map("house_list_items")
+}
+
+/// A task for someone who is not on Zaki. The creator sends the link from their own WhatsApp;
+/// the other person accepts, declines and marks it done on the web page (GET /t/:code).
+model LinkTask {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  creatorId   String    @map("creator_id") @db.Uuid
+  circleId    String?   @map("circle_id") @db.Uuid
+  otherName   String    @map("other_name")
+  title       String
+  note        String?
+  dueAt       DateTime? @map("due_at")
+  // pending | accepted | declined | done | cancelled (shared LinkTaskStatus)
+  status      String    @default("pending")
+  respondedAt DateTime? @map("responded_at")
+  doneAt      DateTime? @map("done_at")
+  webViews    Int       @default(0) @map("web_views")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  creator User    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  circle  Circle? @relation(fields: [circleId], references: [id], onDelete: SetNull)
+
+  @@index([creatorId, status])
+  @@index([circleId])
+  @@map("link_tasks")
+}
+
+// The gam'eya book (2026-11-27): a rotating savings circle. Records only, no money held.
+model Gameya {
+  id         String   @id @default(uuid()) @db.Uuid
+  // The organizer: keeps the book, ticks anyone's payment, hands over the pot.
+  ownerId    String   @map("owner_id") @db.Uuid
+  circleId   String?  @map("circle_id") @db.Uuid
+  name       String
+  // Whole pounds each member pays each month.
+  amount     Int
+  currency   String   @default("EGP")
+  payDay     Int      @map("pay_day")
+  // "YYYY-MM" of round 1.
+  startMonth String   @map("start_month")
+  // Public page /g/:code.
+  code       String   @unique
+  webViews   Int      @default(0) @map("web_views")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  owner    User            @relation("GameyaOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  circle   Circle?         @relation(fields: [circleId], references: [id], onDelete: SetNull)
+  members  GameyaMember[]
+  payments GameyaPayment[]
+
+  @@index([ownerId])
+  @@index([circleId])
+  @@map("gameyas")
+}
+
+model GameyaMember {
+  id         String    @id @default(uuid()) @db.Uuid
+  gameyaId   String    @map("gameya_id") @db.Uuid
+  name       String
+  // A Zaki user (a member of the circle, or the organizer); others are names only.
+  userId     String?   @map("user_id") @db.Uuid
+  // 1..members: the round whose pot this member takes.
+  turn       Int
+  // The pot of this member's round was handed over.
+  receivedAt DateTime? @map("received_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  gameya   Gameya          @relation(fields: [gameyaId], references: [id], onDelete: Cascade)
+  user     User?           @relation("GameyaSeat", fields: [userId], references: [id], onDelete: SetNull)
+  payments GameyaPayment[]
+
+  @@unique([gameyaId, turn])
+  @@index([userId])
+  @@map("gameya_members")
+}
+
+model GameyaPayment {
+  id        String   @id @default(uuid()) @db.Uuid
+  gameyaId  String   @map("gameya_id") @db.Uuid
+  memberId  String   @map("member_id") @db.Uuid
+  round     Int
+  // owner | member | web
+  markedBy  String   @default("owner") @map("marked_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gameya Gameya       @relation(fields: [gameyaId], references: [id], onDelete: Cascade)
+  member GameyaMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, round])
+  @@index([gameyaId])
+  @@map("gameya_payments")
+}
+
+/// One topic's news, summarised once per language and edition for every user who follows it (src/brief).
+/// Not user data: no user id, nothing a user wrote.
+model BriefDigest {
+  id        String   @id @default(uuid()) @db.Uuid
+  topic     String
+  lang      String // "arabic" | "english"
+  /// UTC day and 6-hour block the news was read in ("2026-11-27T06").
+  edition   String
+  /// The brief's lines for this topic (an empty list = no news worth sending).
+  lines     Json
+  sources   String[]
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([topic, lang, edition])
+  @@map("brief_digests")
+}
+
+// Care circles (2026-11-27): a family shares one person's medicine schedule (often a parent).
+// Reminders and records only: Zaki never gives medical advice.
+model CareMed {
+  id                 String   @id @default(uuid()) @db.Uuid
+  circleId           String   @map("circle_id") @db.Uuid
+  createdById        String?  @map("created_by_id") @db.Uuid
+  // Who takes it, in the family's words ("Mama"); personUserId when that person is a member.
+  personName         String   @map("person_name")
+  personUserId       String?  @map("person_user_id") @db.Uuid
+  // The medicine and the dose as the family wrote them (from the doctor's note). Never checked.
+  name               String
+  dose               String?
+  // Local "HH:MM" times, sorted, in timeZone.
+  times              String[] @default([])
+  timeZone           String   @map("time_zone")
+  // Members who get the reminder at dose time.
+  remindUserIds      String[] @default([]) @map("remind_user_ids") @db.Uuid
+  // Not marked this long after its time: the other members are told.
+  missedAfterMinutes Int      @default(60) @map("missed_after_minutes")
+  note               String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+
+  circle     Circle     @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("CareMedMaker", fields: [createdById], references: [id], onDelete: SetNull)
+  personUser User?      @relation("CareMedPerson", fields: [personUserId], references: [id], onDelete: SetNull)
+  doses      CareDose[]
+
+  @@index([circleId])
+  @@index([active])
+  @@map("care_meds")
+}
+
+// One dose time of a CareMed, written when Zaki reminds, alerts, or someone marks it.
+model CareDose {
+  id         String    @id @default(uuid()) @db.Uuid
+  medId      String    @map("med_id") @db.Uuid
+  dueAt      DateTime  @map("due_at")
+  // null = not marked; "taken" | "skipped"
+  status     String?
+  byUserId   String?   @map("by_user_id") @db.Uuid
+  markedAt   DateTime? @map("marked_at")
+  remindedAt DateTime? @map("reminded_at")
+  alertedAt  DateTime? @map("alerted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  med    CareMed @relation(fields: [medId], references: [id], onDelete: Cascade)
+  byUser User?   @relation("CareDoseMarker", fields: [byUserId], references: [id], onDelete: SetNull)
+
+  @@unique([medId, dueAt])
+  @@map("care_doses")
 }
