@@ -46,3 +46,15 @@ export function countLine(n: number, one: string, many: string): string | null {
 
 /** The parts that have something to say, joined the way row values are ("a · b"). */
 export const joinLine = (parts: (string | null | undefined)[]): string | undefined => parts.filter(Boolean).join(" · ") || undefined;
+
+/**
+ * The prayer that comes next today, for the City row ("Cairo · Maghrib 5:02 PM"). Sunrise is not a
+ * prayer; after Isha there is none left today.
+ */
+export function nextPrayer<K extends string>(times: Record<K, Date>, order: readonly K[], now: Date): { name: K; at: Date } | null {
+  for (const name of order) {
+    if (name === "sunrise") continue;
+    if (times[name].getTime() > now.getTime()) return { name, at: times[name] };
+  }
+  return null;
+}

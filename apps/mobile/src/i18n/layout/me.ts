@@ -20,7 +20,16 @@ const ar = {
   news: "أخبارك كل يوم",
   city: "مدينتك",
 
+  /** The three groups on Me. */
+  groupZaki: "زكي",
+  groupPhone: "الموبايل ده",
+  groupAccount: "الحساب",
+
   /** Value lines under the rows. */
+  memoriesCount: "{n} حاجات",
+  memoriesOne: "حاجة واحدة",
+  signedIn: "داخل بحسابك",
+  signedOut: "من غير حساب",
   checkEvery2: "كل ساعتين",
   checkEvery4: "كل 4 ساعات",
   checkOff: "مش بيطمّن",
@@ -104,6 +113,15 @@ const en: SameKeys<typeof ar> = {
   invite: "Invite a friend",
   news: "Daily news",
   city: "City",
+
+  groupZaki: "Zaki",
+  groupPhone: "This phone",
+  groupAccount: "Account",
+
+  memoriesCount: "{n} things",
+  memoriesOne: "1 thing",
+  signedIn: "Signed in",
+  signedOut: "No account",
 
   checkEvery2: "Every 2 hours",
   checkEvery4: "Every 4 hours",
