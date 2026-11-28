@@ -7,6 +7,7 @@ const ar = {
   seeAll: "شوف الكل",
   open: "افتح",
   done: "تم",
+  undo: "تراجع",
   cancel: "إلغاء",
   close: "اقفل",
   /** Under an empty screen's button: the words she could say in the chat instead. */
@@ -29,6 +30,7 @@ const en: SameKeys<typeof ar> = {
   seeAll: "See all",
   open: "Open",
   done: "Done",
+  undo: "Undo",
   cancel: "Cancel",
   close: "Close",
   orTellZaki: "Or say: “{words}”",

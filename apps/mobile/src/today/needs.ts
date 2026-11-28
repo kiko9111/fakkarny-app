@@ -7,7 +7,7 @@ import { daysToPayDay, dosesToAnswer, isPaid, myMember, phaseOf, roundState, typ
 export type NeedKind = "dose" | "task" | "homework_review" | "daftar" | "split" | "gameya";
 
 /** A row's one button when it answers in place; without it the button opens `route`. */
-export type NeedAction = { type: "accept_task" } | { type: "confirm_daftar" } | { type: "pay_gameya"; memberId: string; round: number } | { type: "dose_taken"; medId: string; dueAt: string };
+export type NeedAction = { type: "accept_task" } | { type: "confirm_daftar" } | { type: "pay_split"; index: number } | { type: "pay_gameya"; memberId: string; round: number } | { type: "dose_taken"; medId: string; dueAt: string };
 
 export interface NeedRow {
   kind: NeedKind;
@@ -18,6 +18,8 @@ export interface NeedRow {
   /** The item's own screen (where "no" and everything else lives). */
   route: string;
   action?: NeedAction;
+  /** The line is said in red (a dose nobody marked, money that is late) or amber (due today). */
+  tone?: "danger" | "warn";
 }
 
 /** Templates with "{name}" / "{amount}", and how money is written. */
@@ -96,6 +98,7 @@ export function needsYou(input: NeedsInput, words: NeedWords): NeedRow[] {
       line: words.doseNotMarked.replace("{time}", time),
       route: `/circle/care?id=${encodeURIComponent(med.circle_id)}`,
       action: { type: "dose_taken", medId: med.id, dueAt: dose.due_at },
+      tone: "danger",
     });
   }
 
@@ -112,7 +115,7 @@ export function needsYou(input: NeedsInput, words: NeedWords): NeedRow[] {
   for (const s of oldestFirst(input.splits ?? [], (s) => s.created_at)) {
     const share = myOpenShare(s);
     if (share === null) continue;
-    rows.push({ kind: "split", id: s.id, title: s.title.trim() || s.owner_name?.trim() || words.splitTitle, line: words.yourShare.replace("{amount}", words.money(share)), route: `/split/${encodeURIComponent(s.id)}` });
+    rows.push({ kind: "split", id: s.id, title: s.title.trim() || s.owner_name?.trim() || words.splitTitle, line: words.yourShare.replace("{amount}", words.money(share)), route: `/split/${encodeURIComponent(s.id)}`, action: { type: "pay_split", index: s.me! } });
   }
   if (input.today) rows.push(...gameyaNeeds(input.gameyas ?? [], input.today, words));
   return rows;
@@ -131,7 +134,7 @@ export function gameyaNeeds(gameyas: readonly Gameya[], today: string, words: Ne
     const days = daysToPayDay(g, g.round, today);
     if (me && !isPaid(g, me.id, g.round) && days <= GAMEYA_DUE_DAYS) {
       const when = days < 0 ? words.gameyaLate : days === 0 ? words.gameyaToday : words.gameyaPay;
-      rows.push({ kind: "gameya", id: `${g.id}:pay`, title: g.name, line: when.replace("{amount}", words.money(g.amount)), route, action: { type: "pay_gameya", memberId: me.id, round: g.round } });
+      rows.push({ kind: "gameya", id: `${g.id}:pay`, title: g.name, line: when.replace("{amount}", words.money(g.amount)), route, action: { type: "pay_gameya", memberId: me.id, round: g.round }, ...(days < 0 ? { tone: "danger" as const } : days === 0 ? { tone: "warn" as const } : {}) });
     }
     const s = roundState(g, g.round);
     if (g.mine && s.allPaid && s.receiver && !s.receiver.received) {

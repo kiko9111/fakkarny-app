@@ -1,6 +1,6 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import { router, useNavigation } from "expo-router";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import { router, useNavigation, type Href } from "expo-router";
 import type { CareMed, CircleTask, DaftarEntry, Gameya, HouseList, Item, ListTrackersResponse, Split, Tracker } from "@fakkarni/shared";
 import { fill } from "@/circles/logic";
 import { listUpcoming } from "@/db/items";
@@ -8,26 +8,23 @@ import { t, dateLocale, language, listComma } from "@/i18n";
 import { prefs } from "@/lib/prefs";
 import { localDayOf } from "@/lib/unlock";
 import { holidayNote } from "@/today/holiday";
-import { PLACE_ICON, preview, sortLists } from "@/lists/logic";
 import { listCare, listDaftar, listGameyas, listLists, listSplits, listTasks, listTrackers, peekCare, peekDaftar, peekGameyas, peekLists, peekSplits, peekTasks, peekTrackers } from "@/lib/api";
 import { localDay } from "@/gameya/logic";
-import { comingUp } from "@/lib/coming-up";
+import { doseClock } from "@/care/clock";
 import { useLive } from "@/lib/live";
 import { useItems } from "@/lib/useItems";
 import { NeedRow } from "@/today/NeedRow";
+import { glancePlans, nextLine, rankNeeds, shown, type GlanceFilter } from "@/today/glance";
 import { needsYou } from "@/today/needs";
 import { PlanRow } from "@/today/PlanRow";
 import { needsChanged, needWords } from "@/today/useNeeds";
 import { canAdd } from "@/trackers/logic";
-import { TrackerRow } from "@/trackers/TrackerRow";
-import { Badge, Card, IconTile, IntroPanel, NavRow, palette, RowGroup, Screen, SectionHeader, space, Text, useAddSheet, type AddAction } from "@/ui";
-
-/** How many lists with something open Today shows before "See all". */
-const MAX_LISTS = 3;
+import { Icon, IntroPanel, MiniTile, MiniTiles, MoreRow, notify, NumberStrip, palette, Rows, Screen, SectionHeader, space, Text, useAddSheet, type AddAction, type StripCell } from "@/ui";
 
 /**
- * "What needs me?": what waits for an answer, the plans, the lists with something open, what is
- * tracked, and a quiet door to A space for you. The friend never sends this as a list unprompted.
+ * "What needs me?" at a glance: the date and what comes next, three numbers (tap one to see only
+ * that), the inbox capped at four, the plans, and three small doors (lists, tracking, A space for
+ * you). The friend never sends this as a list unprompted.
  */
 export default function TodayScreen() {
   // Plans come from SQLite a moment after the first draw: until then "nothing planned" is not known.
@@ -37,7 +34,9 @@ export default function TodayScreen() {
     setPlansRead(true);
     return rows;
   }, []);
-  const { items, refresh, complete } = useItems(loadPlans);
+  const { items, refresh, complete, reopen } = useItems(loadPlans);
+  const [filter, setFilter] = useState<GlanceFilter | null>(null);
+  const [allNeeds, setAllNeeds] = useState(false);
 
   const [tasks, setTasks] = useState<CircleTask[] | null>(() => peekTasks());
   const [daftar, setDaftar] = useState<DaftarEntry[] | null>(() => peekDaftar());
@@ -89,13 +88,27 @@ export default function TodayScreen() {
     needsChanged.emit();
   };
 
-  const needs = useMemo(() => needsYou({ tasks, daftar, splits, gameyas, care, today: localDay() }, needWords()), [tasks, daftar, splits, gameyas, care]);
-  const { soon, repeating } = comingUp(items, new Date());
-  const noPlans = soon.length === 0 && repeating.length === 0;
-  const openLists = lists ? sortLists(lists).filter((l) => l.open_count > 0) : [];
+  const needs = useMemo(() => rankNeeds(needsYou({ tasks, daftar, splits, gameyas, care, today: localDay() }, needWords())), [tasks, daftar, splits, gameyas, care]);
+  const now = new Date();
+  const plans = glancePlans(items, now);
+  const lateIds = new Set(plans.late.map((i) => i.id));
+  // A filter whose number fell to 0 (the last late plan was ticked) shows everything again.
+  const live = filter === "needs" ? needs.length : filter === "plans" ? plans.rows.length : filter === "late" ? plans.late.length : 0;
+  const view = shown(live ? filter : null, needs, plans.rows, plans.late, allNeeds);
+  useEffect(() => {
+    if (filter && !live && plansRead) setFilter(null);
+  }, [filter, live, plansRead]);
+  const nothing = needs.length === 0 && plans.rows.length === 0;
+  const openThings = (lists ?? []).reduce((n, l) => n + l.open_count, 0);
+  const daily = (trackers ?? []).filter((x) => x.goal !== null && !x.cumulative);
+  const met = daily.filter((x) => x.today >= (x.goal ?? 0)).length;
   const own = (trackers ?? []).filter((x) => !x.pack).length;
-  const replace = (next: Tracker) => setTrackers((all) => (all ?? []).map((x) => (x.id === next.id ? next : x)));
   const remind = () => router.navigate({ pathname: "/", params: { compose: "remind" } });
+  const cells: StripCell<GlanceFilter>[] = [
+    { key: "needs", value: needs.length, label: t.lay.common.needsYou },
+    { key: "plans", value: plans.rows.length, label: t.lay.today.stripPlans },
+    { key: "late", value: plans.late.length, label: t.lay.today.late, danger: true },
+  ];
 
   const actions: AddAction[] = [
     { key: "remind", icon: "notifications-outline", kind: "alarm", label: t.lay.today.addRemind, onPress: remind },
@@ -110,92 +123,81 @@ export default function TodayScreen() {
   const navigation = useNavigation();
   useLayoutEffect(() => navigation.setOptions(add.header), [navigation, add.header]);
 
-  const done = (i: Item) => () => void complete(i.id).catch(() => {});
-  const holiday = holidayNote(prefs.get("city"), localDayOf(new Date()), language === "en" ? "en" : "ar");
-  const dateLine = [
-    new Date().toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" }),
-    holiday ? (holiday.when === "today" ? holiday.name : fill(t.lay.today.tomorrowHoliday, { name: holiday.name })) : "",
-  ].filter(Boolean).join(" · ");
+  // The row leaves at once; "Undo" brings the plan back as it was.
+  const done = (i: Item) => () => {
+    void complete(i.id).catch(() => {});
+    notify(t.lay.today.planDone, "ok", { label: t.lay.common.undo, onPress: () => void reopen(i) });
+  };
+  const holiday = holidayNote(prefs.get("city"), localDayOf(now), language === "en" ? "en" : "ar");
+  const next = nextLine({ care, gameyas }, { dose: t.lay.today.nextDose, turn: t.lay.today.gameyaTurn, clock: doseClock });
+  const date = now.toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" });
+  const holidayText = holiday ? (holiday.when === "today" ? holiday.name : fill(t.lay.today.tomorrowHoliday, { name: holiday.name })) : "";
 
   return (
     <Screen onRefresh={reload}>
-      <Text variant="caption" color={palette.inkSoft} style={styles.date}>
-        {dateLine}
-      </Text>
+      <View style={styles.top}>
+        <Text variant="caption" color={palette.inkSoft}>
+          {[date, next ? "" : holidayText].filter(Boolean).join(" · ")}
+        </Text>
+        {next ? (
+          <Pressable onPress={() => router.push(next.route as Href)} accessibilityRole="button" accessibilityLabel={next.text} hitSlop={8} style={styles.next}>
+            <Text variant="smallStrong" numberOfLines={1} style={styles.flex}>
+              {next.text}
+            </Text>
+            <Icon name="chevron-forward" size={16} color={palette.inkFaint} />
+          </Pressable>
+        ) : null}
+      </View>
 
-      {needs.length ? (
-        <>
-          <SectionHeader title={fill(t.lay.today.needsCount, { n: needs.length })} />
-          {needs.map((need) => (
-            <NeedRow key={`${need.kind}:${need.id}`} need={need} onAnswered={answered} />
+      <NumberStrip cells={cells} selected={live ? filter : null} onSelect={setFilter} />
+
+      {view.needs.length ? (
+        <Rows>
+          {view.needs.map((need) => (
+            <NeedRow key={`${need.kind}:${need.id}`} need={need} onAnswered={answered} flat />
           ))}
-        </>
+          {view.moreNeeds > 0 ? <MoreRow label={fill(t.lay.today.more, { n: view.moreNeeds })} onPress={() => setAllNeeds(true)} /> : null}
+        </Rows>
       ) : null}
 
-      {!plansRead ? null : noPlans && needs.length === 0 ? (
+      {!plansRead ? null : nothing ? (
         <IntroPanel title={t.lay.today.emptyTitle} action={t.lay.today.emptyAction} onAction={remind} say={t.lay.today.emptySay} />
-      ) : (
+      ) : filter && live && filter !== "plans" && filter !== "late" ? null : (
         <>
           <SectionHeader title={t.lay.common.plans} action={t.lay.common.seeAll} onAction={() => router.push("/upcoming")} />
-          {noPlans ? (
-            <Text variant="small" color={palette.inkSoft}>
+          {view.plans.length === 0 ? (
+            <Text variant="small" color={palette.inkSoft} style={styles.none}>
               {t.lay.today.noPlans}
             </Text>
-          ) : null}
-          {soon.map((i) => (
-            <PlanRow key={i.id} item={i} onDone={done(i)} />
-          ))}
-          {/* Repeating plans follow the dated ones under the same title (a row says when it rings). */}
-          {repeating.map((i) => (
-            <PlanRow key={i.id} item={i} onDone={done(i)} />
-          ))}
+          ) : (
+            <Rows>
+              {view.plans.map((i) => (
+                <PlanRow key={i.id} item={i} onDone={done(i)} late={lateIds.has(i.id)} flat />
+              ))}
+              {view.morePlans > 0 ? <MoreRow label={fill(t.lay.today.more, { n: view.morePlans })} onPress={() => setFilter("plans")} /> : null}
+            </Rows>
+          )}
         </>
       )}
 
-      {openLists.length ? (
-        <>
-          <SectionHeader title={t.lists.title} action={t.lay.common.seeAll} onAction={() => router.push("/list")} />
-          {openLists.slice(0, MAX_LISTS).map((l) => (
-            <Card key={l.id} onPress={() => router.push({ pathname: "/list/[id]", params: { id: l.id } })} accessibilityLabel={l.name}>
-              <View style={styles.listRow}>
-                <IconTile name={PLACE_ICON[l.place]} size={36} />
-                <View style={styles.flex}>
-                  <Text variant="bodyStrong" numberOfLines={1}>
-                    {l.name}
-                  </Text>
-                  <Text variant="small" color={palette.inkSoft} numberOfLines={1}>
-                    {preview(l, listComma)}
-                  </Text>
-                </View>
-                <Badge label={fill(t.lists.count, { n: l.open_count })} tone="primary" />
-              </View>
-            </Card>
-          ))}
-        </>
-      ) : null}
-
-      {trackers?.length ? (
-        <>
-          <SectionHeader title={t.ui.tracking} action={t.lay.common.seeAll} onAction={() => router.push("/trackers")} />
-          {trackers.map((tr) => (
-            <TrackerRow key={tr.id} tracker={tr} onChanged={replace} />
-          ))}
-        </>
-      ) : null}
-
-      <View style={styles.last}>
-        <RowGroup>
-          <NavRow icon="leaf-outline" kind="alarm" title={t.lay.common.spaceForYou} onPress={() => router.push("/session")} />
-        </RowGroup>
-      </View>
+      {filter && live ? null : (
+        <View style={styles.doors}>
+          <MiniTiles>
+            {lists === null ? null : <MiniTile icon="cart-outline" title={t.lists.title} line={openThings ? fill(t.lay.today.listsOpen, { n: openThings }) : undefined} onPress={() => router.push("/list")} />}
+            <MiniTile icon="stats-chart-outline" kind="people" title={t.ui.tracking} line={daily.length ? fill(t.lay.today.trackingOf, { done: met, n: daily.length }) : undefined} onPress={() => router.push("/trackers")} />
+            <MiniTile icon="leaf-outline" kind="alarm" title={t.lay.common.spaceForYou} onPress={() => router.push("/session")} />
+          </MiniTiles>
+        </View>
+      )}
       {add.sheet}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  date: { paddingHorizontal: space.xs },
-  listRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  flex: { flex: 1, minWidth: 0 },
-  last: { marginTop: space.md },
+  top: { paddingHorizontal: space.xs, gap: 2 },
+  next: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: 32 },
+  flex: { flexShrink: 1, minWidth: 0 },
+  none: { paddingHorizontal: space.xs },
+  doors: { marginTop: space.sm },
 });

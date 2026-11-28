@@ -128,7 +128,7 @@ describe("needsYou", () => {
   });
 
   it("lists my unpaid share of a bill someone else split", () => {
-    expect(needsYou({ splits: [split({})] }, words)).toEqual([{ kind: "split", id: "s1", title: "Dinner", line: "Your share EGP 150", route: "/split/s1" }]);
+    expect(needsYou({ splits: [split({})] }, words)).toEqual([{ kind: "split", id: "s1", title: "Dinner", line: "Your share EGP 150", route: "/split/s1", action: { type: "pay_split", index: 1 } }]);
     expect(needsYou({ splits: [split({ title: " " })] }, words)[0]?.title).toBe("Sara");
     expect(needsYou({ splits: [split({ title: "", owner_name: null })] }, words)[0]?.title).toBe("Split");
   });

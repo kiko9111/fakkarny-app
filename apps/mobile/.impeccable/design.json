@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-28T09:40:00Z",
+  "title": "Design System: Zaki",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Sunrise accent, fill", "canonical": "#C54315", "tonalRamp": ["#3A1205", "#6B230A", "#96330F", "#C54315", "#E0703F", "#F0A27F", "#FBD0BC", "#FFE9DD"] },
+      "primary-ink": { "role": "primary", "displayName": "Sunrise accent, ink", "canonical": "#A9461E" },
+      "primary-soft": { "role": "primary", "displayName": "Sunrise accent, soft", "canonical": "#FFE9DD" },
+      "mint-primary": { "role": "primary", "displayName": "Mint accent, fill", "canonical": "#0F7D67", "tonalRamp": ["#04281F", "#084A3C", "#0C6C59", "#0F7D67", "#3FA690", "#7CC8B7", "#BFE6DC", "#E4F5F0"] },
+      "cloud-primary": { "role": "primary", "displayName": "Cloud accent, fill", "canonical": "#6F52E0", "tonalRamp": ["#1D1150", "#372388", "#5239BE", "#6F52E0", "#917AEA", "#B6A6F2", "#D9D0F9", "#F0ECFE"] },
+      "kind-money-ink": { "role": "secondary", "displayName": "Money yellow", "canonical": "#855600" },
+      "kind-people-ink": { "role": "secondary", "displayName": "People green", "canonical": "#1E7446" },
+      "kind-place-ink": { "role": "secondary", "displayName": "Place blue", "canonical": "#2A5BBD" },
+      "kind-alarm-ink": { "role": "secondary", "displayName": "Alarm violet", "canonical": "#5E44C4" },
+      "family": { "role": "tertiary", "displayName": "Family teal", "canonical": "#1F786C" },
+      "friends": { "role": "tertiary", "displayName": "Friends amber", "canonical": "#9A600E" },
+      "calm": { "role": "tertiary", "displayName": "Calm violet (Session)", "canonical": "#6650C8" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#1D1B1A", "tonalRamp": ["#1D1B1A", "#3A3633", "#5E5955", "#6C6762", "#A39C96", "#E6DAD0", "#F1E8E1", "#FFFAF5"] },
+      "ground": { "role": "neutral", "displayName": "Sunrise ground (under the mesh image)", "canonical": "#FFFAF5" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Onboarding and paywall heroes." },
+      "number": { "displayName": "Number", "purpose": "The big amount at the top of a split, gam'eya or section." },
+      "title": { "displayName": "Title", "purpose": "Tile values, profile name." },
+      "headline": { "displayName": "Headline", "purpose": "Section headers, sheet titles, empty-state sentence." },
+      "body": { "displayName": "Body", "purpose": "Chat text and row titles (bodyStrong at 600)." },
+      "small": { "displayName": "Small", "purpose": "Second lines, chips, field labels; the most used role." },
+      "label": { "displayName": "Label", "purpose": "Button text." },
+      "caption": { "displayName": "Caption", "purpose": "Tile lines, badges, time stamps." }
+    },
+    "shadows": [
+      { "name": "card", "value": "0 1px 2px rgba(197,67,21,0.05), 0 6px 18px rgba(197,67,21,0.08)", "purpose": "Every card, row, tile, the tab bar, the header plus." },
+      { "name": "raised", "value": "0 2px 6px rgba(197,67,21,0.08), 0 14px 34px rgba(24,22,32,0.12)", "purpose": "Sheets, dialogs, the toast." },
+      { "name": "button", "value": "0 4px 12px rgba(197,67,21,0.2)", "purpose": "Filled and WhatsApp buttons, the centre chat button." },
+      { "name": "focus", "value": "0 0 0 3px rgba(197,67,21,0.16)", "purpose": "Ring around the text box being typed in." }
+    ],
+    "motion": [
+      { "name": "appear", "value": "220ms cubic-bezier(0.33, 1, 0.68, 1); opacity 0 to 1, translateY 10px to 0", "purpose": "Things arrive once; fade only under reduce motion." },
+      { "name": "sheet-rise", "value": "220ms cubic-bezier(0.33, 1, 0.68, 1); translateY 28px to 0 with the Modal's fade", "purpose": "The add sheet." },
+      { "name": "loading-breath", "value": "700ms ease-in-out each way; opacity 0.5 to 1", "purpose": "LoadingCards placeholder blocks." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Filled button",
+      "kind": "button",
+      "refersTo": "button-filled",
+      "description": "The screen's one main action: a glossy pill in the theme accent.",
+      "html": "<button class=\"ds-btn-filled\">Save</button>",
+      "css": ".ds-btn-filled { min-height: 48px; padding: 0 20px; border: none; border-radius: 999px; background: #C54315; color: #fff; font: 600 15px/22px Rubik, system-ui, sans-serif; box-shadow: 0 4px 12px rgba(197,67,21,0.2); } .ds-btn-filled:hover, .ds-btn-filled:active { background: #B53E14; } .ds-btn-filled:focus-visible { outline: 3px solid rgba(197,67,21,0.3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Tonal button",
+      "kind": "button",
+      "refersTo": "button-tonal",
+      "description": "The button on a card in a list, and every secondary action.",
+      "html": "<button class=\"ds-btn-tonal\">Review</button>",
+      "css": ".ds-btn-tonal { min-height: 48px; padding: 0 20px; border: 1px solid rgba(255,255,255,0.95); border-radius: 999px; background: rgba(255,233,221,0.8); color: #A9461E; font: 600 15px/22px Rubik, system-ui, sans-serif; } .ds-btn-tonal:hover, .ds-btn-tonal:active { background: #FFE9DD; } .ds-btn-tonal:focus-visible { outline: 3px solid rgba(197,67,21,0.3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A translucent white surface with a bright edge and a theme-tinted shadow.",
+      "html": "<div class=\"ds-card\"><strong class=\"ds-card-title\">Grab bread on your way home</strong><span class=\"ds-card-meta\">From Mum</span></div>",
+      "css": ".ds-card { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: 22px; background: rgba(255,255,255,0.86); border: 1px solid rgba(255,255,255,0.95); box-shadow: 0 1px 2px rgba(197,67,21,0.05), 0 6px 18px rgba(197,67,21,0.08); font-family: Rubik, system-ui, sans-serif; } .ds-card-title { font: 600 16px/25px Rubik, system-ui, sans-serif; color: #1D1B1A; } .ds-card-meta { font: 400 14px/21px Rubik, system-ui, sans-serif; color: #5E5955; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "An answer to pick; selected fills with the theme ink.",
+      "html": "<button class=\"ds-chip\">Tomorrow</button><button class=\"ds-chip ds-chip-on\">No date</button>",
+      "css": ".ds-chip { min-height: 40px; padding: 0 14px; margin-right: 8px; border-radius: 999px; border: 1px solid #E6DAD0; background: rgba(255,255,255,0.86); color: #1D1B1A; font: 600 14px/21px Rubik, system-ui, sans-serif; } .ds-chip:hover { background: #FFE9DD; } .ds-chip-on { background: #A9461E; border-color: #A9461E; color: #fff; } .ds-chip:focus-visible { outline: 3px solid rgba(197,67,21,0.3); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "A labelled box; focus wears the theme colour and a soft ring.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Name</span><input class=\"ds-field-input\" placeholder=\"Ahmed\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-field-label { font: 600 14px/21px Rubik, system-ui, sans-serif; color: #5E5955; } .ds-field-input { min-height: 52px; padding: 0 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.95); background: rgba(255,255,255,0.96); color: #1D1B1A; font: 400 17px Rubik, system-ui, sans-serif; outline: none; } .ds-field-input::placeholder { color: #6C6762; } .ds-field-input:focus-visible { border-color: #C54315; background: #fff; box-shadow: 0 0 0 3px rgba(197,67,21,0.16); }"
+    },
+    {
+      "name": "Segmented switch",
+      "kind": "nav",
+      "refersTo": "segmented-track",
+      "description": "Switches between two or three views of one screen.",
+      "html": "<div class=\"ds-seg\"><button class=\"ds-seg-part\">Spending</button><button class=\"ds-seg-part ds-seg-on\">People</button><button class=\"ds-seg-part\">Splits</button></div>",
+      "css": ".ds-seg { display: flex; min-height: 44px; padding: 3px; border-radius: 999px; background: rgba(197,67,21,0.07); } .ds-seg-part { flex: 1; border: none; border-radius: 999px; background: transparent; color: #5E5955; font: 600 14px/21px Rubik, system-ui, sans-serif; } .ds-seg-part:hover { color: #1D1B1A; } .ds-seg-on { background: #fff; color: #1D1B1A; box-shadow: 0 1px 2px rgba(197,67,21,0.05), 0 6px 18px rgba(197,67,21,0.08); } .ds-seg-part:focus-visible { outline: 3px solid rgba(197,67,21,0.3); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The friend's notebook on a sunny table",
+    "overview": "Zaki is an Operate surface: people come to do one small job with one hand. The look is light and warm. A soft mesh of the user's theme sits behind every screen; everything the user reads or taps sits on white cards that let a breath of that colour through. Ink is near-black. The theme's own colour is spent on few things: the one filled button, the raised chat button in the middle of the tab bar, numbers on tiles, quiet buttons and the active tab.",
+    "keyCharacteristics": [
+      "Light mesh ground, white translucent cards, near-black ink.",
+      "One type family (Rubik), four weights (400, 500, 600, 700).",
+      "Geometry is round: cards 22, sheets and dialogs 28, fields 14, every button and chip a pill.",
+      "Colour identifies: one Ionicon per meaning, in a square tinted by kind.",
+      "Motion is small: a 220 ms fade and 10 px lift, once; loading keeps the page's shape.",
+      "Full RTL; Egyptian Arabic first; Latin digits in both languages.",
+      "No blur, gradient or SVG native module: mesh and Zaki art are images; motion is core Animated."
+    ],
+    "rules": [
+      { "name": "The Fill-Not-Words Rule", "body": "primary is a fill and an icon colour, never small text. Words in the theme's colour use primary-ink.", "section": "colors" },
+      { "name": "The Kind Rule", "body": "An icon's square says what the thing is about (money, people, place, alarm), not which screen it is on. Kind colours never change with the theme.", "section": "colors" },
+      { "name": "The 4.5 Rule", "body": "Text is 4.5:1 or more on a card and on the mesh in all three themes. Re-compute after changing a theme colour or a mesh.", "section": "colors" },
+      { "name": "The One Family Rule", "body": "Rubik only (owner decision). Hierarchy comes from size and weight, never from a second face, letter-spacing or capitals.", "section": "typography" },
+      { "name": "The Latin Digits Rule", "body": "Numbers are Latin digits in Arabic too.", "section": "typography" },
+      { "name": "The Tinted Shadow Rule", "body": "Depth carries a little of the theme; a neutral grey shadow is not part of this system.", "section": "elevation" },
+      { "name": "The Edge-On-Colour Rule", "body": "The bright edge only shows on the mesh. On white, a line is line-strong and a quiet fill is wash.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do put every colour through palette / kind and every text through Text with a role.",
+      "Do keep one filled button a screen; a card that comes in a list uses tonal or outline.",
+      "Do use line-strong for a line and wash for a quiet fill inside a white card.",
+      "Do use Segmented to switch views and Chip for an answer to pick.",
+      "Do give every touchable a 48 target (height or height plus hit slop).",
+      "Do colour an icon's square by kind and keep one Ionicon per meaning across the app.",
+      "Do write numbers in Latin digits and let rows mirror in Arabic; mirror arrows through Icon.",
+      "Do keep motion to opacity and position with core Animated, and honour reduce motion."
+    ],
+    "donts": [
+      "Don't use primary for small text; use primary-ink.",
+      "Don't add a second type family, a gradient, blur or SVG native module.",
+      "Don't put emoji on buttons, chips or titles.",
+      "Don't add helper sentences under a title, row, button or field.",
+      "Don't use a grey shadow, or the bright edge as a line on white.",
+      "Don't change kind, family, friends or Session colours with the theme.",
+      "Don't call Session therapy or give it the app's playful ground: it keeps its calm mesh."
+    ]
+  }
+}

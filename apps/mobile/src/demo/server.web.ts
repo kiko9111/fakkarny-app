@@ -54,7 +54,7 @@ const MARIAM = "u-mariam";
 const YOUSSEF = "u-youssef";
 const ALI = "u-ali";
 /** Raised when the sample data changes shape: a saved preview from before starts over. */
-const SEED = 2;
+const SEED = 3;
 
 interface CircleRow {
   id: string;
@@ -256,6 +256,8 @@ function seed(): State {
       last_active_at: iso(now()),
     },
     items: [
+      // One plan whose time passed: Today's "Late" number and the red line on its row.
+      item({ title: L("جدّد رخصة العربية", "Renew the car licence"), due_at: atLocal(-1, 16), remind_at: atLocal(-1, 16) }),
       item({ title: L("كلّم تيتة", "Call grandma"), due_at: atLocal(0, 20), remind_at: atLocal(0, 19, 45), important: true }),
       item({ title: L("ميعاد الدكتور", "Doctor's appointment"), due_at: atLocal(1, 18), remind_at: atLocal(1, 17) }),
       item({ title: L("اصحى للشغل", "Wake up for work"), due_at: atLocal(1, 6, 30), remind_at: atLocal(1, 6, 30), alarm: true }),

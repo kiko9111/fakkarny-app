@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLive } from "./live";
 import type { Item } from "@fakkarni/shared";
 import { upsertItem } from "@/db/messages";
-import { completeItem } from "@/lib/api";
+import { completeItem, patchItem } from "@/lib/api";
 import { itemsChanged } from "@/lib/signals";
 import { pullItems } from "@/sync/items";
 import { saveItem } from "@/sync/save-item";
@@ -85,5 +85,26 @@ export function useItems(load: () => Promise<Item[]>) {
     [],
   );
 
-  return { items, refresh, complete };
+  /**
+   * Take a tick back (the Undo on "Done"). The plan as it was goes back into the phone's copy
+   * (it keeps its `updated_at`: when the server's "done" already landed, that newer copy stays
+   * until the server answers), then the server reopens it and its answer is saved, which also
+   * plans its notifications again. A refusal says so and reads the server's state.
+   */
+  const reopen = useCallback(async (item: Item) => {
+    const open: Item = { ...item, status: "open", done_at: null };
+    try {
+      if (await upsertItem(open)) {
+        scheduleItem(open);
+        itemsChanged.emit();
+      }
+      await saveItem(await patchItem(item.id, { status: "open" }));
+      itemsChanged.emit();
+    } catch {
+      notify(t.tasks.failed, "error");
+      void pullItems().catch(() => {});
+    }
+  }, []);
+
+  return { items, refresh, complete, reopen };
 }

@@ -17,10 +17,16 @@ interface DialogRequest {
   message?: string;
   actions: DialogAction[];
 }
+/** One way back on a snackbar ("Undo"): shown for longer, gone once tapped. */
+export interface SnackAction {
+  label: string;
+  onPress: () => void;
+}
 interface SnackRequest {
   text: string;
   tone: "ok" | "error" | "info";
   key: number;
+  action?: SnackAction;
 }
 
 const dialogs = createEmitter<DialogRequest>();
@@ -47,8 +53,8 @@ export function confirm(title: string, yes: string, onYes: () => void, no: strin
 }
 
 /** Short feedback that goes away by itself (Material snackbar): "Sent", "Couldn't save". */
-export function notify(text: string, tone: SnackRequest["tone"] = "ok") {
-  snacks.emit({ text, tone, key: Date.now() });
+export function notify(text: string, tone: SnackRequest["tone"] = "ok", action?: SnackAction) {
+  snacks.emit({ text, tone, key: Date.now(), action });
 }
 
 /** Mounted once in the root layout: draws snackbars (everywhere) and dialogs (web). */
@@ -70,7 +76,7 @@ export function FeedbackHost() {
   );
   useEffect(() => {
     if (!snack) return;
-    const timer = setTimeout(() => setSnack(null), 3200);
+    const timer = setTimeout(() => setSnack(null), snack.action ? 6000 : 3200);
     return () => clearTimeout(timer);
   }, [snack]);
 
@@ -91,6 +97,23 @@ export function FeedbackHost() {
             <Text variant="smallStrong" color="#FFFFFF" style={styles.flex}>
               {snack.text}
             </Text>
+            {snack.action ? (
+              <Pressable
+                onPress={() => {
+                  const act = snack.action!;
+                  setSnack(null);
+                  act.onPress();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={snack.action.label}
+                hitSlop={8}
+                style={styles.snackAction}
+              >
+                <Text variant="label" color="#FFD9A6">
+                  {snack.action.label}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </Animated.View>
       ) : null}
@@ -124,6 +147,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   snackWrap: { position: "absolute", left: space.lg, right: space.lg, alignItems: "center" },
   snack: { flexDirection: "row", alignItems: "center", gap: space.sm, maxWidth: 480, width: "100%", backgroundColor: "rgba(47,38,33,0.92)", borderRadius: radius.lg, paddingHorizontal: space.lg, paddingVertical: space.md, ...shadow.raised },
+  snackAction: { minHeight: 44, minWidth: 48, paddingHorizontal: space.sm, alignItems: "center", justifyContent: "center" },
   scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: space.xl },
   dialog: { width: "100%", maxWidth: 380, backgroundColor: palette.surfaceStrong, borderWidth: 1, borderColor: palette.glassEdge, borderRadius: radius.xl, padding: space.xl, gap: space.md, ...shadow.raised },
   actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: space.xs, marginTop: space.xs },
